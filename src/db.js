@@ -1,107 +1,97 @@
-import Database from '@tauri-apps/plugin-sql';
+import { getDatabase, resetDatabaseForTests } from './database/bootstrap.js';
+import { createDailySessionStore } from './stores/daily-session-store.js';
+import { createHierarchyStore } from './stores/hierarchy-store.js';
+import { createLegacyCardStore } from './stores/legacy-card-store.js';
+import { createLegacyMappingStore } from './stores/legacy-mapping-store.js';
+import { createReviewStateStore } from './stores/review-state-store.js';
 
-let db = null;
+let storesPromise = null;
+
+const buildStores = async () => {
+  const database = await getDatabase();
+
+  return {
+    database,
+    dailySessionStore: createDailySessionStore(database),
+    hierarchyStore: createHierarchyStore(database),
+    legacyCardStore: createLegacyCardStore(database),
+    legacyMappingStore: createLegacyMappingStore(database),
+    reviewStateStore: createReviewStateStore(database),
+  };
+};
+
+const getStores = async () => {
+  if (!storesPromise) {
+    storesPromise = buildStores().catch((error) => {
+      storesPromise = null;
+      throw error;
+    });
+  }
+
+  return storesPromise;
+};
 
 export const initDb = async () => {
-    if (db) return db;
-
-    try {
-        console.log("Loading database: braingainz.db");
-        db = await Database.load('sqlite:braingainz.db');
-        console.log("Database instance created:", db);
-
-        // Create subjects table
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS subjects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                icon TEXT
-            )
-        `);
-
-        // Create cards table
-        await db.execute(`
-        CREATE TABLE IF NOT EXISTS cards (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            subject_id INTEGER NOT NULL,
-            word TEXT NOT NULL,
-            transcription TEXT,
-            translation TEXT,
-            definition TEXT,
-            example TEXT,
-            category TEXT,
-            last_reviewed DATETIME,
-            FOREIGN KEY (subject_id) REFERENCES subjects (id) ON DELETE CASCADE
-        )
-    `);
-
-        // Insert default subject if none exist
-        const subjects = await db.select('SELECT * FROM subjects');
-        if (subjects.length === 0) {
-            await db.execute('INSERT INTO subjects (name, icon) VALUES (?, ?)', ['English', '🇬🇧']);
-        }
-
-        return db;
-    } catch (error) {
-        console.error("Database initialization failed:", error);
-        throw error;
-    }
+  const { database } = await getStores();
+  return database;
 };
 
 export const getSubjects = async () => {
-    const database = await initDb();
-    return await database.select('SELECT * FROM subjects');
+  const { legacyCardStore } = await getStores();
+  return legacyCardStore.getSubjects();
 };
 
 export const addSubject = async (name, icon) => {
-    const database = await initDb();
-    return await database.execute('INSERT INTO subjects (name, icon) VALUES (?, ?)', [name, icon]);
+  const { legacyCardStore } = await getStores();
+  return legacyCardStore.addSubject(name, icon);
 };
 
 export const deleteSubject = async (id) => {
-    const database = await initDb();
-    return await database.execute('DELETE FROM subjects WHERE id = ?', [id]);
+  const { legacyCardStore } = await getStores();
+  return legacyCardStore.deleteSubject(id);
 };
 
 export const getCards = async (subjectId) => {
-    const database = await initDb();
-    return await database.select('SELECT * FROM cards WHERE subject_id = ? ORDER BY id DESC', [subjectId]);
+  const { legacyCardStore } = await getStores();
+  return legacyCardStore.getCards(subjectId);
 };
 
 export const addCard = async (card) => {
-    const database = await initDb();
-    return await database.execute(`
-        INSERT INTO cards (subject_id, word, transcription, translation, definition, example, category)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [
-        card.subject_id,
-        card.word,
-        card.transcription,
-        card.translation,
-        card.definition,
-        card.example,
-        card.category
-    ]);
+  const { legacyCardStore } = await getStores();
+  return legacyCardStore.addCard(card);
 };
 
 export const updateCard = async (id, card) => {
-    const database = await initDb();
-    return await database.execute(`
-        UPDATE cards 
-        SET word = ?, transcription = ?, translation = ?, definition = ?, example = ?, category = ?
-        WHERE id = ?
-    `, [
-        card.word,
-        card.transcription,
-        card.translation,
-        card.definition,
-        card.example,
-        card.category,
-        id
-    ]);
+  const { legacyCardStore } = await getStores();
+  return legacyCardStore.updateCard(id, card);
 };
 
 export const deleteCard = async (id) => {
-    const database = await initDb();
-    return await database.execute('DELETE FROM cards WHERE id = ?', [id]);
+  const { legacyCardStore } = await getStores();
+  return legacyCardStore.deleteCard(id);
+};
+
+export const getHierarchyStore = async () => {
+  const { hierarchyStore } = await getStores();
+  return hierarchyStore;
+};
+
+export const getReviewStateStore = async () => {
+  const { reviewStateStore } = await getStores();
+  return reviewStateStore;
+};
+
+export const getDailySessionStore = async () => {
+  const { dailySessionStore } = await getStores();
+  return dailySessionStore;
+};
+
+export const getLegacyMappingStore = async () => {
+  const { legacyMappingStore } = await getStores();
+  return legacyMappingStore;
+};
+
+export const __resetDbForTests = () => {
+  storesPromise = null;
+  resetDatabaseForTests();
 };
