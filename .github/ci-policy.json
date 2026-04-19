@@ -1,0 +1,26 @@
+{
+  "workflowPolicies": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "mode": "repo-ci",
+      "requiredPatterns": [
+        "name: CI",
+        "Frontend",
+        "Tauri Rust",
+        "npm ci",
+        "npm run lint",
+        "npm run build",
+        "cargo check --manifest-path src-tauri/Cargo.toml",
+        "cargo test --manifest-path src-tauri/Cargo.toml",
+        "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings"
+      ],
+      "forbiddenPatterns": [
+        "workspace-wiki",
+        "generate-workspace-owned-ci.ps1",
+        "cargo test --workspace",
+        "cargo clippy --workspace",
+        "npm run test:e2e:smoke"
+      ]
+    }
+  ]
+}

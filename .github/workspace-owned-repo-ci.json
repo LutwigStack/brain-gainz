@@ -1,0 +1,14 @@
+{
+  "repository": {
+    "name": "brain-gainz",
+    "path": ".",
+    "productTitle": "BrainGainz"
+  },
+  "workflows": [
+    {
+      "id": "ci",
+      "path": ".github/workflows/ci.yml",
+      "mode": "maintained"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "families": [
+    {
+      "familyId": "ci",
+      "governanceMode": "maintained",
+      "description": "Repo-local CI workflow for BrainGainz frontend and Tauri checks."
+    }
+  ],
+  "repositoryCoverage": [
+    {
+      "repoPath": ".",
+      "workflows": [
+        {
+          "familyId": "ci",
+          "path": ".github/workflows/ci.yml"
+        }
+      ]
+    }
+  ]
+}
