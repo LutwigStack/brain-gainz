@@ -30,7 +30,7 @@
     "pixi.js": "^8.18.1",
     "postcss": "^8.5.6",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "react-dom": "^19.2.5",
     "sql.js": "^1.14.1",
     "tailwindcss": "^4.1.18"
   },
