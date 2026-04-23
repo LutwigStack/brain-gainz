@@ -58,6 +58,116 @@ const isPastDue = (value) => {
 
 const unique = (values) => [...new Set(values.filter(Boolean))];
 
+const STARTER_LOCALIZATION = {
+  sphere: {
+    name: 'Работа',
+    description: 'Стартовый контур новой системы.',
+  },
+  direction: {
+    name: 'Развитие BrainGainz',
+    description: 'Ближайший продуктовый цикл.',
+  },
+  skill: {
+    name: 'Продуктовый цикл',
+    description: 'Новый рабочий контур поверх старого приложения.',
+  },
+  nodes: {
+    [STARTER_SLUGS.primaryNode]: {
+      title: 'Собрать первый экран «Сейчас»',
+      summary: 'Показать один понятный следующий шаг без поломки старого режима.',
+      actionTitle: 'Проверить первый шаг и запустить сессию',
+      actionDetails: 'Использовать экран «Сейчас» как основную точку входа.',
+    },
+    [STARTER_SLUGS.blockedNode]: {
+      title: 'Сделать короткие причины выбора',
+      summary: 'Сократить и прояснить объяснение выбора.',
+      actionTitle: 'Сделать короткий текст для причин выбора',
+      actionDetails: 'Оставить только ясные и короткие причины.',
+    },
+    [STARTER_SLUGS.maintenanceNode]: {
+      title: 'Не сломать старый режим карточек',
+      summary: 'Словарь и повторение должны остаться рабочими.',
+      actionTitle: 'Быстро проверить старый словарь',
+      actionDetails: 'Проверить импорт, редактирование и повторение после изменений UI.',
+    },
+  },
+};
+
+const localizeStarterWorkspace = async (database) => {
+  const updatedAt = currentTimestamp();
+
+  await database.execute(
+    'UPDATE spheres SET name = ?, description = ?, updated_at = ? WHERE slug = ?',
+    [STARTER_LOCALIZATION.sphere.name, STARTER_LOCALIZATION.sphere.description, updatedAt, STARTER_SLUGS.sphere],
+  );
+
+  await database.execute(
+    'UPDATE directions SET name = ?, description = ?, updated_at = ? WHERE slug = ?',
+    [STARTER_LOCALIZATION.direction.name, STARTER_LOCALIZATION.direction.description, updatedAt, STARTER_SLUGS.direction],
+  );
+
+  await database.execute(
+    'UPDATE skills SET name = ?, description = ?, updated_at = ? WHERE slug = ?',
+    [STARTER_LOCALIZATION.skill.name, STARTER_LOCALIZATION.skill.description, updatedAt, STARTER_SLUGS.skill],
+  );
+
+  for (const [slug, copy] of Object.entries(STARTER_LOCALIZATION.nodes)) {
+    await database.execute('UPDATE nodes SET title = ?, summary = ?, updated_at = ? WHERE slug = ?', [
+      copy.title,
+      copy.summary,
+      updatedAt,
+      slug,
+    ]);
+
+    await database.execute(
+      `
+        UPDATE node_actions
+        SET title = ?, details = ?, updated_at = ?
+        WHERE node_id = (SELECT id FROM nodes WHERE slug = ? LIMIT 1)
+          AND is_minimum_step = 1
+      `,
+      [copy.actionTitle, copy.actionDetails, updatedAt, slug],
+    );
+  }
+
+  await database.execute('UPDATE daily_sessions SET summary_note = ? WHERE summary_note = ?', [
+    'Запущено с первой рекомендации экрана «Сейчас».',
+    'Started from the first Now recommendation.',
+  ]);
+  await database.execute('UPDATE daily_session_events SET note = ? WHERE note = ?', [
+    'Выбрано из первой рекомендации экрана «Сейчас».',
+    'Selected from the first Now surface.',
+  ]);
+  await database.execute('UPDATE daily_session_events SET note = ? WHERE note = ?', [
+    'Завершено из потока экрана «Сейчас».',
+    'Completed from the Now session flow.',
+  ]);
+  await database.execute('UPDATE daily_session_events SET note = ? WHERE note = ?', [
+    'Все видимые шаги текущего узла завершены.',
+    'All visible actions on the current node are complete.',
+  ]);
+  await database.execute('UPDATE daily_session_events SET note = ? WHERE note = ?', [
+    'Главный шаг завершен из потока «Сейчас».',
+    'Primary action completed from the Now flow.',
+  ]);
+  await database.execute('UPDATE daily_session_events SET note = ? WHERE note = ?', [
+    'Шаг отложен до следующего прохода.',
+    'Deferred from the Now session flow.',
+  ]);
+  await database.execute('UPDATE daily_session_events SET note = ? WHERE note = ?', [
+    'Шаг заблокирован из потока «Сейчас».',
+    'Blocked from the Now session flow.',
+  ]);
+  await database.execute('UPDATE daily_sessions SET summary_note = ? WHERE summary_note = ?', [
+    'Текущий шаг отложен до следующего прохода.',
+    'Current action deferred for a later pass.',
+  ]);
+  await database.execute('UPDATE daily_sessions SET summary_note = ? WHERE summary_note = ?', [
+    'Текущий шаг уперся в барьер.',
+    'Current action blocked by a barrier.',
+  ]);
+};
+
 
 const buildWhyNow = (candidate) => {
   const reasons = [];
@@ -517,6 +627,38 @@ const refreshOutcomeResult = async (service, nodeId, actionId = null) => ({
   focus: await service.getNodeFocus(nodeId, actionId),
 });
 
+const navigationContainsNode = (navigation, nodeId) =>
+  navigation.spheres.some((sphere) =>
+    sphere.directions.some((direction) => direction.skills.some((skill) => skill.nodes.some((node) => node.id === nodeId))),
+  );
+
+const refreshEditorMutationResult = async (service, nodeId, actionId = null) => {
+  const [node, dashboard, navigation] = await Promise.all([
+    service.hierarchyStore.getNodeById(nodeId),
+    service.getDashboard(),
+    service.getNavigationSnapshot(),
+  ]);
+
+  if (!node) {
+    return null;
+  }
+
+  const selection =
+    !node.is_archived && navigationContainsNode(navigation, node.id)
+      ? { nodeId: node.id, actionId }
+      : navigation.defaultSelection;
+  const focus =
+    selection != null ? await service.getNodeFocus(selection.nodeId, selection.actionId ?? null) : null;
+
+  return {
+    node,
+    focus,
+    dashboard,
+    navigation,
+    selection: selection != null ? { nodeId: selection.nodeId, actionId: focus?.selectedAction?.id ?? selection.actionId ?? null } : null,
+  };
+};
+
 const loadCandidateRows = (database) =>
   database.select(
     `
@@ -670,14 +812,30 @@ const getNextActionSortOrder = async (database, nodeId) => {
   return Number(rows[0]?.next_sort_order ?? 0);
 };
 
-export const createNowService = ({ database, hierarchyStore, reviewStateStore, dailySessionStore, nodeNoteStore }) => ({
-  database,
-  hierarchyStore,
-  reviewStateStore,
-  dailySessionStore,
-  nodeNoteStore,
+export const createNowService = ({ database, hierarchyStore, reviewStateStore, dailySessionStore, nodeNoteStore }) => {
+  let starterLocalizationPromise = null;
+
+  const ensureStarterLocalization = async () => {
+    if (!starterLocalizationPromise) {
+      starterLocalizationPromise = localizeStarterWorkspace(database).catch((error) => {
+        starterLocalizationPromise = null;
+        throw error;
+      });
+    }
+
+    return starterLocalizationPromise;
+  };
+
+  return {
+    database,
+    hierarchyStore,
+    reviewStateStore,
+    dailySessionStore,
+    nodeNoteStore,
 
   async getDashboard() {
+    await ensureStarterLocalization();
+
     const [metrics, rawCandidates, todaySession] = await Promise.all([
       loadMetrics(database),
       loadCandidateRows(database),
@@ -695,6 +853,8 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
   },
 
   async getNodeFocus(nodeId, actionId = null) {
+    await ensureStarterLocalization();
+
     const focus = await loadNodeFocus(database, dailySessionStore, nodeId, actionId);
 
     if (!focus) {
@@ -714,7 +874,53 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
   },
 
   async getNavigationSnapshot() {
+    await ensureStarterLocalization();
+
     return buildNavigationSnapshot(database);
+  },
+
+  async getNodeEditorRecord(nodeId) {
+    return hierarchyStore.getNodeById(nodeId);
+  },
+
+  async createNodeEditor(payload) {
+    const node = await hierarchyStore.createNode(payload);
+
+    if (!node) {
+      return null;
+    }
+
+    return refreshEditorMutationResult(this, node.id);
+  },
+
+  async updateNodeEditor(nodeId, payload) {
+    const node = await hierarchyStore.updateNode(nodeId, payload);
+
+    if (!node) {
+      return null;
+    }
+
+    return refreshEditorMutationResult(this, node.id);
+  },
+
+  async archiveNodeEditor(nodeId, payload = {}) {
+    const node = await hierarchyStore.archiveNode(nodeId, payload);
+
+    if (!node) {
+      return null;
+    }
+
+    return refreshEditorMutationResult(this, node.id);
+  },
+
+  async duplicateNodeEditor(nodeId, payload = {}) {
+    const node = await hierarchyStore.duplicateNode(nodeId, payload);
+
+    if (!node) {
+      return null;
+    }
+
+    return refreshEditorMutationResult(this, node.id);
   },
 
   async getJournalSnapshot() {
@@ -889,7 +1095,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       primary_node_id: targetRecommendation.nodeId,
       primary_action_id: targetRecommendation.actionId,
       started_at: timestamp,
-      summary_note: 'Started from the first Now recommendation.',
+      summary_note: 'Запущено с первой рекомендации экрана «Сейчас».',
     });
 
     await dailySessionStore.addSessionEvent({
@@ -897,7 +1103,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       event_type: 'selected',
       node_id: targetRecommendation.nodeId,
       action_id: targetRecommendation.actionId,
-      note: 'Selected from the first Now surface.',
+      note: 'Выбрано из первой рекомендации экрана «Сейчас».',
     });
 
     return loadTodaySession(database, dailySessionStore);
@@ -932,7 +1138,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       event_type: 'completed',
       node_id: action.node_id,
       action_id: action.id,
-      note: 'Completed from the Now session flow.',
+      note: 'Завершено из потока экрана «Сейчас».',
       occurred_at: timestamp,
     });
 
@@ -961,7 +1167,9 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
         this,
         session.id,
         timestamp,
-        remainingOpenActions === 0 ? 'All visible actions on the current node are complete.' : 'Primary action completed from the Now flow.',
+        remainingOpenActions === 0
+          ? 'Все видимые шаги текущего узла завершены.'
+          : 'Главный шаг завершен из потока «Сейчас».',
       );
     }
 
@@ -995,7 +1203,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       event_type: 'deferred',
       node_id: action.node_id,
       action_id: action.id,
-      note: note?.trim() || 'Deferred from the Now session flow.',
+      note: note?.trim() || 'Шаг отложен до следующего прохода.',
       occurred_at: timestamp,
     });
 
@@ -1008,7 +1216,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     });
 
     if (session.status === 'active') {
-      await finalizeSessionOutcome(this, session.id, timestamp, 'Current action deferred for a later pass.');
+      await finalizeSessionOutcome(this, session.id, timestamp, 'Текущий шаг отложен до следующего прохода.');
     }
 
     return refreshOutcomeResult(this, action.node_id, action.id);
@@ -1024,7 +1232,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     const session = await ensureActiveSession(this, actionId);
     const timestamp = currentTimestamp();
     const normalizedBarrier = BARRIER_TYPES.includes(barrierType) ? barrierType : null;
-    const eventNote = [normalizedBarrier ? `Barrier: ${normalizedBarrier}.` : null, note?.trim() || null]
+    const eventNote = [normalizedBarrier ? `Барьер: ${normalizedBarrier}.` : null, note?.trim() || null]
       .filter(Boolean)
       .join(' ');
 
@@ -1045,7 +1253,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       event_type: 'blocked',
       node_id: action.node_id,
       action_id: action.id,
-      note: eventNote || 'Blocked from the Now session flow.',
+      note: eventNote || 'Шаг заблокирован из потока «Сейчас».',
       occurred_at: timestamp,
     });
 
@@ -1058,7 +1266,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     });
 
     if (session.status === 'active') {
-      await finalizeSessionOutcome(this, session.id, timestamp, eventNote || 'Current action blocked by a barrier.');
+      await finalizeSessionOutcome(this, session.id, timestamp, eventNote || 'Текущий шаг уперся в барьер.');
     }
 
     return refreshOutcomeResult(this, action.node_id, action.id);
@@ -1107,7 +1315,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       node_id: action.node_id,
       action_id: smallerStep.id,
       note: [
-        `Created smaller step: ${smallerStepTitle}.`,
+        `Создан меньший шаг: ${smallerStepTitle}.`,
         note?.trim() || null,
       ]
         .filter(Boolean)
@@ -1124,9 +1332,10 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     });
 
     if (session.status === 'active') {
-      await finalizeSessionOutcome(this, session.id, timestamp, `Current action shrunk into a smaller step: ${smallerStepTitle}.`);
+      await finalizeSessionOutcome(this, session.id, timestamp, `Текущий шаг упрощен до меньшего: ${smallerStepTitle}.`);
     }
 
     return refreshOutcomeResult(this, action.node_id, smallerStep.id);
   },
-});
+  };
+};

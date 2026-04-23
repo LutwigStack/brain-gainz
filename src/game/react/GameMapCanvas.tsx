@@ -9,6 +9,7 @@ interface GameMapCanvasProps {
   snapshot: NavigationSnapshot | null;
   focus: NodeFocusSnapshot | null;
   onSelectNode: (node: NavigationNodeSummary) => void;
+  className?: string;
 }
 
 const findNodeById = (snapshot: NavigationSnapshot | null, nodeId: number): NavigationNodeSummary | null => {
@@ -30,7 +31,12 @@ const findNodeById = (snapshot: NavigationSnapshot | null, nodeId: number): Navi
   return null;
 };
 
-export const GameMapCanvas = ({ snapshot, focus, onSelectNode }: GameMapCanvasProps) => {
+export const GameMapCanvas = ({
+  snapshot,
+  focus,
+  onSelectNode,
+  className = 'h-[clamp(560px,calc(100dvh-210px),980px)] w-full overflow-hidden rounded-[1rem] border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)]',
+}: GameMapCanvasProps) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
   const sceneRef = useRef<BrainGainzScene | null>(null);
@@ -97,7 +103,7 @@ export const GameMapCanvas = ({ snapshot, focus, onSelectNode }: GameMapCanvasPr
   return (
     <div
       ref={hostRef}
-      className="h-[560px] w-full overflow-hidden rounded-[1rem] border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)]"
+      className={className}
     />
   );
 };

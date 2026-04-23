@@ -155,6 +155,144 @@ test('hierarchy store can create the PR1 ownership chain', async (t) => {
   assert.equal(action.node_id, node.id);
 });
 
+test('hierarchy store persists full node editor updates', async (t) => {
+  const database = await setupBootstrappedDatabase();
+  t.after(() => database.close());
+  const hierarchyStore = createHierarchyStore(database);
+
+  const sphere = await hierarchyStore.createSphere({ name: 'Career', slug: 'career-editor' });
+  const direction = await hierarchyStore.createDirection({
+    sphere_id: sphere.id,
+    name: 'Writing',
+    slug: 'writing-editor',
+  });
+  const skill = await hierarchyStore.createSkill({
+    direction_id: direction.id,
+    name: 'Product Strategy',
+    slug: 'product-strategy-editor',
+  });
+  const node = await hierarchyStore.createNode({
+    skill_id: skill.id,
+    type: 'task',
+    title: 'Draft why-now copy',
+    slug: 'draft-why-now-copy',
+    summary: 'Initial framing',
+    importance: 'medium',
+  });
+
+  const updated = await hierarchyStore.updateNode(node.id, {
+    type: 'project',
+    status: 'paused',
+    title: 'Ship why-now pass',
+    slug: 'ship-why-now-pass',
+    summary: 'Sharper framing for the first pass.',
+    importance: 'high',
+    target_date: '2026-05-01',
+    last_touched_at: '2026-04-23T10:00:00.000Z',
+    is_archived: 0,
+  });
+
+  assert.equal(updated.type, 'project');
+  assert.equal(updated.status, 'paused');
+  assert.equal(updated.title, 'Ship why-now pass');
+  assert.equal(updated.slug, 'ship-why-now-pass');
+  assert.equal(updated.summary, 'Sharper framing for the first pass.');
+  assert.equal(updated.importance, 'high');
+  assert.equal(updated.target_date, '2026-05-01');
+  assert.equal(updated.last_touched_at, '2026-04-23T10:00:00.000Z');
+  assert.equal(updated.is_archived, 0);
+});
+
+test('hierarchy store can archive and duplicate nodes without mutating the source', async (t) => {
+  const database = await setupBootstrappedDatabase();
+  t.after(() => database.close());
+  const hierarchyStore = createHierarchyStore(database);
+
+  const sphere = await hierarchyStore.createSphere({ name: 'Ops', slug: 'ops-editor' });
+  const direction = await hierarchyStore.createDirection({
+    sphere_id: sphere.id,
+    name: 'Delivery',
+    slug: 'delivery-editor',
+  });
+  const skill = await hierarchyStore.createSkill({
+    direction_id: direction.id,
+    name: 'Execution',
+    slug: 'execution-editor',
+  });
+  const node = await hierarchyStore.createNode({
+    skill_id: skill.id,
+    type: 'task',
+    title: 'Capture clear why-now language',
+    slug: 'capture-clear-why-now-language',
+    summary: 'First clean articulation.',
+    importance: 'high',
+  });
+  await hierarchyStore.createNodeAction({
+    node_id: node.id,
+    title: 'Write first pass',
+    status: 'ready',
+  });
+
+  const archived = await hierarchyStore.archiveNode(node.id);
+  const duplicate = await hierarchyStore.duplicateNode(node.id);
+  const duplicateActions = await database.select('SELECT * FROM node_actions WHERE node_id = ?', [duplicate.id]);
+  const persistedSource = await hierarchyStore.getNodeById(node.id);
+
+  assert.equal(archived.status, 'archived');
+  assert.equal(archived.is_archived, 1);
+  assert.equal(persistedSource.id, node.id);
+  assert.equal(persistedSource.status, 'archived');
+  assert.equal(duplicate.id !== node.id, true);
+  assert.equal(duplicate.title, 'Capture clear why-now language (copy)');
+  assert.equal(duplicate.slug, 'capture-clear-why-now-language-copy');
+  assert.equal(duplicate.summary, 'First clean articulation.');
+  assert.equal(duplicate.importance, 'high');
+  assert.equal(duplicate.status, 'active');
+  assert.equal(duplicate.is_archived, 0);
+  assert.equal(duplicate.last_touched_at, null);
+  assert.equal(duplicateActions.length, 0);
+
+  const secondDuplicate = await hierarchyStore.duplicateNode(node.id);
+  assert.equal(secondDuplicate.slug, 'capture-clear-why-now-language-copy-2');
+});
+
+test('hierarchy store keeps status and is_archived consistent during generic updates', async (t) => {
+  const database = await setupBootstrappedDatabase();
+  t.after(() => database.close());
+  const hierarchyStore = createHierarchyStore(database);
+
+  const sphere = await hierarchyStore.createSphere({ name: 'Archive', slug: 'archive-invariant' });
+  const direction = await hierarchyStore.createDirection({
+    sphere_id: sphere.id,
+    name: 'State',
+    slug: 'state-invariant',
+  });
+  const skill = await hierarchyStore.createSkill({
+    direction_id: direction.id,
+    name: 'Consistency',
+    slug: 'consistency-invariant',
+  });
+  const node = await hierarchyStore.createNode({
+    skill_id: skill.id,
+    type: 'task',
+    title: 'Keep archive invariant',
+    slug: 'keep-archive-invariant',
+  });
+
+  const archived = await hierarchyStore.updateNode(node.id, {
+    status: 'archived',
+    is_archived: 0,
+  });
+  assert.equal(archived.status, 'archived');
+  assert.equal(archived.is_archived, 1);
+
+  const restored = await hierarchyStore.updateNode(node.id, {
+    is_archived: 0,
+  });
+  assert.equal(restored.status, 'active');
+  assert.equal(restored.is_archived, 0);
+});
+
 test('hierarchy store rejects self dependencies', async (t) => {
   const database = await setupBootstrappedDatabase();
   t.after(() => database.close());

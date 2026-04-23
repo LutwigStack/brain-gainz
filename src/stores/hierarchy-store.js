@@ -1,5 +1,56 @@
 import { createUtcTimestamp, insertAndFetch, updateAndFetchById } from './store-helpers.js';
 
+const buildDuplicateSlugCandidate = (baseSlug, attempt) => {
+  if (attempt === 0) {
+    return `${baseSlug}-copy`;
+  }
+
+  return `${baseSlug}-copy-${attempt + 1}`;
+};
+
+const findAvailableDuplicateSlug = async (database, skillId, baseSlug) => {
+  let attempt = 0;
+
+  while (attempt < 1000) {
+    const slug = buildDuplicateSlugCandidate(baseSlug, attempt);
+    const rows = await database.select('SELECT id FROM nodes WHERE skill_id = ? AND slug = ?', [skillId, slug]);
+
+    if (rows.length === 0) {
+      return slug;
+    }
+
+    attempt += 1;
+  }
+
+  throw new Error(`Unable to allocate duplicate slug for "${baseSlug}"`);
+};
+
+const normalizeNodeArchiveState = (current, patch) => {
+  const next = {
+    ...current,
+    ...patch,
+  };
+
+  if (patch.status !== undefined) {
+    next.is_archived = patch.status === 'archived' ? 1 : 0;
+    return next;
+  }
+
+  if (patch.is_archived !== undefined) {
+    next.status = patch.is_archived ? 'archived' : current.status === 'archived' ? 'active' : current.status;
+    return next;
+  }
+
+  if (next.status === 'archived' || next.is_archived === 1) {
+    next.status = 'archived';
+    next.is_archived = 1;
+    return next;
+  }
+
+  next.is_archived = 0;
+  return next;
+};
+
 export const createHierarchyStore = (database) => ({
   createSphere(input) {
     const createdAt = input.created_at ?? createUtcTimestamp();
@@ -192,8 +243,7 @@ export const createHierarchyStore = (database) => ({
     }
 
     const next = {
-      ...current,
-      ...patch,
+      ...normalizeNodeArchiveState(current, patch),
       updated_at: patch.updated_at ?? createUtcTimestamp(),
     };
 
@@ -201,13 +251,71 @@ export const createHierarchyStore = (database) => ({
       database,
       `
         UPDATE nodes
-        SET status = ?, last_touched_at = ?, updated_at = ?
+        SET
+          type = ?,
+          status = ?,
+          title = ?,
+          slug = ?,
+          summary = ?,
+          importance = ?,
+          target_date = ?,
+          last_touched_at = ?,
+          is_archived = ?,
+          updated_at = ?
         WHERE id = ?
       `,
-      [next.status, next.last_touched_at, next.updated_at, id],
+      [
+        next.type,
+        next.status,
+        next.title,
+        next.slug,
+        next.summary,
+        next.importance,
+        next.target_date,
+        next.last_touched_at,
+        next.is_archived,
+        next.updated_at,
+        id,
+      ],
       'nodes',
       id,
     );
+  },
+
+  async archiveNode(id, patch = {}) {
+    return this.updateNode(id, {
+      ...patch,
+      status: 'archived',
+      is_archived: 1,
+      last_touched_at: patch.last_touched_at ?? createUtcTimestamp(),
+    });
+  },
+
+  async duplicateNode(id, patch = {}) {
+    const current = await this.getNodeById(id);
+
+    if (!current) {
+      return null;
+    }
+
+    const createdAt = patch.created_at ?? createUtcTimestamp();
+    const nextSkillId = patch.skill_id ?? current.skill_id;
+    const nextSlug = patch.slug ?? (await findAvailableDuplicateSlug(database, nextSkillId, current.slug));
+
+    return this.createNode({
+      skill_id: nextSkillId,
+      type: current.type,
+      status: current.status === 'archived' ? 'active' : current.status,
+      title: patch.title ?? `${current.title} (copy)`,
+      slug: nextSlug,
+      summary: patch.summary ?? current.summary,
+      importance: current.importance,
+      target_date: current.target_date,
+      last_touched_at: null,
+      is_archived: 0,
+      created_at: createdAt,
+      updated_at: patch.updated_at ?? createdAt,
+    });
   },
 
   async updateNodeAction(id, patch) {

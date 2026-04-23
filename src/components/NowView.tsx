@@ -1,36 +1,24 @@
 import {
-  ArrowRight,
   Brain,
   CheckCircle2,
   Compass,
   Layers,
-  ListTodo,
-  PauseCircle,
-  Play,
   RefreshCw,
-  Scissors,
-  Target,
 } from 'lucide-react';
 
 import {
   PixelActionCard,
   PixelButton,
-  PixelInput,
   PixelMeter,
   PixelPanelHeader,
-  PixelSelect,
   PixelStack,
   PixelStatCard,
   PixelSurface,
   PixelText,
-  PixelTextarea,
 } from './pixel';
 import type {
-  BarrierType,
-  DashboardMetrics,
   NodeFocusSnapshot,
   NowDashboardSnapshot,
-  OutcomeAction,
   RecommendationCandidate,
 } from '../types/app-shell';
 
@@ -59,7 +47,7 @@ const eventLabels: Record<string, string> = {
   shrunk: 'упрощено',
 };
 
-const barrierTypes = [
+const _barrierTypes = [
   { value: 'too complex', label: 'Слишком сложно' },
   { value: 'unclear next step', label: 'Непонятен следующий шаг' },
   { value: 'low energy', label: 'Нет сил' },
@@ -67,19 +55,22 @@ const barrierTypes = [
   { value: 'wrong time / wrong context', label: 'Не тот момент' },
 ] as const;
 
-const metricCards = [
-  { key: 'spheres', label: 'Сферы' },
-  { key: 'directions', label: 'Направления' },
-  { key: 'skills', label: 'Навыки' },
-  { key: 'nodes', label: 'Узлы' },
-  { key: 'actions', label: 'Шаги' },
-  { key: 'dueReviews', label: 'На проверку' },
-] as const;
-
-const emptyMetrics = Object.fromEntries(metricCards.map((item) => [item.key, 0]));
+const emptyMetrics = {
+  spheres: 0,
+  directions: 0,
+  skills: 0,
+  nodes: 0,
+  actions: 0,
+  dueReviews: 0,
+};
 
 const statusLabel = (value: string) => statusLabels[value] ?? value;
 const eventLabel = (value: string) => eventLabels[value] ?? value;
+const candidatePath = (candidate: RecommendationCandidate) =>
+  `${candidate.sphereName} / ${candidate.directionName} / ${candidate.skillName}`;
+const isRecommendationCandidate = (
+  candidate: RecommendationCandidate | null,
+): candidate is RecommendationCandidate => candidate != null;
 
 const renderReasons = (reasons: string[]) =>
   reasons.map((reason) => (
@@ -96,6 +87,31 @@ const renderReasons = (reasons: string[]) =>
     </PixelSurface>
   ));
 
+const buildDigestSummary = ({
+  weakeningCount,
+  queueCount,
+  progressPercent,
+  metrics,
+  todaySession,
+}: {
+  weakeningCount: number;
+  queueCount: number;
+  progressPercent: number;
+  metrics: typeof emptyMetrics;
+  todaySession: NowDashboardSnapshot['todaySession'];
+}) => {
+  const sessionPart =
+    todaySession == null
+      ? 'Сегодня сессия еще не стартовала.'
+      : `Сегодня сессия ${statusLabel(todaySession.status)}.`;
+  const completionPart =
+    progressPercent > 0
+      ? `почти закрыто ${progressPercent}%`
+      : 'сейчас нет узлов на добивку';
+
+  return `${sessionPart} Ослабевает ${weakeningCount} фокуса, ${completionPart}, в запасе еще ${queueCount} шага. Всего ${metrics.actions} открытых шагов в ${metrics.nodes} узлах, ${metrics.dueReviews} ждут проверки.`;
+};
+
 interface NowViewProps {
   snapshot: NowDashboardSnapshot | null;
   focus: NodeFocusSnapshot | null;
@@ -103,22 +119,8 @@ interface NowViewProps {
   isFocusLoading: boolean;
   error: string | null;
   isCreatingStarter: boolean;
-  isStartingSession: boolean;
-  isCompletingAction: boolean;
-  activeOutcomeAction: OutcomeAction | null;
-  outcomeNote: string;
-  barrierType: BarrierType;
-  shrinkTitle: string;
   onCreateStarterWorkspace: () => void;
-  onStartSession: () => void;
-  onCompleteAction: () => void;
-  onDeferAction: () => void;
-  onBlockAction: () => void;
-  onShrinkAction: () => void;
   onSelectRecommendation: (recommendation: RecommendationCandidate) => void;
-  onOutcomeNoteChange: (value: string) => void;
-  onBarrierTypeChange: (value: BarrierType) => void;
-  onShrinkTitleChange: (value: string) => void;
   onRefresh: () => void;
 }
 
@@ -129,22 +131,8 @@ export const NowView = ({
   isFocusLoading,
   error,
   isCreatingStarter,
-  isStartingSession,
-  isCompletingAction,
-  activeOutcomeAction,
-  outcomeNote,
-  barrierType,
-  shrinkTitle,
   onCreateStarterWorkspace,
-  onStartSession,
-  onCompleteAction,
-  onDeferAction,
-  onBlockAction,
-  onShrinkAction,
   onSelectRecommendation,
-  onOutcomeNoteChange,
-  onBarrierTypeChange,
-  onShrinkTitleChange,
   onRefresh,
 }: NowViewProps) => {
   const metrics = snapshot?.metrics ?? emptyMetrics;
@@ -153,20 +141,48 @@ export const NowView = ({
   const todaySession = snapshot?.todaySession ?? null;
   const focusedAction = focus?.selectedAction ?? null;
   const focusedNode = focus?.node ?? null;
-  const focusData = focus;
+  const progress = focus?.progress ?? null;
+  const weakeningItems = primaryRecommendation
+    ? [primaryRecommendation]
+    : queue.filter(isRecommendationCandidate).slice(0, 1);
+  const optionalItems = queue
+    .filter((item) => item.actionId !== weakeningItems[0]?.actionId)
+    .slice(0, 4);
+  const remainingNodeActions =
+    focus?.actions.filter((action) => action.id !== focusedAction?.id && action.status !== 'done') ?? [];
+  const extraOptionsCount = optionalItems.length > 0 ? optionalItems.length : remainingNodeActions.length;
+  const recentEvents = todaySession?.events.slice(-3).reverse() ?? [];
+  const progressPercent = progress?.completionPercent ?? 0;
+  const nearCompletionReady =
+    focusedNode != null &&
+    focusedAction != null &&
+    progress != null &&
+    progress.totalActions > 0 &&
+    progress.completedActions > 0 &&
+    progressPercent >= 60;
+  const focusedPath = focusedNode
+    ? `${focusedNode.sphere_name} / ${focusedNode.direction_name} / ${focusedNode.skill_name}`
+    : '';
+  const digestSummary = buildDigestSummary({
+    weakeningCount: weakeningItems.length,
+    queueCount: extraOptionsCount,
+    progressPercent: nearCompletionReady ? progressPercent : 0,
+    metrics,
+    todaySession,
+  });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PixelSurface frame="panel" padding="xxl">
         <PixelStack gap="lg">
           <PixelPanelHeader
             eyebrow="Сейчас"
             title={
               <span className="flex items-center gap-3">
-                <Brain size={24} className="text-[var(--pixel-accent)]" /> Что делать сейчас
+            <Brain size={24} className="text-[var(--pixel-accent)]" /> Короткая сводка
               </span>
             }
-            description="Один главный шаг на сейчас."
+            description="Что слабеет, что почти закрыто и что можно взять следующим."
             aside={
               <div className="flex flex-wrap gap-3">
                 <PixelButton onClick={onRefresh} disabled={isLoading}>
@@ -194,20 +210,25 @@ export const NowView = ({
             </PixelSurface>
           ) : null}
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
-            {metricCards.map((item) => (
-              <PixelStatCard
-                key={item.key}
-                label={item.label}
-                value={metrics[item.key as keyof DashboardMetrics]}
-                tone="inset"
-              />
-            ))}
+          <div className="grid gap-4 md:grid-cols-3">
+            <PixelStatCard label="Ослабевает" value={weakeningItems.length} tone="inset" />
+            <PixelStatCard
+              label="Почти завершено"
+              value={nearCompletionReady ? `${progressPercent}%` : '—'}
+              tone="inset"
+            />
+            <PixelStatCard label="Еще можно сделать" value={extraOptionsCount} tone="inset" />
           </div>
+
+          <PixelSurface frame="inset" padding="md">
+            <PixelText as="p" readable color="textMuted" size="sm">
+              {digestSummary}
+            </PixelText>
+          </PixelSurface>
         </PixelStack>
       </PixelSurface>
 
-      {!primaryRecommendation && !isLoading ? (
+      {!primaryRecommendation && !focusedNode && !isLoading ? (
         <PixelSurface frame="ghost" padding="xxl">
           <div className="mx-auto flex h-20 w-20 items-center justify-center text-[var(--pixel-accent)]">
             <Compass size={36} />
@@ -222,337 +243,172 @@ export const NowView = ({
             size="sm"
             style={{ margin: '16px auto 0', maxWidth: 640, textAlign: 'center' }}
           >
-            Создайте стартовый набор, чтобы увидеть первый шаг.
+            Создайте стартовый набор, чтобы появилась первая сводка дня.
           </PixelText>
         </PixelSurface>
       ) : null}
 
-      {primaryRecommendation ? (
-        <section className="space-y-6">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)]">
-            <PixelActionCard
-              onClick={() => onSelectRecommendation(primaryRecommendation)}
-              active
-              eyebrow="Главное"
-              title={primaryRecommendation.actionTitle}
-              description={`${primaryRecommendation.sphereName} / ${primaryRecommendation.directionName} / ${primaryRecommendation.skillName}`}
-              badges={renderReasons(primaryRecommendation.whyNow)}
-              aside={
-                <PixelSurface frame="ghost" padding="sm" fullWidth={false}>
-                  <PixelText as="div" size="xs" color="textMuted" uppercase>
-                    Узел
-                  </PixelText>
-                  <PixelText as="div" size="sm" style={{ marginTop: 8 }}>
-                    {primaryRecommendation.nodeTitle}
-                  </PixelText>
-                </PixelSurface>
-              }
-            />
+      {(primaryRecommendation || focusedNode) ? (
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.15fr)_minmax(0,0.95fr)]">
+          <PixelSurface frame="panel" padding="lg">
+            <PixelText as="p" size="xs" color="textMuted" uppercase>
+              Ослабевает
+            </PixelText>
+            <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 12 }}>
+              Шаги, которые первыми теряют ясность и возвращаются дороже.
+            </PixelText>
 
-            <PixelSurface frame="panel" padding="lg">
-              <PixelText as="p" size="xs" color="textMuted" uppercase>
-                Дальше
+            {weakeningItems.length === 0 ? (
+              <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
+                Сейчас нет явных кандидатов на потерю темпа.
               </PixelText>
-
-              {queue.length === 0 ? (
-                <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
-                  Пока других свободных шагов нет.
-                </PixelText>
-              ) : (
-                <div className="mt-4 space-y-4">
-                  {queue.map((item) => (
-                    <PixelActionCard
-                      key={item.actionId}
-                      onClick={() => onSelectRecommendation(item)}
-                      title={item.actionTitle}
-                      description={item.nodeTitle}
-                      badges={renderReasons(item.whyNow)}
-                    />
-                  ))}
-                </div>
-              )}
-            </PixelSurface>
-          </div>
-
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
-            <PixelSurface frame="panel" padding="xxl">
-              {isFocusLoading ? (
-                <PixelText as="p" readable color="textMuted" size="sm">
-                  Загрузка…
-                </PixelText>
-              ) : null}
-
-              {!isFocusLoading && focusedNode && focusedAction ? (
-                <PixelStack gap="lg">
-                  <PixelPanelHeader
-                    eyebrow="В фокусе"
-                    title={focusedNode.title}
-                    description={`${focusedNode.sphere_name} / ${focusedNode.direction_name} / ${focusedNode.skill_name}`}
+            ) : (
+              <div className="mt-4 space-y-4">
+                {weakeningItems.map((item) => (
+                  <PixelActionCard
+                    key={item.actionId}
+                    onClick={() => onSelectRecommendation(item)}
+                    active={item.actionId === focusedAction?.id}
+                    title={item.actionTitle}
+                    description={item.whatDegrades}
+                    meta={candidatePath(item)}
+                    badges={renderReasons(item.whyNow)}
                     aside={
-                      <PixelSurface frame="inset" padding="sm" fullWidth={false}>
-                        <PixelText as="p" size="xs" color="textDim" uppercase>
-                          Текущий шаг
+                      <PixelSurface frame="ghost" padding="sm" fullWidth={false}>
+                        <PixelText as="div" size="xs" color="textMuted" uppercase>
+                          Узел
                         </PixelText>
-                        <PixelText as="p" size="sm" style={{ marginTop: 8 }}>
-                          {focusedAction.title}
+                        <PixelText as="div" size="sm" style={{ marginTop: 8 }}>
+                          {item.nodeTitle}
                         </PixelText>
                       </PixelSurface>
                     }
                   />
+                ))}
+              </div>
+            )}
+          </PixelSurface>
 
-                  {focusedNode.summary ? (
-                    <PixelText as="p" readable color="textMuted" size="sm">
-                      {focusedNode.summary}
-                    </PixelText>
-                  ) : null}
+          <PixelSurface frame="panel" padding="lg">
+            <PixelText as="p" size="xs" color="textMuted" uppercase>
+              Почти завершено
+            </PixelText>
+            <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 12 }}>
+              Текущий узел, прогресс по нему и быстрые исходы, если движение застопорилось.
+            </PixelText>
 
-                  {focusedAction.details ? (
-                    <PixelSurface frame="inset" padding="lg">
+            {isFocusLoading ? (
+              <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
+                Загрузка…
+              </PixelText>
+            ) : null}
+
+            {!isFocusLoading && nearCompletionReady && focusedNode && focusedAction && progress ? (
+              <PixelStack gap="md" style={{ marginTop: 16 }}>
+                <PixelActionCard
+                  active
+                  title={focusedAction.title}
+                  description={focusedNode.summary || focusedNode.title}
+                  meta={`${statusLabel(focusedAction.status)} · ${focusedPath}`}
+                  aside={
+                    <PixelSurface frame="inset" padding="sm" fullWidth={false}>
                       <PixelText as="p" size="xs" color="textDim" uppercase>
-                        Детали
+                        Узел
                       </PixelText>
-                      <PixelText
-                        as="p"
-                        readable
-                        color="textMuted"
-                        size="sm"
-                        style={{ marginTop: 12 }}
-                      >
-                        {focusedAction.details}
+                      <PixelText as="p" size="sm" style={{ marginTop: 8 }}>
+                        {focusedNode.title}
                       </PixelText>
                     </PixelSurface>
-                  ) : null}
+                  }
+                />
 
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <PixelSurface frame="inset" padding="lg">
-                      <PixelText as="p" size="xs" color="textDim" uppercase>
-                        <span className="flex items-center gap-2">
-                          <ListTodo size={14} className="text-[var(--pixel-accent)]" /> Шаги
-                        </span>
-                      </PixelText>
-                      <div className="mt-4 space-y-3">
-                        {focusData?.actions.map((action) => (
-                          <PixelActionCard
-                            key={action.id}
-                            title={action.title}
-                            meta={statusLabel(action.status)}
-                            active={action.id === focusedAction.id}
-                          />
-                        ))}
-                      </div>
-                    </PixelSurface>
+                {progress ? (
+                  <PixelSurface frame="inset" padding="md">
+                    <PixelMeter
+                      label={`Готово ${progress.completedActions} из ${progress.totalActions}`}
+                      value={progress.completedActions}
+                      max={progress.totalActions || 1}
+                      tone="success"
+                    />
 
-                    <PixelSurface frame="inset" padding="lg">
-                      <PixelText as="p" size="xs" color="textDim" uppercase>
-                        <span className="flex items-center gap-2">
-                          <Target size={14} className="text-[var(--pixel-accent)]" /> Связи
-                        </span>
-                      </PixelText>
-                      <div className="mt-4 space-y-4">
-                        <div>
-                          <PixelText as="p" size="xs" color="textMuted" uppercase>
-                            Мешает
-                          </PixelText>
-                          {focusData?.dependencies.length === 0 ? (
-                            <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 8 }}>
-                              Ничего.
-                            </PixelText>
-                          ) : (
-                            <div className="mt-2 space-y-2">
-                              {focusData?.dependencies.map((item) => (
-                                <PixelActionCard key={item.id} title={`${item.title} · ${item.status}`} />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div>
-                          <PixelText as="p" size="xs" color="textMuted" uppercase>
-                            Откроет
-                          </PixelText>
-                          {focusData?.dependents.length === 0 ? (
-                            <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 8 }}>
-                              Пока ничего.
-                            </PixelText>
-                          ) : (
-                            <div className="mt-2 space-y-2">
-                              {focusData?.dependents.map((item) => (
-                                <PixelActionCard key={item.id} title={`${item.title} · ${item.status}`} />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </PixelSurface>
-                  </div>
-
-                  <div className="flex flex-wrap gap-3">
-                    <PixelButton
-                      tone="accent"
-                      onClick={onStartSession}
-                      disabled={isStartingSession || focusData?.session?.status === 'active'}
-                    >
-                      <Play size={16} />{' '}
-                      {focusData?.session?.status === 'active'
-                        ? 'Сессия идет'
-                        : isStartingSession
-                          ? 'Запускаю…'
-                          : 'Начать сессию'}
-                    </PixelButton>
-
-                    <PixelButton
-                      onClick={onCompleteAction}
-                      disabled={
-                        isCompletingAction ||
-                        focusedAction.status === 'done' ||
-                        focusData?.session?.status !== 'active'
-                      }
-                    >
-                      <CheckCircle2 size={16} />{' '}
-                      {focusedAction.status === 'done'
-                        ? 'Сделано'
-                        : isCompletingAction
-                          ? 'Сохраняю…'
-                          : 'Готово'}
-                    </PixelButton>
-
-                    <PixelButton tone="ghost" onClick={onRefresh}>
-                      <ArrowRight size={16} /> Обновить
-                    </PixelButton>
-                  </div>
-
-                  <PixelSurface frame="inset" padding="lg">
-                    <PixelText as="p" size="xs" color="textMuted" uppercase>
-                      Если шаг не идет
-                    </PixelText>
-
-                    <div className="mt-4">
-                      <PixelTextarea
-                        label="Заметка"
-                        value={outcomeNote}
-                        onChange={(event) => onOutcomeNoteChange(event.target.value)}
-                        placeholder="Короткая заметка"
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <PixelStatCard label="Прогресс" value={`${progressPercent}%`} tone="inset" />
+                      <PixelStatCard label="Осталось" value={progress.openActions} tone="inset" />
+                      <PixelStatCard
+                        label="Сессия"
+                        value={todaySession ? statusLabel(todaySession.status) : 'не начата'}
+                        tone="inset"
                       />
-                    </div>
-
-                    <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                      <PixelSelect
-                        label="Тип барьера"
-                        value={barrierType}
-                        onChange={(event) => onBarrierTypeChange(event.target.value as BarrierType)}
-                      >
-                        {barrierTypes.map((item) => (
-                          <option key={item.value} value={item.value}>
-                            {item.label}
-                          </option>
-                        ))}
-                      </PixelSelect>
-
-                      <PixelInput
-                        label="Новый маленький шаг"
-                        type="text"
-                        value={shrinkTitle}
-                        onChange={(event) => onShrinkTitleChange(event.target.value)}
-                        placeholder="Название маленького шага"
-                      />
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <PixelButton
-                        tone="ghost"
-                        onClick={onDeferAction}
-                        disabled={
-                          activeOutcomeAction != null ||
-                          focusData?.session?.status !== 'active' ||
-                          focusedAction.status === 'done'
-                        }
-                      >
-                        <PauseCircle size={16} />{' '}
-                        {activeOutcomeAction === 'defer' ? 'Откладываю…' : 'Отложить'}
-                      </PixelButton>
-
-                      <PixelButton
-                        tone="panel"
-                        onClick={onBlockAction}
-                        disabled={
-                          activeOutcomeAction != null ||
-                          focusData?.session?.status !== 'active' ||
-                          focusedAction.status === 'done'
-                        }
-                      >
-                        <Target size={16} />{' '}
-                        {activeOutcomeAction === 'block' ? 'Сохраняю…' : 'Есть барьер'}
-                      </PixelButton>
-
-                      <PixelButton
-                        tone="panel"
-                        onClick={onShrinkAction}
-                        disabled={
-                          activeOutcomeAction != null ||
-                          focusData?.session?.status !== 'active' ||
-                          focusedAction.status === 'done'
-                        }
-                      >
-                        <Scissors size={16} />{' '}
-                        {activeOutcomeAction === 'shrink' ? 'Упрощаю…' : 'Упростить'}
-                      </PixelButton>
                     </div>
                   </PixelSurface>
-                </PixelStack>
-              ) : null}
-            </PixelSurface>
+                ) : null}
 
-            <div className="space-y-6">
-              <PixelSurface frame="panel" padding="lg">
-                <PixelText as="p" size="xs" color="textMuted" uppercase>
-                  Сегодня
-                </PixelText>
-
-                {!todaySession ? (
-                  <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
-                    Сегодня сессии еще не было.
-                  </PixelText>
-                ) : (
-                  <div className="mt-4 space-y-4">
-                    <PixelSurface frame="inset" padding="md">
-                      <PixelText as="p" size="xs" color="textMuted" uppercase>
-                        {statusLabel(todaySession.status)}
-                      </PixelText>
-                      <PixelText as="p" readable size="sm" style={{ marginTop: 8 }}>
-                        Дата: {todaySession.session_date}
-                      </PixelText>
-                      {focusData?.progress ? (
-                        <div className="mt-4">
-                          <PixelMeter
-                            label="Прогресс"
-                            value={focusData.progress.completedActions}
-                            max={focusData.progress.totalActions || 1}
-                            tone="success"
-                          />
-                        </div>
-                      ) : null}
-                    </PixelSurface>
-
-                    <div className="space-y-3">
-                      {todaySession.events.map((event) => (
-                        <PixelActionCard
-                          key={event.id}
-                          title={
-                            <span className="flex items-center gap-2">
-                              <CheckCircle2 size={16} className="text-[var(--pixel-accent)]" />
-                              {eventLabel(event.event_type)}
-                            </span>
-                          }
-                          description={event.note || 'Без заметки.'}
-                        />
-                      ))}
-                    </div>
+                {recentEvents.length > 0 ? (
+                  <div className="space-y-3">
+                    {recentEvents.map((event) => (
+                      <PixelActionCard
+                        key={event.id}
+                        title={
+                          <span className="flex items-center gap-2">
+                            <CheckCircle2 size={16} className="text-[var(--pixel-accent)]" />
+                            {eventLabel(event.event_type)}
+                          </span>
+                        }
+                        description={event.note || 'Без заметки.'}
+                      />
+                    ))}
                   </div>
-                )}
-              </PixelSurface>
-            </div>
-          </div>
-        </section>
+                ) : null}
+              </PixelStack>
+            ) : null}
+
+            {!isFocusLoading && !nearCompletionReady ? (
+              <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
+                Сейчас нет узла, который почти дожат. Основная работа и закрытие шагов идет на карте.
+              </PixelText>
+            ) : null}
+          </PixelSurface>
+
+          <PixelSurface frame="panel" padding="lg">
+            <PixelText as="p" size="xs" color="textMuted" uppercase>
+              Еще можно сделать
+            </PixelText>
+            <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 12 }}>
+              Следующие доступные шаги после текущего фокуса.
+            </PixelText>
+
+            {optionalItems.length > 0 ? (
+              <div className="mt-4 space-y-4">
+                {optionalItems.map((item) => (
+                  <PixelActionCard
+                    key={item.actionId}
+                    onClick={() => onSelectRecommendation(item)}
+                    active={item.actionId === focusedAction?.id}
+                    title={item.actionTitle}
+                    description={item.nodeTitle}
+                    meta={candidatePath(item)}
+                    badges={renderReasons(item.whyNow)}
+                  />
+                ))}
+              </div>
+            ) : remainingNodeActions.length > 0 ? (
+              <div className="mt-4 space-y-4">
+                {remainingNodeActions.map((action) => (
+                  <PixelActionCard
+                    key={action.id}
+                    title={action.title}
+                    description={focusedNode?.title}
+                    meta={statusLabel(action.status)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
+                Очередь короткая: после текущего шага можно сразу вернуться на карту и выбрать новый узел.
+              </PixelText>
+            )}
+          </PixelSurface>
+        </div>
       ) : null}
     </div>
   );

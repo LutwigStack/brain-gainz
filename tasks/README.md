@@ -1,33 +1,33 @@
 # Tasks
 
-Этот каталог — единый источник правды по текущим задачам проекта.
+This directory is the single source of truth for current project work.
 
-Текущий execution model:
-- `web-first` разработка;
-- `React + Vite + TypeScript` как app shell;
-- `PixiJS` как отдельный игровой слой;
-- `Capacitor` после web prototype для `iOS` и `Android`;
-- `Tauri` как desktop shell.
+Current execution model:
+- `web-first` development
+- `React + Vite + TypeScript` as the app shell
+- `PixiJS` as a separate game layer
+- `Capacitor` after the web prototype for `iOS` and `Android`
+- `Tauri` as the desktop shell
 
-## Статусная модель
+## Status Model
 
-- `active` — то, что делаем прямо сейчас;
-- `planned` — следующее по очереди;
-- `done` — завершенные workstreams;
-- `parked` — сознательно отложенные темы.
+- `active` - what we are doing right now
+- `planned` - next in line
+- `done` - completed workstreams
+- `parked` - intentionally postponed topics
 
-## Правило WIP
+## WIP Rule
 
-Одновременно:
-- один active epic;
-- один active workstream.
+At the same time:
+- one active epic
+- one active workstream
 
-Остальное должно быть либо `planned`, либо `done`, либо `parked`.
+Everything else must be `planned`, `done`, or `parked`.
 
-## Текущий epic
+## Current Epic
 
-- `active` — [03-two-tab-map-workspace](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/03-two-tab-map-workspace/README.md)
+- `active` - [05-node-editor-model-expansion](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/05-node-editor-model-expansion/README.md)
 
-## Текущий workstream
+## Current Workstream
 
-- `active` — [03-two-tab-map-workspace/workstreams/01-two-tab-shell-and-now-digest.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/03-two-tab-map-workspace/workstreams/01-two-tab-shell-and-now-digest.md)
+- `active` - [05-node-editor-model-expansion/workstreams/01-schema-for-editor-owned-node-fields.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/05-node-editor-model-expansion/workstreams/01-schema-for-editor-owned-node-fields.md)

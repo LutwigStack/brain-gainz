@@ -24,11 +24,11 @@ const biomePalette = [
 ];
 
 const legendLabels: Record<GameNodeState, string> = {
-  locked: 'Locked',
-  available: 'Available',
-  active: 'Active',
-  completed: 'Completed',
-  paused: 'Paused',
+  locked: 'Закрыт',
+  available: 'Доступен',
+  active: 'Активен',
+  completed: 'Завершен',
+  paused: 'На паузе',
 };
 
 const legendColors: Record<GameNodeState, number> = {
@@ -116,7 +116,7 @@ export const createGameViewModel = (
       biomes: [],
       nodes: [],
       edges: [],
-      hub: { position: HUB_POSITION, label: 'Hub' },
+      hub: { position: HUB_POSITION, label: 'Центр' },
       legend: [],
       hero: { nodeId: null, energy: 0 },
       highlightedNodeId: null,
@@ -183,7 +183,7 @@ export const createGameViewModel = (
     edges,
     hub: {
       position: HUB_POSITION,
-      label: 'Core',
+      label: 'Центр',
     },
     legend: createLegend(nodes),
     hero: {

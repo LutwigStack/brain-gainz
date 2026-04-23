@@ -1,19 +1,26 @@
+import { useState } from 'react';
 import {
+  Archive,
   CheckCircle2,
   Compass,
+  Copy,
   GitBranch,
   Map,
   PauseCircle,
+  PencilLine,
   Play,
   RefreshCw,
+  Save,
   Scissors,
   Target,
+  X,
 } from 'lucide-react';
 
 import {
   PixelActionCard,
   PixelButton,
   PixelInput,
+  PixelMeter,
   PixelPanelHeader,
   PixelSelect,
   PixelStack,
@@ -23,6 +30,12 @@ import {
   PixelTextarea,
 } from './pixel';
 import { GameMapCanvas } from '../game';
+import {
+  canDuplicateNodeEditorDraft,
+  createNodeEditorDraft,
+  hasNodeEditorPersistedChanges,
+  type NodeEditorDraft,
+} from './navigation-editor-draft';
 import type {
   BarrierType,
   NavigationNodeSummary,
@@ -39,13 +52,18 @@ const statusLabels: Record<string, string> = {
   done: 'сделано',
   active: 'идет',
   completed: 'завершено',
+  paused: 'на паузе',
+  archived: 'в архиве',
+  draft: 'черновик',
 };
 
 const typeLabels: Record<string, string> = {
+  task: 'задача',
   project: 'проект',
   theory: 'теория',
   maintenance: 'поддержка',
   habit: 'привычка',
+  research: 'исследование',
 };
 
 const noteKindLabels: Record<string, string> = {
@@ -70,12 +88,48 @@ const barrierTypes = [
   { value: 'wrong time / wrong context', label: 'Не тот момент' },
 ] as const;
 
+const editorTypeOptions = [
+  { value: 'task', label: 'Задача' },
+  { value: 'project', label: 'Проект' },
+  { value: 'theory', label: 'Теория' },
+  { value: 'habit', label: 'Привычка' },
+  { value: 'maintenance', label: 'Поддержка' },
+  { value: 'research', label: 'Исследование' },
+];
+
+const editorStatusOptions = [
+  { value: 'active', label: 'Активен' },
+  { value: 'paused', label: 'На паузе' },
+  { value: 'done', label: 'Завершен' },
+];
+
+const mapLegend = [
+  { label: 'Открыт', value: 'узел доступен для работы' },
+  { label: 'В процессе', value: 'идет активная сессия' },
+  { label: 'Доступен', value: 'есть следующий шаг' },
+  { label: 'Заблокирован', value: 'ждет зависимость' },
+];
+
 const statusLabel = (value: string) => statusLabels[value] ?? value;
 const typeLabel = (value: string) => typeLabels[value] ?? value;
 const noteKindLabel = (value: string) => noteKindLabels[value] ?? value;
 const barrierLabel = (value: string) =>
   barrierTypes.find((item) => item.value === value)?.label ?? value;
 const riskLabel = (value: string) => riskLabels[value] ?? value;
+
+const pickSphereFocusNode = (sphere: NavigationSnapshot['spheres'][number]) => {
+  const nodes = sphere.directions.flatMap((direction) =>
+    direction.skills.flatMap((skill) => skill.nodes),
+  );
+
+  return (
+    nodes.find((node) => node.next_action_id != null) ??
+    nodes.find((node) => node.open_action_count > 0 && node.status !== 'done') ??
+    nodes.find((node) => node.status === 'doing' || node.status === 'ready') ??
+    nodes[0] ??
+    null
+  );
+};
 
 const renderNodeCard = (
   node: NavigationNodeSummary,
@@ -122,8 +176,12 @@ interface NavigationViewProps {
   onOutcomeNoteChange: (value: string) => void;
   onBarrierTypeChange: (value: BarrierType) => void;
   onShrinkTitleChange: (value: string) => void;
-  onOpenJournal: () => void;
   onCreateFollowUp: () => void;
+  onSaveEditor: (draft: NodeEditorDraft) => void;
+  onDuplicateEditor: (draft: NodeEditorDraft) => void;
+  onArchiveEditor: (draft: NodeEditorDraft) => void;
+  editorPendingAction: 'save' | 'duplicate' | 'archive' | null;
+  editorNotice: string | null;
 }
 
 export const NavigationView = ({
@@ -149,9 +207,30 @@ export const NavigationView = ({
   onOutcomeNoteChange,
   onBarrierTypeChange,
   onShrinkTitleChange,
-  onOpenJournal,
   onCreateFollowUp,
+  onSaveEditor,
+  onDuplicateEditor,
+  onArchiveEditor,
+  editorPendingAction,
+  editorNotice,
 }: NavigationViewProps) => {
+  const [editorOverride, setEditorOverride] = useState<Partial<NodeEditorDraft> | null>(null);
+  const [editorOverrideNodeId, setEditorOverrideNodeId] = useState<number | null>(null);
+  const [isEditorExpanded, setIsEditorExpanded] = useState(false);
+
+  const updateDraft = (patch: Partial<NodeEditorDraft>) => {
+    if (!focus?.node) {
+      return;
+    }
+
+    setEditorOverrideNodeId(focus.node.id);
+    setEditorOverride((current) => ({
+      ...(current ?? {}),
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
   const spheres = snapshot?.spheres ?? [];
   const selectedSphereId = focus?.node?.sphere_id ?? spheres[0]?.id ?? null;
   const selectedSphere = spheres.find((sphere) => sphere.id === selectedSphereId) ?? spheres[0] ?? null;
@@ -170,138 +249,174 @@ export const NavigationView = ({
   const totalNodes = selectedSphere?.node_count ?? 0;
   const totalActions = selectedSphere?.open_action_count ?? 0;
 
+  const workspaceDirections = spheres.reduce((sum, sphere) => sum + sphere.directions.length, 0);
+  const workspaceSkills = spheres.reduce(
+    (sum, sphere) =>
+      sum + sphere.directions.reduce((directionSum, direction) => directionSum + direction.skills.length, 0),
+    0,
+  );
+  const workspaceNodes = spheres.reduce((sum, sphere) => sum + sphere.node_count, 0);
+  const workspaceActions = spheres.reduce((sum, sphere) => sum + sphere.open_action_count, 0);
+  const completionValue = focus?.progress.totalActions ? focus.progress.completionPercent : 0;
+  const baseEditorDraft = focus?.node ? createNodeEditorDraft(focus) : null;
+  const editorDraft =
+    baseEditorDraft && editorOverrideNodeId === baseEditorDraft.nodeId
+      ? {
+          ...baseEditorDraft,
+          ...(editorOverride ?? {}),
+        }
+      : baseEditorDraft;
+  const isEditorDirty =
+    focus != null && editorDraft != null ? hasNodeEditorPersistedChanges(focus, editorDraft) : false;
+  const isEditorBusy = editorPendingAction != null;
+  const isEditorArchived = focus?.node?.status === 'archived' || editorDraft?.status === 'archived';
+  const canDuplicateEditor =
+    focus != null && editorDraft != null ? canDuplicateNodeEditorDraft(focus, editorDraft) : false;
+  const modalEditorDraft = isEditorExpanded && focus?.node && editorDraft ? editorDraft : null;
+  const showInlineEditor = isEditorExpanded && focus == null;
+
   return (
-    <div className="space-y-8">
-      <PixelSurface frame="panel" padding="xxl">
-        <PixelStack gap="lg">
-          <PixelPanelHeader
-            eyebrow="Карта"
-            title={
-              <span className="flex items-center gap-3">
-                <Map size={24} className="text-[var(--pixel-accent)]" /> Карта работы
-              </span>
-            }
-            description="Главная игровая поверхность: карта слева, inspector справа."
-            aside={
-              <PixelButton onClick={onRefresh} disabled={isLoading}>
-                <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} /> Обновить
-              </PixelButton>
-            }
+    <div className="space-y-3">
+      {error ? (
+        <PixelSurface frame="accent" padding="md">
+          <PixelText as="p" readable size="sm">
+            {error}
+          </PixelText>
+        </PixelSurface>
+      ) : null}
+
+      <PixelSurface frame="panel" padding="xxs">
+        <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-[repeat(5,minmax(0,1fr))]">
+          <PixelStatCard label="Узлы" value={workspaceNodes} tone="inset" compact />
+          <PixelStatCard label="Открытые шаги" value={workspaceActions} tone="inset" compact />
+          <PixelStatCard label="Ветки / навыки" value={`${workspaceDirections} / ${workspaceSkills}`} tone="inset" compact />
+          <PixelStatCard label="Регион" value={selectedSphere?.name ?? 'Не выбран'} tone="inset" compact />
+          <PixelStatCard
+            label="Текущий фокус"
+            value={selectedAction?.title ?? focus?.node?.title ?? 'Выберите узел'}
+            tone="inset"
+            compact
           />
-
-          {error ? (
-            <PixelSurface frame="accent" padding="md">
-              <PixelText as="p" readable size="sm">
-                {error}
-              </PixelText>
-            </PixelSurface>
-          ) : null}
-
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <PixelStatCard label="Сфера" value={selectedSphere?.name ?? 'Нет'} tone="inset" />
-            <PixelStatCard label="Направления" value={totalDirections} tone="inset" />
-            <PixelStatCard label="Навыки" value={totalSkills} tone="inset" />
-            <PixelStatCard label="Узлы / шаги" value={`${totalNodes} / ${totalActions}`} tone="inset" />
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {spheres.map((sphere) => {
-              const nextDirection = sphere.directions[0];
-              const nextSkill = nextDirection?.skills[0];
-              const nextNode = nextSkill?.nodes[0];
-
-              return (
-                <PixelActionCard
-                  key={sphere.id}
-                  onClick={() => {
-                    if (nextNode) {
-                      onSelectNode(nextNode);
-                    }
-                  }}
-                  active={sphere.id === selectedSphereId}
-                  eyebrow="Сфера"
-                  title={sphere.name}
-                  meta={`${sphere.node_count} узл. · ${sphere.open_action_count} шаг.`}
-                  description={
-                    sphere.id === selectedSphereId
-                      ? 'Текущая активная зона карты.'
-                      : 'Открыть ближайший узел этой сферы.'
-                  }
-                  disabled={!nextNode}
-                />
-              );
-            })}
-          </div>
-        </PixelStack>
+        </div>
       </PixelSurface>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_380px]">
-        <div className="space-y-6">
-          <PixelSurface frame="panel" padding="xl">
+      <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-4">
+          <PixelSurface frame="panel" padding="lg">
             <PixelPanelHeader
-              eyebrow="World Surface"
-              title="Живая карта"
-              description="PixiJS рендерит узлы, связи и атмосферу как отдельный слой мира."
+              eyebrow="Карта"
+              title={
+                <span className="flex items-center gap-2">
+                  <Map size={20} className="text-[var(--pixel-accent)]" /> Основная карта
+                </span>
+              }
+              description="Карта слева, редактор справа."
               aside={
-                focus?.node ? (
-                  <PixelSurface frame="ghost" padding="sm" fullWidth={false}>
-                    <PixelText as="p" size="xs" color="textDim" uppercase>
-                      В фокусе
-                    </PixelText>
-                    <PixelText as="p" size="sm" style={{ marginTop: 8 }}>
-                      {focus.node.title}
-                    </PixelText>
-                  </PixelSurface>
-                ) : null
+                <PixelButton onClick={onRefresh} disabled={isLoading} style={{ minHeight: 32, padding: '6px 12px', gap: 6 }}>
+                  <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} /> Обновить
+                </PixelButton>
               }
             />
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
-              <PixelSurface frame="inset" padding="sm">
-                <GameMapCanvas snapshot={snapshot} focus={focus} onSelectNode={onSelectNode} />
+            <div className="mt-3 space-y-3">
+              <PixelSurface frame="inset" padding="xxs">
+                <GameMapCanvas
+                  snapshot={snapshot}
+                  focus={focus}
+                  onSelectNode={onSelectNode}
+                  className="h-[clamp(620px,calc(100dvh-180px),1080px)] w-full overflow-hidden rounded-[1rem] border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)]"
+                />
               </PixelSurface>
 
-              <PixelSurface frame="inset" padding="md">
-                <PixelStack gap="md">
-                  <PixelText as="p" size="xs" color="textMuted" uppercase>
-                    Регион
-                  </PixelText>
-                  <PixelText as="p" size="lg">
-                    {selectedSphere?.name ?? 'Нет региона'}
-                  </PixelText>
-                  <PixelText as="p" readable color="textMuted" size="sm">
-                    Карта держит текущую сферу как активную область исследования.
-                  </PixelText>
+              <div className="grid gap-3 xl:grid-cols-[1.1fr_0.9fr_1fr]">
+                <PixelSurface frame="inset" padding="sm">
+                  <PixelStack gap="sm">
+                    <PixelText as="p" size="xs" color="textMuted" uppercase>
+                      Легенда
+                    </PixelText>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {mapLegend.map((item) => (
+                        <PixelSurface key={item.label} frame="ghost" padding="xxs">
+                          <PixelText as="p" size="xs" color="textMuted" uppercase style={{ lineHeight: 1 }}>
+                            {item.label}
+                          </PixelText>
+                          <PixelText as="p" readable size="xs" style={{ marginTop: 4 }}>
+                            {item.value}
+                          </PixelText>
+                        </PixelSurface>
+                      ))}
+                    </div>
+                  </PixelStack>
+                </PixelSurface>
 
-                  <div className="grid gap-3">
-                    <PixelStatCard label="Навыки" value={totalSkills} tone="ghost" />
-                    <PixelStatCard
-                      label="Риск проверки"
-                      value={riskLabel(focus?.reviewState?.current_risk ?? 'none')}
-                      tone="ghost"
-                    />
-                    <PixelStatCard
-                      label="Сессия"
-                      value={focus?.session?.status ? statusLabel(focus.session.status) : 'не начата'}
-                      tone="ghost"
-                    />
-                  </div>
-                </PixelStack>
-              </PixelSurface>
+                <PixelSurface frame="inset" padding="sm">
+                  <PixelStack gap="sm">
+                    <PixelText as="p" size="xs" color="textMuted" uppercase>
+                      Карта сейчас
+                    </PixelText>
+                    <PixelText as="p" size="md">
+                      {selectedSphere?.name ?? 'Нет региона'}
+                    </PixelText>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <PixelStatCard label="Направления" value={totalDirections} tone="ghost" compact />
+                      <PixelStatCard label="Навыки" value={totalSkills} tone="ghost" compact />
+                      <PixelStatCard label="Узлы / шаги" value={`${totalNodes} / ${totalActions}`} tone="ghost" compact />
+                      <PixelStatCard
+                        label="Сессия"
+                        value={focus?.session?.status ? statusLabel(focus.session.status) : 'не начата'}
+                        tone="ghost"
+                        compact
+                      />
+                    </div>
+                  </PixelStack>
+                </PixelSurface>
+
+                <PixelSurface frame="inset" padding="sm">
+                  <PixelStack gap="sm">
+                    <PixelText as="p" size="xs" color="textMuted" uppercase>
+                      Быстрый переход
+                    </PixelText>
+                    <div className="grid gap-2">
+                      {spheres.map((sphere) => {
+                        const nextNode = pickSphereFocusNode(sphere);
+
+                        return (
+                          <PixelButton
+                            key={sphere.id}
+                            tone={sphere.id === selectedSphereId ? 'accent' : 'panel'}
+                            onClick={() => {
+                              if (nextNode) {
+                                onSelectNode(nextNode);
+                              }
+                            }}
+                            disabled={!nextNode}
+                            fullWidth
+                            style={{ minHeight: 30, padding: '6px 10px', justifyContent: 'space-between', gap: 8 }}
+                          >
+                            <span>{sphere.name}</span>
+                            <span className="text-[10px] opacity-80">{sphere.node_count}/{sphere.open_action_count}</span>
+                          </PixelButton>
+                        );
+                      })}
+                    </div>
+                  </PixelStack>
+                </PixelSurface>
+              </div>
             </div>
           </PixelSurface>
 
-          <PixelSurface frame="panel" padding="xl">
+          <PixelSurface frame="panel" padding="lg">
             <PixelPanelHeader
               eyebrow={
                 <span className="flex items-center gap-2">
-                  <GitBranch size={14} className="text-[var(--pixel-accent)]" /> Дерево
+                  <GitBranch size={14} className="text-[var(--pixel-accent)]" /> Навигационные ветки
                 </span>
               }
-              title={selectedSphere?.name ?? 'Навигация'}
+              title={selectedSphere?.name ?? 'Структура карты'}
               description={
                 selectedSphere
-                  ? 'Направления, навыки и узлы выбранной сферы.'
+                  ? 'Под картой: направления, навыки и узлы региона.'
                   : 'Пока пусто. Сначала создайте стартовый набор.'
               }
             />
@@ -311,12 +426,12 @@ export const NavigationView = ({
                 Пока пусто. Сначала создайте стартовый набор.
               </PixelText>
             ) : (
-              <div className="mt-4 space-y-4">
+              <div className="mt-3 grid gap-3 2xl:grid-cols-2">
                 {selectedSphere.directions.map((direction) => (
                   <PixelSurface
                     key={direction.id}
                     frame={direction.id === selectedDirectionId ? 'inset' : 'ghost'}
-                    padding="lg"
+                    padding="md"
                   >
                     <PixelPanelHeader
                       eyebrow="Направление"
@@ -324,12 +439,12 @@ export const NavigationView = ({
                       description={`${direction.node_count} узл. · ${direction.open_action_count} шаг.`}
                     />
 
-                    <div className="mt-4 space-y-4">
+                    <div className="mt-3 space-y-3">
                       {direction.skills.map((skill) => (
                         <PixelSurface
                           key={skill.id}
                           frame={skill.id === selectedSkillId ? 'panel' : 'ghost'}
-                          padding="md"
+                          padding="sm"
                         >
                           <PixelPanelHeader
                             eyebrow="Навык"
@@ -337,7 +452,7 @@ export const NavigationView = ({
                             description={`${skill.node_count} узл. · ${skill.open_action_count} шаг.`}
                           />
 
-                          <div className="mt-3 space-y-3">
+                          <div className="mt-2 space-y-2">
                             {skill.nodes.map((node) =>
                               renderNodeCard(node, focus?.node?.id === node.id, onSelectNode),
                             )}
@@ -352,247 +467,429 @@ export const NavigationView = ({
           </PixelSurface>
         </div>
 
-        <div className="self-start xl:sticky xl:top-6">
-          <PixelSurface frame="panel" padding="xl">
-            {isFocusLoading ? (
-              <PixelText as="p" readable color="textMuted" size="sm">
-                Загрузка…
-              </PixelText>
-            ) : null}
-
-            {!isFocusLoading && !focus?.node ? (
-              <PixelSurface frame="ghost" padding="xxl">
-                <Compass size={30} className="mx-auto text-[var(--pixel-accent)]" />
-                <PixelText
-                  as="p"
-                  readable
-                  color="textMuted"
-                  size="sm"
-                  style={{ marginTop: 16, textAlign: 'center' }}
-                >
-                  Выберите узел на карте или в дереве.
+        <div className="self-start xl:sticky xl:top-3 xl:justify-self-end xl:w-[340px] 2xl:w-[360px]">
+          <PixelStack gap="md">
+            <PixelSurface frame="panel" padding="md">
+              {isFocusLoading ? (
+                <PixelText as="p" readable color="textMuted" size="sm">
+                  Загрузка…
                 </PixelText>
-              </PixelSurface>
-            ) : null}
+              ) : null}
 
-            {!isFocusLoading && focus?.node ? (
-              <PixelStack gap="lg">
-                <PixelPanelHeader
-                  eyebrow="Inspector"
-                  title={focus.node.title}
-                  description={`${focus.node.sphere_name} / ${focus.node.direction_name} / ${focus.node.skill_name}`}
-                />
-
-                <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-                  <PixelStatCard
-                    label="Прогресс"
-                    value={`${focus.progress.completedActions}/${focus.progress.totalActions}`}
-                    tone="inset"
-                  />
-                  <PixelStatCard
-                    label="Открыто"
-                    value={focus.progress.openActions}
-                    tone="inset"
-                  />
-                  <PixelStatCard
-                    label="Проверка"
-                    value={riskLabel(focus.reviewState?.current_risk ?? 'none')}
-                    tone="inset"
-                  />
-                </div>
-
-                {focus.node.summary ? (
-                  <PixelText as="p" readable color="textMuted" size="sm">
-                    {focus.node.summary}
+              {!isFocusLoading && !focus?.node ? (
+                <PixelSurface frame="ghost" padding="xxl">
+                  <Compass size={30} className="mx-auto text-[var(--pixel-accent)]" />
+                  <PixelText
+                    as="p"
+                    readable
+                    color="textMuted"
+                    size="sm"
+                    style={{ marginTop: 16, textAlign: 'center' }}
+                  >
+                    Выберите узел на карте или в навигационных ветках.
                   </PixelText>
-                ) : null}
-
-                {selectedAction ? (
-                  <PixelActionCard
-                    eyebrow="Текущий шаг"
-                    title={selectedAction.title}
-                    description={selectedAction.details}
-                    meta={statusLabel(selectedAction.status)}
-                    active
-                    onClick={() => onSelectAction(selectedAction)}
-                  />
-                ) : null}
-
-                <PixelSurface frame="inset" padding="lg">
-                  <PixelText as="p" size="xs" color="textDim" uppercase>
-                    Шаги узла
-                  </PixelText>
-                  <div className="mt-4 space-y-3">
-                    {focus.actions.map((action) => (
-                      <PixelActionCard
-                        key={action.id}
-                        onClick={() => onSelectAction(action)}
-                        title={action.title}
-                        description={action.details}
-                        meta={statusLabel(action.status)}
-                        active={action.id === selectedAction?.id}
-                      />
-                    ))}
-                  </div>
                 </PixelSurface>
+              ) : null}
 
-                <PixelSurface frame="inset" padding="lg">
-                  <PixelText as="p" size="xs" color="textDim" uppercase>
-                    Связи
-                  </PixelText>
+              {!isFocusLoading && focus?.node && editorDraft ? (
+                <PixelStack gap="md">
+                  <PixelPanelHeader
+                    eyebrow="Редактор узла"
+                    title="Редактор узла"
+                    description="Изменения пишутся сразу."
+                    aside={
+                      <PixelButton
+                        tone="accent"
+                        onClick={() => setIsEditorExpanded(true)}
+                        disabled={isEditorBusy}
+                        style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                      >
+                        <PencilLine size={14} /> Редактировать
+                      </PixelButton>
+                    }
+                  />
 
-                  <div className="mt-4 space-y-4">
-                    <PixelSurface frame="ghost" padding="md">
-                      <PixelText as="p" size="xs" color="textMuted" uppercase>
-                        Следующая проверка
+                  <PixelSurface frame="inset" padding="sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <PixelText as="p" size="xs" color="textMuted" uppercase>
+                          ID узла
+                        </PixelText>
+                        <PixelText as="p" size="sm" style={{ marginTop: 8 }}>
+                          node_{focus.node.id}
+                        </PixelText>
+                      </div>
+                      <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
+                        <PixelText as="span" size="xs" color="textMuted" uppercase>
+                          {editorDraft?.updatedAt.slice(0, 16).replace('T', ' ') ?? 'сохранено'}
+                        </PixelText>
+                      </PixelSurface>
+                    </div>
+                  </PixelSurface>
+
+                  <PixelSurface frame="inset" padding="sm">
+                    <PixelText as="p" size="xs" color="textDim" uppercase>
+                      Название
+                    </PixelText>
+                    <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
+                      {editorDraft.title}
+                    </PixelText>
+                  </PixelSurface>
+
+                  {(editorDraft.summary || focus.node.summary) ? (
+                    <PixelSurface frame="inset" padding="sm">
+                      <PixelText as="p" size="xs" color="textDim" uppercase>
+                        Описание
                       </PixelText>
-                      <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 8 }}>
-                        {focus.reviewState?.next_due_at ?? 'не задана'}
+                      <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
+                        {editorDraft.summary || focus.node.summary}
                       </PixelText>
                     </PixelSurface>
+                  ) : null}
 
-                    <div>
-                      <PixelText as="p" size="xs" color="textMuted" uppercase>
-                        Мешает
-                      </PixelText>
-                      {focus.dependencies.length === 0 ? (
-                        <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 8 }}>
-                          Ничего.
-                        </PixelText>
-                      ) : (
-                        <div className="mt-2 space-y-2">
-                          {focus.dependencies.map((item) => (
-                            <PixelActionCard
-                              key={item.id}
-                              title={item.title}
-                              meta={statusLabel(item.status)}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <PixelText as="p" size="xs" color="textMuted" uppercase>
-                        Откроет
-                      </PixelText>
-                      {focus.dependents.length === 0 ? (
-                        <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 8 }}>
-                          Пока ничего.
-                        </PixelText>
-                      ) : (
-                        <div className="mt-2 space-y-2">
-                          {focus.dependents.map((item) => (
-                            <PixelActionCard
-                              key={item.id}
-                              title={item.title}
-                              meta={statusLabel(item.status)}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                    <PixelStatCard label="Тип" value={typeLabel(editorDraft.type)} tone="inset" compact />
+                    <PixelStatCard label="Статус" value={statusLabel(editorDraft.status)} tone="inset" compact />
                   </div>
-                </PixelSurface>
 
-                <div className="grid gap-4">
-                  <PixelSurface frame="inset" padding="lg">
-                    <PixelText as="p" size="xs" color="textDim" uppercase>
-                      Барьеры
-                    </PixelText>
-                    <div className="mt-4 space-y-3">
-                      {barrierNotes.length === 0 ? (
-                        <PixelText as="p" readable color="textMuted" size="sm">
-                          Пока нет.
+                  {showInlineEditor && isEditorExpanded && editorDraft ? (
+                    <div className="grid gap-3">
+                      <PixelSurface frame="inset" padding="sm">
+                        <PixelText as="p" size="xs" color="textDim" uppercase>
+                          Тематика / путь
                         </PixelText>
-                      ) : (
-                        barrierNotes.map((note) => (
-                          <PixelActionCard
-                            key={note.id}
-                            eyebrow={barrierLabel(note.barrier_type)}
-                            title={note.note || 'Без заметки'}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </PixelSurface>
-
-                  <PixelSurface frame="inset" padding="lg">
-                    <PixelText as="p" size="xs" color="textDim" uppercase>
-                      Заметки
-                    </PixelText>
-                    <div className="mt-4 space-y-3">
-                      {errorNotes.length === 0 ? (
-                        <PixelText as="p" readable color="textMuted" size="sm">
-                          Пока нет.
+                        <PixelText as="p" readable size="sm" style={{ marginTop: 8 }}>
+                          {editorDraft.theme}
                         </PixelText>
-                      ) : (
-                        errorNotes.map((note) => (
-                          <PixelActionCard
-                            key={note.id}
-                            eyebrow={noteKindLabel(note.note_kind)}
-                            title={note.note || 'Без заметки'}
-                          />
-                        ))
-                      )}
+                      </PixelSurface>
+
+                      <PixelInput
+                        label="Название"
+                        type="text"
+                        value={editorDraft.title}
+                        onChange={(event) => updateDraft({ title: event.target.value })}
+                        disabled={isEditorBusy}
+                      />
+
+                      <PixelTextarea
+                        label="Описание"
+                        value={editorDraft.summary}
+                        onChange={(event) => updateDraft({ summary: event.target.value })}
+                        placeholder="Короткое описание узла"
+                        disabled={isEditorBusy}
+                      />
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <PixelSelect
+                          label="Тип узла"
+                          value={editorDraft.type}
+                          onChange={(event) => updateDraft({ type: event.target.value })}
+                          disabled={isEditorBusy}
+                        >
+                          {editorTypeOptions.map((item) => (
+                            <option key={item.value} value={item.value}>
+                              {item.label}
+                            </option>
+                          ))}
+                        </PixelSelect>
+
+                        <PixelSelect
+                          label="Статус"
+                          value={editorDraft.status}
+                          onChange={(event) => updateDraft({ status: event.target.value, isArchived: false })}
+                          disabled={isEditorBusy}
+                        >
+                          {editorStatusOptions.map((item) => (
+                            <option key={item.value} value={item.value}>
+                              {item.label}
+                            </option>
+                          ))}
+                        </PixelSelect>
+                      </div>
+
+                      <PixelSurface frame="inset" padding="sm">
+                        <PixelText as="p" size="xs" color="textDim" uppercase>
+                          Критерий завершения
+                        </PixelText>
+                        <PixelText as="p" readable size="sm" style={{ marginTop: 8 }}>
+                          {editorDraft.completionCriteria || 'Пока не определен.'}
+                        </PixelText>
+                      </PixelSurface>
+
+                      <PixelSurface frame="inset" padding="sm">
+                        <PixelText as="p" size="xs" color="textDim" uppercase>
+                          Следующий шаг
+                        </PixelText>
+                        <PixelText as="p" readable size="sm" style={{ marginTop: 8 }}>
+                          {editorDraft.nextStep || 'Пока нет.'}
+                        </PixelText>
+                      </PixelSurface>
+
+                      <PixelSurface frame="inset" padding="sm">
+                        <PixelText as="p" size="xs" color="textDim" uppercase>
+                          Связи / открывает
+                        </PixelText>
+                        <PixelText as="p" readable size="sm" style={{ marginTop: 8, whiteSpace: 'pre-line' }}>
+                          {editorDraft.links || 'Пока нет зависимостей и открытий.'}
+                        </PixelText>
+                      </PixelSurface>
+
+                      <PixelSurface frame="inset" padding="sm">
+                        <PixelText as="p" size="xs" color="textDim" uppercase>
+                          Награда
+                        </PixelText>
+                        <PixelText as="p" readable size="sm" style={{ marginTop: 8 }}>
+                          {editorDraft.reward || 'Пока не задана.'}
+                        </PixelText>
+                      </PixelSurface>
                     </div>
-                  </PixelSurface>
-                </div>
+                  ) : null}
 
-                <div className="flex flex-wrap gap-3">
-                  <PixelButton
-                    tone="accent"
-                    onClick={onStartSession}
-                    disabled={isStartingSession || focus.session?.status === 'active' || !selectedAction}
-                  >
-                    <Play size={16} />{' '}
-                    {focus.session?.status === 'active'
-                      ? 'Сессия идет'
-                      : isStartingSession
-                        ? 'Запускаю…'
-                        : 'Начать'}
-                  </PixelButton>
+                  {isEditorBusy ? (
+                    <PixelSurface frame="ghost" padding="xs">
+                      <PixelText as="p" readable size="sm" color="textMuted">
+                        {editorPendingAction === 'save'
+                          ? 'Сохраняю узел…'
+                          : editorPendingAction === 'duplicate'
+                            ? 'Создаю копию…'
+                            : 'Архивирую узел и переношу фокус…'}
+                      </PixelText>
+                    </PixelSurface>
+                  ) : null}
 
-                  <PixelButton
-                    onClick={onCompleteAction}
-                    disabled={
-                      isCompletingAction ||
-                      !selectedAction ||
-                      selectedAction.status === 'done' ||
-                      focus.session?.status !== 'active'
-                    }
-                  >
-                    <CheckCircle2 size={16} /> {isCompletingAction ? 'Сохраняю…' : 'Готово'}
-                  </PixelButton>
+                  {editorNotice ? (
+                    <PixelSurface frame="ghost" padding="xs">
+                      <PixelText as="p" readable size="sm" color="textMuted">
+                        {editorNotice}
+                      </PixelText>
+                    </PixelSurface>
+                  ) : null}
 
-                  <PixelButton tone="ghost" onClick={onOpenJournal} disabled={!focus.node}>
-                    <Target size={16} /> В журнал
-                  </PixelButton>
+                  {showInlineEditor && !canDuplicateEditor && editorDraft ? (
+                    <PixelSurface frame="ghost" padding="xs">
+                      <PixelText as="p" readable size="sm" color="textMuted">
+                        Копия берёт только сохранённые название и описание. Если меняли тип или статус, сначала сохраните узел.
+                      </PixelText>
+                    </PixelSurface>
+                  ) : null}
 
-                  <PixelButton tone="ghost" onClick={onCreateFollowUp} disabled={!focus.node}>
-                    <Scissors size={16} /> Следующий шаг
-                  </PixelButton>
-                </div>
+                  {showInlineEditor ? (
+                  <div className="flex flex-wrap gap-2">
+                    <PixelButton
+                      tone="accent"
+                      onClick={() => {
+                        if (editorDraft) {
+                          onSaveEditor(editorDraft);
+                        }
+                      }}
+                      disabled={!editorDraft || isEditorBusy || !isEditorDirty}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <Save size={16} /> {editorPendingAction === 'save' ? 'Сохраняю…' : 'Сохранить'}
+                    </PixelButton>
+                    <PixelButton
+                      tone="ghost"
+                      onClick={() => {
+                        if (editorDraft) {
+                          onDuplicateEditor(editorDraft);
+                        }
+                      }}
+                      disabled={!editorDraft || isEditorBusy || !canDuplicateEditor}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <Copy size={16} /> {editorPendingAction === 'duplicate' ? 'Дублирую…' : 'Дублировать'}
+                    </PixelButton>
+                    <PixelButton
+                      onClick={() => {
+                        if (editorDraft) {
+                          onArchiveEditor(editorDraft);
+                        }
+                      }}
+                      disabled={!editorDraft || isEditorBusy || isEditorArchived}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <Archive size={16} /> {editorPendingAction === 'archive' ? 'Архивирую…' : 'Архивировать'}
+                    </PixelButton>
+                  </div>
+                  ) : null}
+                </PixelStack>
+              ) : null}
+            </PixelSurface>
 
-                <PixelSurface frame="inset" padding="lg">
-                  <PixelText as="p" size="xs" color="textMuted" uppercase>
-                    Outcome Console
-                  </PixelText>
+            {focus?.node ? (
+            <PixelSurface frame="panel" padding="md">
+              <PixelStack gap="md">
+                <PixelPanelHeader
+                  eyebrow="Сводка узла"
+                  title={editorDraft?.title ?? focus.node.title}
+                  description={editorDraft?.theme ?? `${focus.node.sphere_name} / ${focus.node.direction_name} / ${focus.node.skill_name}`}
+                />
 
-                  <div className="mt-4">
-                    <PixelTextarea
-                      label="Заметка"
-                      value={outcomeNote}
-                      onChange={(event) => onOutcomeNoteChange(event.target.value)}
-                      placeholder="Короткая заметка"
+                  <PixelMeter
+                    value={completionValue}
+                    max={100}
+                    label="Прогресс узла"
+                    tone={focus.session?.status === 'active' ? 'success' : 'accent'}
+                    showValue
+                  />
+
+                  <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
+                    <PixelStatCard label="Открыто" value={focus.progress.openActions} tone="inset" compact />
+                    <PixelStatCard
+                      label="Риск"
+                      value={riskLabel(focus.reviewState?.current_risk ?? 'none')}
+                      tone="inset"
+                      compact
+                    />
+                    <PixelStatCard
+                      label="Редактор"
+                      value={statusLabel(editorDraft?.status ?? focus.node.status)}
+                      tone="inset"
+                      compact
                     />
                   </div>
 
-                  <div className="mt-4 grid gap-4">
+                  {isEditorArchived ? (
+                    <PixelSurface frame="ghost" padding="xs">
+                      <PixelText as="p" readable size="sm" color="textMuted">
+                        Узел уже в архиве. Операционные действия ниже отключены до переключения на живой фокус.
+                      </PixelText>
+                    </PixelSurface>
+                  ) : null}
+
+                  {(editorDraft?.summary || focus.node.summary) ? (
+                    <PixelText as="p" readable color="textMuted" size="sm">
+                      {editorDraft?.summary || focus.node.summary}
+                    </PixelText>
+                  ) : null}
+
+                  <PixelSurface frame="inset" padding="sm">
+                    <PixelText as="p" size="xs" color="textDim" uppercase>
+                      Что нужно сделать
+                    </PixelText>
+                    <div className="mt-2 space-y-2">
+                      {focus.actions.length === 0 ? (
+                        <PixelText as="p" readable color="textMuted" size="sm">
+                          Пока нет открытых шагов.
+                        </PixelText>
+                      ) : (
+                        focus.actions.map((action) => (
+                          <PixelActionCard
+                            key={action.id}
+                            onClick={() => onSelectAction(action)}
+                            title={action.title}
+                            description={action.details}
+                            meta={statusLabel(action.status)}
+                            active={action.id === selectedAction?.id}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </PixelSurface>
+
+                  <PixelSurface frame="inset" padding="sm">
+                    <PixelText as="p" size="xs" color="textDim" uppercase>
+                      Откроет дальше
+                    </PixelText>
+                    {focus.dependents.length === 0 ? (
+                      <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
+                        Пока ничего.
+                      </PixelText>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {focus.dependents.map((item) => (
+                          <PixelActionCard key={item.id} title={item.title} meta={statusLabel(item.status)} />
+                        ))}
+                      </div>
+                    )}
+                  </PixelSurface>
+
+                  <PixelSurface frame="inset" padding="sm">
+                    <PixelText as="p" size="xs" color="textDim" uppercase>
+                      Что мешает
+                    </PixelText>
+                    {focus.dependencies.length === 0 ? (
+                      <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
+                        Ничего.
+                      </PixelText>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {focus.dependencies.map((item) => (
+                          <PixelActionCard key={item.id} title={item.title} meta={statusLabel(item.status)} />
+                        ))}
+                      </div>
+                    )}
+                  </PixelSurface>
+
+                  {selectedAction ? (
+                    <PixelActionCard
+                      eyebrow="Следующий шаг"
+                      title={selectedAction.title}
+                      description={selectedAction.details}
+                      meta={statusLabel(selectedAction.status)}
+                      active
+                      onClick={() => onSelectAction(selectedAction)}
+                    />
+                  ) : null}
+
+                  <div className="flex flex-wrap gap-2">
+                    <PixelButton
+                      tone="accent"
+                      onClick={onStartSession}
+                      disabled={
+                        isEditorArchived ||
+                        isStartingSession ||
+                        focus.session?.status === 'active' ||
+                        !selectedAction
+                      }
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <Play size={16} />{' '}
+                      {focus.session?.status === 'active'
+                        ? 'Сессия идет'
+                        : isStartingSession
+                          ? 'Запускаю…'
+                          : 'Начать'}
+                    </PixelButton>
+
+                    <PixelButton
+                      onClick={onCompleteAction}
+                      disabled={
+                        isEditorArchived ||
+                        isCompletingAction ||
+                        !selectedAction ||
+                        selectedAction.status === 'done' ||
+                        focus.session?.status !== 'active'
+                      }
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <CheckCircle2 size={16} /> {isCompletingAction ? 'Сохраняю…' : 'Готово'}
+                    </PixelButton>
+
+                    <PixelButton
+                      tone="ghost"
+                      onClick={onCreateFollowUp}
+                      disabled={!focus.node || isEditorArchived}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <Scissors size={16} /> Следующий шаг
+                    </PixelButton>
+                  </div>
+
+                  <div className="grid gap-3">
+                    <PixelTextarea
+                      label="Заметка по исходу"
+                      value={outcomeNote}
+                      onChange={(event) => onOutcomeNoteChange(event.target.value)}
+                      placeholder="Короткая заметка"
+                      disabled={isEditorArchived}
+                    />
+
                     <PixelSelect
                       label="Тип барьера"
                       value={barrierType}
                       onChange={(event) => onBarrierTypeChange(event.target.value as BarrierType)}
+                      disabled={isEditorArchived}
                     >
                       {barrierTypes.map((item) => (
                         <option key={item.value} value={item.value}>
@@ -607,56 +904,293 @@ export const NavigationView = ({
                       value={shrinkTitle}
                       onChange={(event) => onShrinkTitleChange(event.target.value)}
                       placeholder="Название маленького шага"
+                      disabled={isEditorArchived}
                     />
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-3">
+                  <div className="flex flex-wrap gap-3">
                     <PixelButton
                       tone="ghost"
                       onClick={onDeferAction}
                       disabled={
+                        isEditorArchived ||
                         activeOutcomeAction != null ||
                         !selectedAction ||
                         focus.session?.status !== 'active' ||
                         selectedAction.status === 'done'
                       }
                     >
-                      <PauseCircle size={16} />{' '}
-                      {activeOutcomeAction === 'defer' ? 'Откладываю…' : 'Отложить'}
+                      <PauseCircle size={16} /> {activeOutcomeAction === 'defer' ? 'Откладываю…' : 'Отложить'}
                     </PixelButton>
 
                     <PixelButton
                       onClick={onBlockAction}
                       disabled={
+                        isEditorArchived ||
                         activeOutcomeAction != null ||
                         !selectedAction ||
                         focus.session?.status !== 'active' ||
                         selectedAction.status === 'done'
                       }
                     >
-                      <Target size={16} />{' '}
-                      {activeOutcomeAction === 'block' ? 'Сохраняю…' : 'Есть барьер'}
+                      <Target size={16} /> {activeOutcomeAction === 'block' ? 'Сохраняю…' : 'Есть барьер'}
                     </PixelButton>
 
                     <PixelButton
                       onClick={onShrinkAction}
                       disabled={
+                        isEditorArchived ||
                         activeOutcomeAction != null ||
                         !selectedAction ||
                         focus.session?.status !== 'active' ||
                         selectedAction.status === 'done'
                       }
                     >
-                      <Scissors size={16} />{' '}
-                      {activeOutcomeAction === 'shrink' ? 'Упрощаю…' : 'Упростить'}
+                      <Scissors size={16} /> {activeOutcomeAction === 'shrink' ? 'Упрощаю…' : 'Упростить'}
                     </PixelButton>
                   </div>
-                </PixelSurface>
-              </PixelStack>
+
+                  <div className="grid gap-4">
+                    <PixelSurface frame="inset" padding="lg">
+                      <PixelText as="p" size="xs" color="textDim" uppercase>
+                        Барьеры
+                      </PixelText>
+                      <div className="mt-4 space-y-3">
+                        {barrierNotes.length === 0 ? (
+                          <PixelText as="p" readable color="textMuted" size="sm">
+                            Пока нет.
+                          </PixelText>
+                        ) : (
+                          barrierNotes.map((note) => (
+                            <PixelActionCard
+                              key={note.id}
+                              eyebrow={barrierLabel(note.barrier_type)}
+                              title={note.note || 'Без заметки'}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </PixelSurface>
+
+                    <PixelSurface frame="inset" padding="lg">
+                      <PixelText as="p" size="xs" color="textDim" uppercase>
+                        Заметки
+                      </PixelText>
+                      <div className="mt-4 space-y-3">
+                        {errorNotes.length === 0 ? (
+                          <PixelText as="p" readable color="textMuted" size="sm">
+                            Пока нет.
+                          </PixelText>
+                        ) : (
+                          errorNotes.map((note) => (
+                            <PixelActionCard
+                              key={note.id}
+                              eyebrow={noteKindLabel(note.note_kind)}
+                              title={note.note || 'Без заметки'}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </PixelSurface>
+                  </div>
+                </PixelStack>
+              </PixelSurface>
             ) : null}
-          </PixelSurface>
+          </PixelStack>
         </div>
       </section>
+
+      {modalEditorDraft && focus?.node ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-200/10 p-4 backdrop-blur-md">
+          <div className="absolute inset-0 bg-white/10" onClick={() => setIsEditorExpanded(false)} aria-hidden="true" />
+          <PixelSurface
+            frame="panel"
+            padding="md"
+            className="relative max-h-[calc(100dvh-2rem)] w-full max-w-[820px] overflow-auto"
+          >
+            <PixelStack gap="md">
+              <PixelPanelHeader
+                eyebrow="Редактор узла"
+                title="Редактор узла"
+                description="Изменения пишутся сразу. Форма открыта поверх карты."
+                aside={
+                  <PixelButton
+                    tone="ghost"
+                    onClick={() => setIsEditorExpanded(false)}
+                    disabled={isEditorBusy}
+                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                  >
+                    <X size={14} /> Закрыть
+                  </PixelButton>
+                }
+              />
+
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+                <PixelSurface frame="inset" padding="sm">
+                  <PixelText as="p" size="xs" color="textMuted" uppercase>
+                    ID узла
+                  </PixelText>
+                  <PixelText as="p" size="sm" style={{ marginTop: 4 }}>
+                    node_{focus.node.id}
+                  </PixelText>
+                </PixelSurface>
+
+                <PixelSurface frame="inset" padding="sm">
+                  <PixelText as="p" size="xs" color="textMuted" uppercase>
+                    Обновлен
+                  </PixelText>
+                  <PixelText as="p" size="sm" style={{ marginTop: 4 }}>
+                    {modalEditorDraft.updatedAt.slice(0, 16).replace('T', ' ')}
+                  </PixelText>
+                </PixelSurface>
+              </div>
+
+              <PixelSurface frame="inset" padding="sm">
+                <PixelText as="p" size="xs" color="textDim" uppercase>
+                  Тематика / путь
+                </PixelText>
+                <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
+                  {modalEditorDraft.theme}
+                </PixelText>
+              </PixelSurface>
+
+              <PixelInput
+                label="Название"
+                type="text"
+                value={modalEditorDraft.title}
+                onChange={(event) => updateDraft({ title: event.target.value })}
+                disabled={isEditorBusy}
+              />
+
+              <PixelTextarea
+                label="Описание"
+                value={modalEditorDraft.summary}
+                onChange={(event) => updateDraft({ summary: event.target.value })}
+                placeholder="Короткое описание узла"
+                disabled={isEditorBusy}
+              />
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <PixelSelect
+                  label="Тип узла"
+                  value={modalEditorDraft.type}
+                  onChange={(event) => updateDraft({ type: event.target.value })}
+                  disabled={isEditorBusy}
+                >
+                  {editorTypeOptions.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </PixelSelect>
+
+                <PixelSelect
+                  label="Статус"
+                  value={modalEditorDraft.status}
+                  onChange={(event) => updateDraft({ status: event.target.value, isArchived: false })}
+                  disabled={isEditorBusy}
+                >
+                  {editorStatusOptions.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </PixelSelect>
+              </div>
+
+              <PixelSurface frame="inset" padding="sm">
+                <PixelText as="p" size="xs" color="textDim" uppercase>
+                  Критерий завершения
+                </PixelText>
+                <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
+                  {modalEditorDraft.completionCriteria || 'Пока не определен.'}
+                </PixelText>
+              </PixelSurface>
+
+              <PixelSurface frame="inset" padding="sm">
+                <PixelText as="p" size="xs" color="textDim" uppercase>
+                  Следующий шаг
+                </PixelText>
+                <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
+                  {modalEditorDraft.nextStep || 'Пока нет.'}
+                </PixelText>
+              </PixelSurface>
+
+              <PixelSurface frame="inset" padding="sm">
+                <PixelText as="p" size="xs" color="textDim" uppercase>
+                  Связи / открывает
+                </PixelText>
+                <PixelText as="p" readable size="sm" style={{ marginTop: 4, whiteSpace: 'pre-line' }}>
+                  {modalEditorDraft.links || 'Пока нет зависимостей и открытий.'}
+                </PixelText>
+              </PixelSurface>
+
+              <PixelSurface frame="inset" padding="sm">
+                <PixelText as="p" size="xs" color="textDim" uppercase>
+                  Награда
+                </PixelText>
+                <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
+                  {modalEditorDraft.reward || 'Пока не задана.'}
+                </PixelText>
+              </PixelSurface>
+
+              {isEditorBusy ? (
+                <PixelSurface frame="ghost" padding="xs">
+                  <PixelText as="p" readable size="sm" color="textMuted">
+                    {editorPendingAction === 'save'
+                      ? 'Сохраняю узел...'
+                      : editorPendingAction === 'duplicate'
+                        ? 'Создаю копию...'
+                        : 'Архивирую узел...'}
+                  </PixelText>
+                </PixelSurface>
+              ) : null}
+
+              {editorNotice ? (
+                <PixelSurface frame="ghost" padding="xs">
+                  <PixelText as="p" readable size="sm" color="textMuted">
+                    {editorNotice}
+                  </PixelText>
+                </PixelSurface>
+              ) : null}
+
+              {!canDuplicateEditor ? (
+                <PixelSurface frame="ghost" padding="xs">
+                  <PixelText as="p" readable size="sm" color="textMuted">
+                    Копия берет только сохраненные название и описание. Если меняли тип или статус, сначала сохраните узел.
+                  </PixelText>
+                </PixelSurface>
+              ) : null}
+
+              <div className="flex flex-wrap gap-2">
+                <PixelButton
+                  tone="accent"
+                  onClick={() => onSaveEditor(modalEditorDraft)}
+                  disabled={isEditorBusy || !isEditorDirty}
+                  style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                >
+                  <Save size={16} /> {editorPendingAction === 'save' ? 'Сохраняю...' : 'Сохранить'}
+                </PixelButton>
+                <PixelButton
+                  tone="ghost"
+                  onClick={() => onDuplicateEditor(modalEditorDraft)}
+                  disabled={isEditorBusy || !canDuplicateEditor}
+                  style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                >
+                  <Copy size={16} /> {editorPendingAction === 'duplicate' ? 'Дублирую...' : 'Дублировать'}
+                </PixelButton>
+                <PixelButton
+                  onClick={() => onArchiveEditor(modalEditorDraft)}
+                  disabled={isEditorBusy || isEditorArchived}
+                  style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                >
+                  <Archive size={16} /> {editorPendingAction === 'archive' ? 'Архивирую...' : 'Архивировать'}
+                </PixelButton>
+              </div>
+            </PixelStack>
+          </PixelSurface>
+        </div>
+      ) : null}
     </div>
   );
 };

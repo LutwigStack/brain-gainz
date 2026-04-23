@@ -232,3 +232,84 @@ test('journal follow-up step creates a ready remediation action and node-scoped 
   assert.equal(result.focus.selectedAction.id, result.createdAction.id);
   assert.equal(result.focus.errorNotes.some((note) => note.note_kind === 'follow_up'), true);
 });
+
+test('node editor mutations return synced dashboard, navigation, and focus payloads', async (t) => {
+  const { database, nowService } = await setupNowService();
+  t.after(() => database.close());
+
+  const snapshot = await nowService.createStarterWorkspace();
+  const updated = await nowService.updateNodeEditor(snapshot.primaryRecommendation.nodeId, {
+    title: 'Ship persisted node editor',
+    summary: 'Persist node edits through the application boundary.',
+    status: 'paused',
+  });
+
+  assert.equal(updated.node.title, 'Ship persisted node editor');
+  assert.equal(updated.focus.node.title, 'Ship persisted node editor');
+  assert.equal(updated.focus.node.status, 'paused');
+
+  const navigationNode = updated.navigation.spheres
+    .flatMap((sphere) => sphere.directions)
+    .flatMap((direction) => direction.skills)
+    .flatMap((skill) => skill.nodes)
+    .find((node) => node.id === updated.node.id);
+
+  assert.equal(navigationNode.title, 'Ship persisted node editor');
+  assert.equal(navigationNode.status, 'paused');
+  assert.equal(updated.selection.nodeId, updated.node.id);
+  assert.equal(updated.dashboard.metrics.nodes >= 1, true);
+});
+
+test('node editor duplicate and archive mutations return persisted refresh payloads', async (t) => {
+  const { database, nowService } = await setupNowService();
+  t.after(() => database.close());
+
+  const snapshot = await nowService.createStarterWorkspace();
+  const duplicate = await nowService.duplicateNodeEditor(snapshot.primaryRecommendation.nodeId, {
+    title: 'Ship persisted node editor copy',
+  });
+  const archived = await nowService.archiveNodeEditor(snapshot.primaryRecommendation.nodeId);
+
+  assert.equal(duplicate.node.title, 'Ship persisted node editor copy');
+  assert.equal(duplicate.focus.node.id, duplicate.node.id);
+  assert.equal(duplicate.selection.nodeId, duplicate.node.id);
+
+  const duplicateInNavigation = duplicate.navigation.spheres
+    .flatMap((sphere) => sphere.directions)
+    .flatMap((direction) => direction.skills)
+    .flatMap((skill) => skill.nodes)
+    .find((node) => node.id === duplicate.node.id);
+  assert.equal(duplicateInNavigation.title, 'Ship persisted node editor copy');
+
+  assert.equal(archived.node.status, 'archived');
+  assert.equal(archived.node.is_archived, 1);
+  const archivedInNavigation = archived.navigation.spheres
+    .flatMap((sphere) => sphere.directions)
+    .flatMap((direction) => direction.skills)
+    .flatMap((skill) => skill.nodes)
+    .find((node) => node.id === snapshot.primaryRecommendation.nodeId);
+  assert.equal(archivedInNavigation, undefined);
+  assert.notEqual(archived.selection, null);
+  assert.notEqual(archived.selection.nodeId, snapshot.primaryRecommendation.nodeId);
+  assert.equal(archived.selection.nodeId, archived.navigation.defaultSelection.nodeId);
+  assert.equal(archived.focus.node.id, archived.selection.nodeId);
+});
+
+test('archive node editor applies persisted patch and archive status in one mutation result', async (t) => {
+  const { database, nowService } = await setupNowService();
+  t.after(() => database.close());
+
+  const snapshot = await nowService.createStarterWorkspace();
+  const archived = await nowService.archiveNodeEditor(snapshot.primaryRecommendation.nodeId, {
+    title: 'Archive-ready node',
+    summary: 'Archive this exact edited version.',
+    type: 'theory',
+    status: 'paused',
+  });
+
+  assert.equal(archived.node.title, 'Archive-ready node');
+  assert.equal(archived.node.summary, 'Archive this exact edited version.');
+  assert.equal(archived.node.type, 'theory');
+  assert.equal(archived.node.status, 'archived');
+  assert.equal(archived.node.is_archived, 1);
+});

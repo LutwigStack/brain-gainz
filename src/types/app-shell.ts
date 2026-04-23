@@ -107,6 +107,68 @@ export interface NodeSummary {
   skill_name: string;
 }
 
+export interface PersistedNodeRecord {
+  id: number;
+  skill_id: number;
+  type: string;
+  status: string;
+  title: string;
+  slug: string;
+  summary?: string | null;
+  importance: string;
+  target_date?: string | null;
+  last_touched_at?: string | null;
+  is_archived: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NodeCreatePayload {
+  skill_id: number;
+  type: string;
+  title: string;
+  slug: string;
+  summary?: string;
+  importance?: string;
+  status?: string;
+  target_date?: string | null;
+  last_touched_at?: string | null;
+}
+
+export interface NodeUpdatePayload {
+  type?: string;
+  status?: string;
+  title?: string;
+  slug?: string;
+  summary?: string | null;
+  importance?: string;
+  target_date?: string | null;
+  last_touched_at?: string | null;
+  is_archived?: number;
+}
+
+export interface NodeDuplicatePayload {
+  skill_id?: number;
+  title?: string;
+  slug?: string;
+  summary?: string | null;
+}
+
+export interface NodeArchivePayload {
+  title?: string;
+  summary?: string | null;
+  type?: string;
+  status?: string;
+}
+
+export interface NodeEditorMutationResult {
+  node: PersistedNodeRecord;
+  focus: NodeFocusSnapshot | null;
+  dashboard: NowDashboardSnapshot;
+  navigation: NavigationSnapshot;
+  selection: RecommendationSelection | null;
+}
+
 export interface NodeDependencySummary {
   id: number;
   title: string;

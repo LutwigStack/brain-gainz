@@ -6,12 +6,34 @@ import { createLegacyCardStore } from './stores/legacy-card-store.js';
 import { createLegacyMappingStore } from './stores/legacy-mapping-store.js';
 import { createNodeNoteStore } from './stores/node-note-store.js';
 import { createReviewStateStore } from './stores/review-state-store.js';
-import type { DatabaseMutationResult, JournalFollowUpPayload, JournalSnapshot, LegacyCard, LegacyCardDraft, NavigationSnapshot, NodeFocusSnapshot, NowDashboardSnapshot, Subject } from './types/app-shell';
+import type {
+  DatabaseMutationResult,
+  JournalFollowUpPayload,
+  JournalSnapshot,
+  LegacyCard,
+  LegacyCardDraft,
+  NodeArchivePayload,
+  NavigationSnapshot,
+  NodeCreatePayload,
+  NodeDuplicatePayload,
+  NodeEditorMutationResult,
+  NodeFocusSnapshot,
+  NodeUpdatePayload,
+  NowDashboardSnapshot,
+  PersistedNodeRecord,
+  Subject,
+} from './types/app-shell';
 
 type StoresRegistry = {
   database: unknown;
   dailySessionStore: unknown;
-  hierarchyStore: unknown;
+  hierarchyStore: {
+    getNodeById: (id: number) => Promise<PersistedNodeRecord | null>;
+    createNode: (payload: NodeCreatePayload) => Promise<PersistedNodeRecord | null>;
+    updateNode: (id: number, patch: NodeUpdatePayload) => Promise<PersistedNodeRecord | null>;
+    archiveNode: (id: number) => Promise<PersistedNodeRecord | null>;
+    duplicateNode: (id: number, payload?: NodeDuplicatePayload) => Promise<PersistedNodeRecord | null>;
+  };
   legacyCardStore: {
     getSubjects: () => Promise<Subject[]>;
     addSubject: (name: string, icon: string) => Promise<DatabaseMutationResult>;
@@ -31,6 +53,11 @@ type StoresRegistry = {
     startTodaySessionFromRecommendation: (actionId?: number | null) => Promise<unknown>;
     getNodeFocus: (nodeId: number, actionId?: number | null) => Promise<NodeFocusSnapshot | null>;
     getNavigationSnapshot: () => Promise<NavigationSnapshot>;
+    getNodeEditorRecord: (nodeId: number) => Promise<PersistedNodeRecord | null>;
+    createNodeEditor: (payload: NodeCreatePayload) => Promise<NodeEditorMutationResult | null>;
+    updateNodeEditor: (nodeId: number, payload: NodeUpdatePayload) => Promise<NodeEditorMutationResult | null>;
+    archiveNodeEditor: (nodeId: number, payload?: NodeArchivePayload) => Promise<NodeEditorMutationResult | null>;
+    duplicateNodeEditor: (nodeId: number, payload?: NodeDuplicatePayload) => Promise<NodeEditorMutationResult | null>;
     getJournalSnapshot: () => Promise<JournalSnapshot>;
     createJournalFollowUpStep: (payload: JournalFollowUpPayload) => Promise<unknown>;
     completeActionInTodaySession: (actionId: number) => Promise<unknown>;
@@ -120,6 +147,42 @@ export const deleteCard = async (id: number): Promise<DatabaseMutationResult> =>
 export const getHierarchyStore = async () => {
   const { hierarchyStore } = await getStores();
   return hierarchyStore;
+};
+
+export const getNodeRecord = async (id: number): Promise<PersistedNodeRecord | null> => {
+  const { nowService } = await getStores();
+  return nowService.getNodeEditorRecord(id);
+};
+
+export const createNodeRecord = async (
+  payload: NodeCreatePayload,
+): Promise<NodeEditorMutationResult | null> => {
+  const { nowService } = await getStores();
+  return nowService.createNodeEditor(payload);
+};
+
+export const updateNodeRecord = async (
+  id: number,
+  payload: NodeUpdatePayload,
+): Promise<NodeEditorMutationResult | null> => {
+  const { nowService } = await getStores();
+  return nowService.updateNodeEditor(id, payload);
+};
+
+export const archiveNodeRecord = async (
+  id: number,
+  payload: NodeArchivePayload = {},
+): Promise<NodeEditorMutationResult | null> => {
+  const { nowService } = await getStores();
+  return nowService.archiveNodeEditor(id, payload);
+};
+
+export const duplicateNodeRecord = async (
+  id: number,
+  payload: NodeDuplicatePayload = {},
+): Promise<NodeEditorMutationResult | null> => {
+  const { nowService } = await getStores();
+  return nowService.duplicateNodeEditor(id, payload);
 };
 
 export const getReviewStateStore = async () => {

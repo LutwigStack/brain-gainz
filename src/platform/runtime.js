@@ -21,8 +21,8 @@ export const resolveRuntimeProfile = ({
   if (capacitorNative) {
     return createRuntimeProfile({
       kind: 'capacitor-native',
-      shellLabel: 'Mobile shell',
-      storageLabel: 'Web storage',
+      shellLabel: 'Мобильная оболочка',
+      storageLabel: 'Веб-хранилище',
       isLocalFirst: false,
       usesNativeSql: false,
       usesSafeAreaInsets: true,
@@ -33,8 +33,8 @@ export const resolveRuntimeProfile = ({
   if (tauriInvoke) {
     return createRuntimeProfile({
       kind: 'tauri-desktop',
-      shellLabel: 'Desktop local-first',
-      storageLabel: 'Local SQLite',
+      shellLabel: 'Десктоп',
+      storageLabel: 'Локальная SQLite',
       isLocalFirst: true,
       usesNativeSql: true,
       usesSafeAreaInsets: false,
@@ -44,8 +44,8 @@ export const resolveRuntimeProfile = ({
 
   return createRuntimeProfile({
     kind: 'web',
-    shellLabel: 'Web-first',
-    storageLabel: 'Browser storage',
+    shellLabel: 'Веб',
+    storageLabel: 'Браузерное хранилище',
     isLocalFirst: false,
     usesNativeSql: false,
     usesSafeAreaInsets: false,
