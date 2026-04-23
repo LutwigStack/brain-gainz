@@ -1,4 +1,4 @@
-import { createUtcTimestamp, insertAndFetch } from './store-helpers.js';
+import { createUtcTimestamp, insertAndFetch, updateAndFetchById } from './store-helpers.js';
 
 export const createHierarchyStore = (database) => ({
   createSphere(input) {
@@ -182,5 +182,57 @@ export const createHierarchyStore = (database) => ({
 
   getNodeActionById(id) {
     return database.select('SELECT * FROM node_actions WHERE id = ?', [id]).then((rows) => rows[0] ?? null);
+  },
+
+  async updateNode(id, patch) {
+    const current = await this.getNodeById(id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = {
+      ...current,
+      ...patch,
+      updated_at: patch.updated_at ?? createUtcTimestamp(),
+    };
+
+    return updateAndFetchById(
+      database,
+      `
+        UPDATE nodes
+        SET status = ?, last_touched_at = ?, updated_at = ?
+        WHERE id = ?
+      `,
+      [next.status, next.last_touched_at, next.updated_at, id],
+      'nodes',
+      id,
+    );
+  },
+
+  async updateNodeAction(id, patch) {
+    const current = await this.getNodeActionById(id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = {
+      ...current,
+      ...patch,
+      updated_at: patch.updated_at ?? createUtcTimestamp(),
+    };
+
+    return updateAndFetchById(
+      database,
+      `
+        UPDATE node_actions
+        SET status = ?, completed_at = ?, updated_at = ?
+        WHERE id = ?
+      `,
+      [next.status, next.completed_at, next.updated_at, id],
+      'node_actions',
+      id,
+    );
   },
 });

@@ -11,6 +11,7 @@ import { createDailySessionStore } from '../src/stores/daily-session-store.js';
 import { createHierarchyStore } from '../src/stores/hierarchy-store.js';
 import { createLegacyCardStore } from '../src/stores/legacy-card-store.js';
 import { createLegacyMappingStore } from '../src/stores/legacy-mapping-store.js';
+import { createNodeNoteStore } from '../src/stores/node-note-store.js';
 import { createReviewStateStore } from '../src/stores/review-state-store.js';
 import { createSqliteTestDatabase } from './support/sqlite-test-adapter.js';
 
@@ -40,14 +41,50 @@ test('bootstrap is idempotent and ensures all PR1 tables', async (t) => {
   }
 
   const criticalIndexRows = await database.select(
-    "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (?, ?, ?)",
+    "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (?, ?, ?, ?, ?)",
     [
       'idx_node_dependencies_blocked',
       'idx_daily_session_events_session_id',
       'idx_legacy_card_mappings_node_id',
+      'idx_node_barrier_notes_node_id',
+      'idx_node_error_notes_node_id',
     ],
   );
-  assert.equal(criticalIndexRows.length, 3);
+  assert.equal(criticalIndexRows.length, 5);
+});
+
+test('node note store persists barrier and error notes against PR1 bootstrap schema', async (t) => {
+  const database = await setupBootstrappedDatabase();
+  t.after(() => database.close());
+  const hierarchyStore = createHierarchyStore(database);
+  const nodeNoteStore = createNodeNoteStore(database);
+
+  const sphere = await hierarchyStore.createSphere({ name: 'Notes', slug: 'notes' });
+  const direction = await hierarchyStore.createDirection({ sphere_id: sphere.id, name: 'Recovery', slug: 'recovery' });
+  const skill = await hierarchyStore.createSkill({ direction_id: direction.id, name: 'Debugging', slug: 'debugging' });
+  const node = await hierarchyStore.createNode({ skill_id: skill.id, type: 'task', title: 'Investigate issue', slug: 'investigate-issue' });
+  const action = await hierarchyStore.createNodeAction({ node_id: node.id, title: 'Reproduce bug', status: 'ready' });
+
+  await nodeNoteStore.createBarrierNote({
+    node_id: node.id,
+    action_id: action.id,
+    barrier_type: 'too complex',
+    note: 'Need a smaller reproduction path.',
+  });
+  await nodeNoteStore.createErrorNote({
+    node_id: node.id,
+    action_id: action.id,
+    note_kind: 'shrink',
+    note: 'Create a smaller failing step.',
+  });
+
+  const barrierNotes = await nodeNoteStore.listBarrierNotesForNode(node.id);
+  const errorNotes = await nodeNoteStore.listErrorNotesForNode(node.id);
+
+  assert.equal(barrierNotes.length, 1);
+  assert.equal(barrierNotes[0].barrier_type, 'too complex');
+  assert.equal(errorNotes.length, 1);
+  assert.equal(errorNotes[0].note_kind, 'shrink');
 });
 
 test('legacy rows are preserved across PR1 bootstrap migration', async (t) => {

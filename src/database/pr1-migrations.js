@@ -8,6 +8,8 @@ export const REQUIRED_PR1_TABLES = [
   'review_states',
   'daily_sessions',
   'daily_session_events',
+  'node_barrier_notes',
+  'node_error_notes',
   'legacy_subject_mappings',
   'legacy_card_mappings',
 ];
@@ -112,6 +114,28 @@ const REQUIRED_PR1_COLUMNS = {
     'note',
     'occurred_at',
   ],
+  node_barrier_notes: [
+    'id',
+    'node_id',
+    'action_id',
+    'barrier_type',
+    'note',
+    'source_event_id',
+    'is_open',
+    'created_at',
+    'updated_at',
+  ],
+  node_error_notes: [
+    'id',
+    'node_id',
+    'action_id',
+    'note_kind',
+    'note',
+    'source_event_id',
+    'is_open',
+    'created_at',
+    'updated_at',
+  ],
   legacy_subject_mappings: [
     'id',
     'legacy_subject_id',
@@ -197,6 +221,36 @@ const REQUIRED_FOREIGN_KEY_ACTIONS = [
     toTable: 'node_actions',
   },
   {
+    tableName: 'node_barrier_notes',
+    fromColumn: 'node_id',
+    toTable: 'nodes',
+  },
+  {
+    tableName: 'node_barrier_notes',
+    fromColumn: 'action_id',
+    toTable: 'node_actions',
+  },
+  {
+    tableName: 'node_barrier_notes',
+    fromColumn: 'source_event_id',
+    toTable: 'daily_session_events',
+  },
+  {
+    tableName: 'node_error_notes',
+    fromColumn: 'node_id',
+    toTable: 'nodes',
+  },
+  {
+    tableName: 'node_error_notes',
+    fromColumn: 'action_id',
+    toTable: 'node_actions',
+  },
+  {
+    tableName: 'node_error_notes',
+    fromColumn: 'source_event_id',
+    toTable: 'daily_session_events',
+  },
+  {
     tableName: 'legacy_subject_mappings',
     fromColumn: 'legacy_subject_id',
     toTable: 'subjects',
@@ -242,6 +296,10 @@ const REQUIRED_INDEXES = [
   'idx_daily_session_events_session_id',
   'idx_daily_session_events_node_id',
   'idx_daily_session_events_action_id',
+  'idx_node_barrier_notes_node_id',
+  'idx_node_barrier_notes_action_id',
+  'idx_node_error_notes_node_id',
+  'idx_node_error_notes_action_id',
   'idx_legacy_subject_mappings_sphere_id',
   'idx_legacy_subject_mappings_direction_id',
   'idx_legacy_subject_mappings_skill_id',
@@ -277,6 +335,14 @@ const REQUIRED_TABLE_SQL_FRAGMENTS = {
   daily_session_events: [
     "check (event_type in ('selected', 'completed', 'deferred', 'blocked', 'shrunk'))",
     'check (node_id is not null or action_id is not null)',
+  ],
+  node_barrier_notes: [
+    "check (barrier_type in ('too complex', 'unclear next step', 'low energy', 'aversive / scary to start', 'wrong time / wrong context'))",
+    'check (is_open in (0, 1))',
+  ],
+  node_error_notes: [
+    "check (note_kind in ('shrink', 'defer', 'error', 'follow_up'))",
+    'check (is_open in (0, 1))',
   ],
   legacy_subject_mappings: [
     "check (mapping_status in ('pending', 'suggested', 'accepted', 'archived'))",
@@ -430,6 +496,38 @@ const PR1_STATEMENTS = [
     )
   `,
   `
+    CREATE TABLE IF NOT EXISTS node_barrier_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      node_id INTEGER NOT NULL,
+      action_id INTEGER,
+      barrier_type TEXT NOT NULL CHECK (barrier_type IN ('too complex', 'unclear next step', 'low energy', 'aversive / scary to start', 'wrong time / wrong context')),
+      note TEXT NOT NULL,
+      source_event_id INTEGER,
+      is_open INTEGER NOT NULL DEFAULT 1 CHECK (is_open IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (node_id) REFERENCES nodes (id),
+      FOREIGN KEY (action_id) REFERENCES node_actions (id),
+      FOREIGN KEY (source_event_id) REFERENCES daily_session_events (id)
+    )
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS node_error_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      node_id INTEGER NOT NULL,
+      action_id INTEGER,
+      note_kind TEXT NOT NULL CHECK (note_kind IN ('shrink', 'defer', 'error', 'follow_up')),
+      note TEXT NOT NULL,
+      source_event_id INTEGER,
+      is_open INTEGER NOT NULL DEFAULT 1 CHECK (is_open IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (node_id) REFERENCES nodes (id),
+      FOREIGN KEY (action_id) REFERENCES node_actions (id),
+      FOREIGN KEY (source_event_id) REFERENCES daily_session_events (id)
+    )
+  `,
+  `
     CREATE TABLE IF NOT EXISTS legacy_subject_mappings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       legacy_subject_id INTEGER NOT NULL UNIQUE,
@@ -471,6 +569,10 @@ const PR1_STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS idx_daily_session_events_session_id ON daily_session_events (session_id)',
   'CREATE INDEX IF NOT EXISTS idx_daily_session_events_node_id ON daily_session_events (node_id)',
   'CREATE INDEX IF NOT EXISTS idx_daily_session_events_action_id ON daily_session_events (action_id)',
+  'CREATE INDEX IF NOT EXISTS idx_node_barrier_notes_node_id ON node_barrier_notes (node_id)',
+  'CREATE INDEX IF NOT EXISTS idx_node_barrier_notes_action_id ON node_barrier_notes (action_id)',
+  'CREATE INDEX IF NOT EXISTS idx_node_error_notes_node_id ON node_error_notes (node_id)',
+  'CREATE INDEX IF NOT EXISTS idx_node_error_notes_action_id ON node_error_notes (action_id)',
   'CREATE INDEX IF NOT EXISTS idx_legacy_subject_mappings_sphere_id ON legacy_subject_mappings (sphere_id)',
   'CREATE INDEX IF NOT EXISTS idx_legacy_subject_mappings_direction_id ON legacy_subject_mappings (direction_id)',
   'CREATE INDEX IF NOT EXISTS idx_legacy_subject_mappings_skill_id ON legacy_subject_mappings (skill_id)',

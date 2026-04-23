@@ -11,12 +11,19 @@ import {
   Download,
   Settings,
   ChevronDown,
-  ChevronRight,
   Sparkles,
   LayoutGrid,
-  Library
+  Library,
+  Compass,
+  Map,
+  BookOpenText
 } from 'lucide-react';
 import * as db from './db';
+import { PixelButton, PixelMeter, PixelStack, PixelSurface, PixelText } from './components/pixel';
+import { NowView } from './components/NowView';
+import { NavigationView } from './components/NavigationView';
+import { JournalView } from './components/JournalView';
+import { getRuntimeProfile } from './platform/runtime.js';
 
 // --- Components ---
 
@@ -58,20 +65,20 @@ const Card = ({ item, isFlipped, setIsFlipped, onCorrect, onIncorrect }) => {
           >
             <Volume2 size={24} />
           </button>
-          <p className="absolute bottom-6 text-gray-400 text-sm font-medium">Tap to flip</p>
+          <p className="absolute bottom-6 text-gray-400 text-sm font-medium">Нажмите, чтобы перевернуть</p>
         </div>
 
         {/* Back */}
         <div className="absolute w-full h-full bg-indigo-600 rounded-2xl shadow-xl p-8 backface-hidden rotate-y-180 flex flex-col items-center justify-between text-white">
           <div className="flex flex-col items-center flex-grow justify-center overflow-y-auto w-full px-4">
-            <h3 className="text-2xl font-bold mb-2 text-center">{item.translation || "No translation"}</h3>
+            <h3 className="text-2xl font-bold mb-2 text-center">{item.translation || 'Без перевода'}</h3>
             <div className="w-16 h-1 bg-indigo-400 rounded-full my-4"></div>
             <p className="text-lg text-center italic opacity-90">
-              "{item.example || "No example available"}"
+              "{item.example || 'Без примера'}"
             </p>
             {item.definition && (
               <p className="text-sm text-center mt-4 text-indigo-200 px-4">
-                Def: {item.definition}
+                Значение: {item.definition}
               </p>
             )}
             {item.category && (
@@ -86,13 +93,13 @@ const Card = ({ item, isFlipped, setIsFlipped, onCorrect, onIncorrect }) => {
               onClick={onIncorrect}
               className="flex-1 py-3 bg-red-500 hover:bg-red-600 rounded-xl font-bold transition-all flex items-center justify-center gap-2 hover:scale-[1.02]"
             >
-              <X size={20} /> Again
+              <X size={20} /> Повторить
             </button>
             <button
               onClick={onCorrect}
               className="flex-1 py-3 bg-green-500 hover:bg-green-600 rounded-xl font-bold transition-all flex items-center justify-center gap-2 hover:scale-[1.02]"
             >
-              <Check size={20} /> Good
+              <Check size={20} /> Знаю
             </button>
           </div>
         </div>
@@ -105,7 +112,8 @@ const Card = ({ item, isFlipped, setIsFlipped, onCorrect, onIncorrect }) => {
 // --- Main App ---
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('list');
+  const runtime = getRuntimeProfile();
+  const [activeTab, setActiveTab] = useState('now');
   const [subjects, setSubjects] = useState([]);
   const [activeSubject, setActiveSubject] = useState(null);
   const [words, setWords] = useState([]);
@@ -129,6 +137,34 @@ export default function App() {
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
   const [importError, setImportError] = useState(null);
   const cancelImportRef = React.useRef(false);
+  const [nowSnapshot, setNowSnapshot] = useState(null);
+  const [nowLoading, setNowLoading] = useState(false);
+  const [nowError, setNowError] = useState(null);
+  const [nowCreatingStarter, setNowCreatingStarter] = useState(false);
+  const [nowStartingSession, setNowStartingSession] = useState(false);
+  const [nowCompletingAction, setNowCompletingAction] = useState(false);
+  const [nowActiveOutcomeAction, setNowActiveOutcomeAction] = useState(null);
+  const [nowFocus, setNowFocus] = useState(null);
+  const [nowFocusLoading, setNowFocusLoading] = useState(false);
+  const [nowSelection, setNowSelection] = useState(null);
+  const [nowOutcomeNote, setNowOutcomeNote] = useState('');
+  const [nowBarrierType, setNowBarrierType] = useState('too complex');
+  const [nowShrinkTitle, setNowShrinkTitle] = useState('');
+  const [navigationSnapshot, setNavigationSnapshot] = useState(null);
+  const [navigationLoading, setNavigationLoading] = useState(false);
+  const [navigationError, setNavigationError] = useState(null);
+  const [navigationFocus, setNavigationFocus] = useState(null);
+  const [navigationFocusLoading, setNavigationFocusLoading] = useState(false);
+  const [navigationSelection, setNavigationSelection] = useState(null);
+  const [mapStartingSession, setMapStartingSession] = useState(false);
+  const [mapCompletingAction, setMapCompletingAction] = useState(false);
+  const [mapActiveOutcomeAction, setMapActiveOutcomeAction] = useState(null);
+  const [mapOutcomeNote, setMapOutcomeNote] = useState('');
+  const [mapBarrierType, setMapBarrierType] = useState('too complex');
+  const [mapShrinkTitle, setMapShrinkTitle] = useState('');
+  const [journalSnapshot, setJournalSnapshot] = useState(null);
+  const [journalLoading, setJournalLoading] = useState(false);
+  const [journalError, setJournalError] = useState(null);
 
   // Initialize DB and load data
   useEffect(() => {
@@ -169,6 +205,138 @@ export default function App() {
     localStorage.setItem('braingainz_source_lang', sourceLanguage);
   }, [sourceLanguage]);
 
+  const chooseNowSelection = (snapshot, preferredSelection = null) => {
+    const candidates = [snapshot?.primaryRecommendation, ...(snapshot?.queue ?? [])].filter(Boolean);
+
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    if (preferredSelection) {
+      const matched = candidates.find((candidate) => candidate.actionId === preferredSelection.actionId);
+
+      if (matched) {
+        return { nodeId: matched.nodeId, actionId: matched.actionId };
+      }
+    }
+
+    return {
+      nodeId: candidates[0].nodeId,
+      actionId: candidates[0].actionId,
+    };
+  };
+
+  const loadNowFocus = async (selection) => {
+    if (!selection) {
+      setNowFocus(null);
+      return;
+    }
+
+    setNowFocusLoading(true);
+
+    try {
+      const focus = await db.getNowNodeFocus(selection.nodeId, selection.actionId);
+      setNowFocus(focus);
+    } catch (error) {
+      console.error('Failed to load Now focus', error);
+      setNowError(error.message || 'Не удалось загрузить детали узла.');
+    } finally {
+      setNowFocusLoading(false);
+    }
+  };
+
+  const loadNavigationFocus = async (selection) => {
+    if (!selection?.nodeId) {
+      setNavigationFocus(null);
+      return;
+    }
+
+    setNavigationFocusLoading(true);
+
+    try {
+      const focus = await db.getNowNodeFocus(selection.nodeId, selection.actionId ?? null);
+      setNavigationFocus(focus);
+    } catch (error) {
+      console.error('Failed to load navigation focus', error);
+      setNavigationError(error.message || 'Не удалось загрузить выбранный узел.');
+    } finally {
+      setNavigationFocusLoading(false);
+    }
+  };
+
+  const loadNowDashboard = async (preferredSelection = nowSelection) => {
+    setNowLoading(true);
+    setNowError(null);
+
+    try {
+      const snapshot = await db.getNowDashboard();
+      setNowSnapshot(snapshot);
+      const nextSelection = chooseNowSelection(snapshot, preferredSelection);
+      setNowSelection(nextSelection);
+      await loadNowFocus(nextSelection);
+    } catch (error) {
+      console.error('Failed to load Now dashboard', error);
+      setNowError(error.message || 'Не удалось загрузить экран «Сейчас».');
+      setNowFocus(null);
+    } finally {
+      setNowLoading(false);
+    }
+  };
+
+  const loadNavigationSnapshot = async (preferredSelection = navigationSelection) => {
+    setNavigationLoading(true);
+    setNavigationError(null);
+
+    try {
+      const snapshot = await db.getNavigationSnapshot();
+      setNavigationSnapshot(snapshot);
+      const nextSelection = preferredSelection ?? snapshot.defaultSelection ?? null;
+      setNavigationSelection(nextSelection);
+      await loadNavigationFocus(nextSelection);
+    } catch (error) {
+      console.error('Failed to load navigation snapshot', error);
+      setNavigationError(error.message || 'Не удалось загрузить карту.');
+      setNavigationFocus(null);
+    } finally {
+      setNavigationLoading(false);
+    }
+  };
+
+  const loadJournalSnapshot = async () => {
+    setJournalLoading(true);
+    setJournalError(null);
+
+    try {
+      const snapshot = await db.getJournalSnapshot();
+      setJournalSnapshot(snapshot);
+    } catch (error) {
+      console.error('Failed to load journal snapshot', error);
+      setJournalError(error.message || 'Не удалось загрузить журнал.');
+    } finally {
+      setJournalLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'now') {
+      void loadNowDashboard();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'map') {
+      void loadNavigationSnapshot();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'journal') {
+      void loadJournalSnapshot();
+    }
+  }, [activeTab]);
+
   const enrichWithGroq = async (word, subjectName) => {
     if (!groqApiKey) return null;
 
@@ -203,13 +371,13 @@ export default function App() {
       });
 
       if (response.status === 401) {
-        throw new Error('Invalid API key. Please check your Groq API key in Settings.');
+        throw new Error('Неверный ключ Groq. Проверьте его в настройках.');
       }
       if (response.status === 429) {
-        throw new Error('Rate limit exceeded. Switching to offline mode...');
+        throw new Error('Лимит запросов исчерпан. Перехожу в офлайн.');
       }
       if (!response.ok) {
-        throw new Error(`API error (${response.status}). Switching to offline mode...`);
+        throw new Error(`Ошибка API (${response.status}). Перехожу в офлайн.`);
       }
 
       const data = await response.json();
@@ -260,7 +428,9 @@ export default function App() {
               }
             }
           }
-        } catch (e) { }
+        } catch {
+          // Ignore dictionary API failures and keep offline fallback best-effort.
+        }
 
         let translation = '';
         try {
@@ -268,10 +438,14 @@ export default function App() {
           const transResponse = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=en|${langCode}`);
           const transData = await transResponse.json();
           translation = transData?.responseData?.translatedText || '';
-        } catch (e) { }
+        } catch {
+          // Ignore translation API failures and return partial data when needed.
+        }
 
         return { success: true, data: { word, transcription: phonetic, definition, example, translation, category: 'General' } };
-      } catch (e) { }
+      } catch {
+        // Ignore fallback enrichment failures and return the minimal word payload below.
+      }
     }
 
     return { success: true, data: { word, transcription: '', translation: '', example: '', definition: '', category: 'General' } };
@@ -294,7 +468,7 @@ export default function App() {
 
     for (let i = 0; i < termsToProcess.length; i++) {
       if (cancelImportRef.current) {
-        setImportError('Import cancelled by user.');
+        setImportError('Импорт остановлен.');
         break;
       }
 
@@ -306,7 +480,7 @@ export default function App() {
       if (!result.success) {
         // Show error to user once, then switch to offline
         if (!apiErrorShown) {
-          setImportError(result.error + ' Continuing in offline mode.');
+          setImportError(result.error + ' Продолжаю без AI.');
           apiErrorShown = true;
           useOffline = true;
         }
@@ -357,13 +531,13 @@ export default function App() {
       setShowSubjectManager(false);
     } catch (e) {
       console.error("Failed to add subject:", e);
-      alert(`Error creating subject: ${e.message || e}`);
+      alert(`Не удалось создать тему: ${e.message || e}`);
     }
   };
 
   const handleDeleteSubject = async (id) => {
     if (subjects.length <= 1) return;
-    if (confirm("Delete this subject and ALL its cards?")) {
+    if (confirm('Удалить тему и все ее карточки?')) {
       await db.deleteSubject(id);
       const subs = await db.getSubjects();
       setSubjects(subs);
@@ -397,6 +571,266 @@ export default function App() {
     setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
   };
 
+  const handleCreateStarterWorkspace = async () => {
+    setNowCreatingStarter(true);
+    setNowError(null);
+
+    try {
+      const snapshot = await db.createStarterWorkspace();
+      setNowSnapshot(snapshot);
+      const nextSelection = chooseNowSelection(snapshot);
+      setNowSelection(nextSelection);
+      await loadNowFocus(nextSelection);
+    } catch (error) {
+      console.error('Failed to create starter workspace', error);
+      setNowError(error.message || 'Не удалось создать стартовый набор.');
+    } finally {
+      setNowCreatingStarter(false);
+    }
+  };
+
+  const applyOutcomeResult = async (result) => {
+    if (!result) {
+      return;
+    }
+
+    setNowSnapshot(result.dashboard);
+    setNowFocus(result.focus);
+
+    const nextNowSelection = result.focus?.selectedAction
+      ? { nodeId: result.focus.node.id, actionId: result.focus.selectedAction.id }
+      : result.focus?.node
+        ? { nodeId: result.focus.node.id, actionId: null }
+        : null;
+
+    setNowSelection(nextNowSelection);
+    setNavigationSelection(nextNowSelection);
+    await loadNavigationSnapshot(nextNowSelection);
+    await loadJournalSnapshot();
+    setNowOutcomeNote('');
+    setNowShrinkTitle('');
+    setMapOutcomeNote('');
+    setMapShrinkTitle('');
+  };
+
+  const handleStartNowSession = async () => {
+    setNowStartingSession(true);
+    setNowError(null);
+
+    try {
+      await db.startTodaySessionFromRecommendation(nowSelection?.actionId ?? null);
+      await loadNowDashboard(nowSelection);
+    } catch (error) {
+      console.error('Failed to start daily session', error);
+      setNowError(error.message || 'Не удалось запустить сессию.');
+    } finally {
+      setNowStartingSession(false);
+    }
+  };
+
+  const runNowOutcome = async (type, operation) => {
+    if (!nowSelection?.actionId) {
+      return;
+    }
+
+    setNowActiveOutcomeAction(type);
+    setNowError(null);
+
+    try {
+      const result = await operation();
+      await applyOutcomeResult(result);
+    } catch (error) {
+      console.error(`Failed to ${type} action`, error);
+      setNowError(error.message || 'Не удалось изменить шаг.');
+    } finally {
+      setNowActiveOutcomeAction(null);
+    }
+  };
+
+  const handleSelectNowRecommendation = async (recommendation) => {
+    const selection = {
+      nodeId: recommendation.nodeId,
+      actionId: recommendation.actionId,
+    };
+
+    setNowSelection(selection);
+    setNowError(null);
+    await loadNowFocus(selection);
+  };
+
+  const handleCompleteNowAction = async () => {
+    if (!nowSelection?.actionId) {
+      return;
+    }
+
+    setNowCompletingAction(true);
+    setNowError(null);
+
+    try {
+      const result = await db.completeNowActionInTodaySession(nowSelection.actionId);
+      await applyOutcomeResult(result);
+    } catch (error) {
+      console.error('Failed to complete action', error);
+      setNowError(error.message || 'Не удалось завершить шаг.');
+    } finally {
+      setNowCompletingAction(false);
+    }
+  };
+
+  const handleDeferNowAction = async () => {
+    await runNowOutcome('defer', () => db.deferNowActionInTodaySession(nowSelection.actionId, nowOutcomeNote));
+  };
+
+  const handleBlockNowAction = async () => {
+    await runNowOutcome('block', () =>
+      db.blockNowActionInTodaySession(nowSelection.actionId, {
+        barrierType: nowBarrierType,
+        note: nowOutcomeNote,
+      }),
+    );
+  };
+
+  const handleShrinkNowAction = async () => {
+    await runNowOutcome('shrink', () =>
+      db.shrinkNowActionInTodaySession(nowSelection.actionId, {
+        title: nowShrinkTitle,
+        note: nowOutcomeNote,
+      }),
+    );
+  };
+
+  const handleSelectNavigationNode = async (node) => {
+    const selection = {
+      nodeId: node.id,
+      actionId: node.next_action_id ?? null,
+    };
+
+    setNavigationSelection(selection);
+    setNavigationError(null);
+    await loadNavigationFocus(selection);
+  };
+
+  const handleSelectNavigationAction = async (action) => {
+    if (!navigationFocus?.node) {
+      return;
+    }
+
+    const selection = {
+      nodeId: navigationFocus.node.id,
+      actionId: action.id,
+    };
+
+    setNavigationSelection(selection);
+    setNavigationError(null);
+    await loadNavigationFocus(selection);
+  };
+
+  const handleStartNavigationSession = async () => {
+    if (!navigationSelection?.actionId) {
+      return;
+    }
+
+    setMapStartingSession(true);
+    setNavigationError(null);
+
+    try {
+      await db.startTodaySessionFromRecommendation(navigationSelection.actionId);
+      await loadNowDashboard(navigationSelection);
+      await loadNavigationSnapshot(navigationSelection);
+      await loadJournalSnapshot();
+    } catch (error) {
+      console.error('Failed to start navigation session', error);
+      setNavigationError(error.message || 'Не удалось запустить сессию для узла.');
+    } finally {
+      setMapStartingSession(false);
+    }
+  };
+
+  const runNavigationOutcome = async (type, operation) => {
+    if (!navigationSelection?.actionId) {
+      return;
+    }
+
+    setMapActiveOutcomeAction(type);
+    setNavigationError(null);
+
+    try {
+      const result = await operation();
+      await applyOutcomeResult(result);
+    } catch (error) {
+      console.error(`Failed to ${type} navigation action`, error);
+      setNavigationError(error.message || 'Не удалось изменить шаг узла.');
+    } finally {
+      setMapActiveOutcomeAction(null);
+    }
+  };
+
+  const handleCompleteNavigationAction = async () => {
+    if (!navigationSelection?.actionId) {
+      return;
+    }
+
+    setMapCompletingAction(true);
+    setNavigationError(null);
+
+    try {
+      const result = await db.completeNowActionInTodaySession(navigationSelection.actionId);
+      await applyOutcomeResult(result);
+    } catch (error) {
+      console.error('Failed to complete navigation action', error);
+      setNavigationError(error.message || 'Не удалось завершить шаг узла.');
+    } finally {
+      setMapCompletingAction(false);
+    }
+  };
+
+  const handleDeferNavigationAction = async () => {
+    await runNavigationOutcome('defer', () => db.deferNowActionInTodaySession(navigationSelection.actionId, mapOutcomeNote));
+  };
+
+  const handleBlockNavigationAction = async () => {
+    await runNavigationOutcome('block', () =>
+      db.blockNowActionInTodaySession(navigationSelection.actionId, {
+        barrierType: mapBarrierType,
+        note: mapOutcomeNote,
+      }),
+    );
+  };
+
+  const handleShrinkNavigationAction = async () => {
+    await runNavigationOutcome('shrink', () =>
+      db.shrinkNowActionInTodaySession(navigationSelection.actionId, {
+        title: mapShrinkTitle,
+        note: mapOutcomeNote,
+      }),
+    );
+  };
+
+  const handleOpenJournalNode = async (nodeId, actionId = null) => {
+    const selection = { nodeId, actionId };
+    setActiveTab('map');
+    setNavigationSelection(selection);
+    await loadNavigationSnapshot(selection);
+  };
+
+  const handleOpenJournal = async () => {
+    setActiveTab('journal');
+    await loadJournalSnapshot();
+  };
+
+  const handleCreateJournalFollowUp = async (payload) => {
+    setJournalError(null);
+
+    try {
+      const result = await db.createJournalFollowUpStep(payload);
+      await applyOutcomeResult(result);
+      setActiveTab('map');
+    } catch (error) {
+      console.error('Failed to create journal follow-up', error);
+      setJournalError(error.message || 'Не удалось создать следующий шаг из журнала.');
+    }
+  };
+
   const groupedWords = words.reduce((acc, w) => {
     const cat = w.category || 'General';
     if (!acc[cat]) acc[cat] = [];
@@ -405,60 +839,101 @@ export default function App() {
   }, {});
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col">
+    <div
+      className="pixel-shell-grid flex min-h-[100dvh] flex-col text-[var(--pixel-text)]"
+      style={{
+        paddingBottom: runtime.usesSafeAreaInsets ? 'env(safe-area-inset-bottom)' : undefined,
+      }}
+    >
       {/* Header */}
-      <header className="bg-indigo-600 text-white shadow-lg sticky top-0 z-50 px-4 py-3">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-500 rounded-xl shadow-inner">
-              <Brain size={28} className="text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-black tracking-tight leading-none">BrainGainz</h1>
-              <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Desktop Pro</span>
-            </div>
-          </div>
+      <header
+        className="sticky top-0 z-50 px-3 pb-3 pt-3 sm:px-4"
+        style={{
+          paddingTop: runtime.usesSafeAreaInsets ? 'max(0.75rem, env(safe-area-inset-top))' : undefined,
+        }}
+      >
+        <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 sm:gap-4">
+          <PixelSurface frame="panel" padding="md">
+            <PixelStack gap="md">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <PixelSurface frame="accent" padding="sm" fullWidth={false}>
+                    <Brain size={24} className="text-[var(--pixel-accent-glow)]" />
+                  </PixelSurface>
+                  <PixelStack gap="xs">
+                    <PixelText as="h1" size="lg" style={{ margin: 0 }}>
+                      BrainGainz
+                    </PixelText>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <PixelText as="span" size="xs" color="textMuted" uppercase>
+                        {runtime.shellLabel}
+                      </PixelText>
+                      <PixelText as="span" size="xs" color="textDim" uppercase>
+                        {runtime.storageLabel}
+                      </PixelText>
+                    </div>
+                  </PixelStack>
+                </div>
 
-          <div className="flex items-center gap-2 bg-indigo-700/50 p-1.5 rounded-2xl border border-indigo-400/30">
-            {subjects.map(s => (
-              <button
-                key={s.id}
-                onClick={() => setActiveSubject(s)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${activeSubject?.id === s.id ? 'bg-white text-indigo-700 shadow-md' : 'hover:bg-indigo-600 text-indigo-100'}`}
-              >
-                <span>{s.icon}</span>
-                <span className="hidden md:inline">{s.name}</span>
-              </button>
-            ))}
-            <button
-              onClick={() => setShowSubjectManager(true)}
-              className="p-1.5 hover:bg-indigo-600 rounded-xl transition-colors text-indigo-200"
-              title="Manage Subjects"
-            >
-              <LayoutGrid size={16} />
-            </button>
-          </div>
+                <div className="flex items-center gap-3">
+                  <div className="min-w-[180px]">
+                    <PixelMeter
+                      value={runtime.isLocalFirst ? 72 : 48}
+                      max={100}
+                      label={runtime.isLocalFirst ? 'Local-first sync' : 'Web-first shell'}
+                      tone={runtime.isLocalFirst ? 'success' : 'info'}
+                    />
+                  </div>
+                  <PixelButton tone={showSettings ? 'accent' : 'ghost'} onClick={() => setShowSettings(!showSettings)}>
+                    <Settings size={16} /> Settings
+                  </PixelButton>
+                </div>
+              </div>
 
-          <div className="flex gap-2 text-sm font-bold">
-            <button
-              onClick={() => setActiveTab('list')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${activeTab === 'list' ? 'bg-white text-indigo-700 shadow-md' : 'hover:bg-indigo-500'}`}
-            >
-              <Library size={18} /> Library
-            </button>
-            <button
-              onClick={startStudy}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${activeTab === 'study' ? 'bg-white text-indigo-700 shadow-md' : 'hover:bg-indigo-500 text-indigo-100'}`}
-            >
-              <Sparkles size={18} /> Study
-            </button>
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className={`p-2 rounded-xl transition-colors ${showSettings ? 'bg-indigo-500 text-white' : 'hover:bg-indigo-500 text-indigo-200'}`}
-            >
-              <Settings size={20} />
-            </button>
-          </div>
+              <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1" role="navigation" aria-label="Основные разделы BrainGainz">
+                <PixelButton
+                  tone={activeTab === 'now' ? 'accent' : 'panel'}
+                  onClick={() => setActiveTab('now')}
+                  aria-pressed={activeTab === 'now'}
+                  aria-current={activeTab === 'now' ? 'page' : undefined}
+                >
+                  <Compass size={16} /> Сейчас
+                </PixelButton>
+                <PixelButton
+                  tone={activeTab === 'map' ? 'accent' : 'panel'}
+                  onClick={() => setActiveTab('map')}
+                  aria-pressed={activeTab === 'map'}
+                  aria-current={activeTab === 'map' ? 'page' : undefined}
+                >
+                  <Map size={16} /> Карта
+                </PixelButton>
+                <PixelButton
+                  tone={activeTab === 'journal' ? 'accent' : 'panel'}
+                  onClick={() => setActiveTab('journal')}
+                  aria-pressed={activeTab === 'journal'}
+                  aria-current={activeTab === 'journal' ? 'page' : undefined}
+                >
+                  <BookOpenText size={16} /> Журнал
+                </PixelButton>
+                <PixelButton
+                  tone={activeTab === 'list' ? 'accent' : 'panel'}
+                  onClick={() => setActiveTab('list')}
+                  aria-pressed={activeTab === 'list'}
+                  aria-current={activeTab === 'list' ? 'page' : undefined}
+                >
+                  <Library size={16} /> Словарь
+                </PixelButton>
+                <PixelButton
+                  tone={activeTab === 'study' ? 'accent' : 'panel'}
+                  onClick={startStudy}
+                  aria-pressed={activeTab === 'study'}
+                  aria-current={activeTab === 'study' ? 'page' : undefined}
+                >
+                  <Sparkles size={16} /> Повтор
+                </PixelButton>
+              </div>
+            </PixelStack>
+          </PixelSurface>
         </div>
       </header>
 
@@ -468,7 +943,7 @@ export default function App() {
           <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl border border-gray-100">
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-2xl font-black text-gray-800 flex items-center gap-2">
-                <Library size={24} className="text-indigo-500" /> Subject Hub
+                <Library size={24} className="text-indigo-500" /> Темы
               </h2>
               <button onClick={() => setShowSubjectManager(false)} className="bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors">
                 <X size={20} />
@@ -498,7 +973,7 @@ export default function App() {
                   type="text"
                   value={newSubjectName}
                   onChange={(e) => setNewSubjectName(e.target.value)}
-                  placeholder="New Subject (e.g. Physics)"
+                  placeholder="Новая тема"
                   className="flex-grow p-4 bg-gray-50 border-2 border-transparent focus:border-indigo-500 focus:bg-white rounded-2xl outline-none font-bold transition-all"
                 />
                 <button
@@ -519,7 +994,7 @@ export default function App() {
           <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl border border-gray-100">
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-2xl font-black text-gray-800 flex items-center gap-2">
-                <Settings size={24} className="text-gray-400" /> Settings
+                <Settings size={24} className="text-gray-400" /> Настройки
               </h2>
               <button onClick={() => setShowSettings(false)} className="bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors">
                 <X size={20} />
@@ -528,7 +1003,7 @@ export default function App() {
 
             <div className="space-y-6">
               <div>
-                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Groq AI Engine Key</label>
+                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Ключ Groq</label>
                 <input
                   type="password"
                   value={groqApiKey}
@@ -539,13 +1014,13 @@ export default function App() {
                 <div className="flex items-start gap-2 mt-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
                   <Sparkles size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
                   <p className="text-[10px] text-amber-700 font-medium leading-relaxed">
-                    AI enables smart categorization, contextual examples, and transcriptions for any subject. Get your key at <a href="https://console.groq.com" target="_blank" className="font-bold underline">console.groq.com</a>.
+                    AI помогает с переводом и примерами. Ключ: <a href="https://console.groq.com" target="_blank" className="font-bold underline">console.groq.com</a>.
                   </p>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">I am learning...</label>
+                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Я изучаю</label>
                 <select
                   value={sourceLanguage}
                   onChange={(e) => setSourceLanguage(e.target.value)}
@@ -564,11 +1039,11 @@ export default function App() {
                   <option value="Turkish">🇹🇷 Türkçe (Turkish)</option>
                   <option value="Ukrainian">🇺🇦 Українська (Ukrainian)</option>
                 </select>
-                <p className="text-[10px] text-gray-400 mt-1">The language of the terms you are studying.</p>
+                <p className="text-[10px] text-gray-400 mt-1">Язык карточек.</p>
               </div>
 
               <div>
-                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Translation Language</label>
+                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Язык перевода</label>
                 <select
                   value={targetLanguage}
                   onChange={(e) => setTargetLanguage(e.target.value)}
@@ -586,11 +1061,11 @@ export default function App() {
                   <option value="Turkish">Türkçe (Turkish)</option>
                   <option value="Ukrainian">Українська (Ukrainian)</option>
                 </select>
-                <p className="text-[10px] text-gray-400 mt-1">AI will translate terms to this language.</p>
+                <p className="text-[10px] text-gray-400 mt-1">Куда переводить.</p>
               </div>
 
               <div>
-                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Data Management</label>
+                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Данные</label>
                 <button
                   onClick={() => {
                     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(words));
@@ -601,7 +1076,7 @@ export default function App() {
                   }}
                   className="w-full flex items-center justify-center gap-2 py-4 bg-gray-50 text-gray-600 rounded-2xl font-bold hover:bg-gray-100 transition-all border-2 border-transparent"
                 >
-                  <Download size={20} /> Export {activeSubject?.name} JSON
+                  <Download size={20} /> Экспорт {activeSubject?.name} в JSON
                 </button>
               </div>
             </div>
@@ -610,14 +1085,89 @@ export default function App() {
               onClick={() => setShowSettings(false)}
               className="w-full mt-10 py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-indigo-700 shadow-xl shadow-indigo-100 active:scale-[0.98] transition-all"
             >
-              Apply Changes
+              Сохранить
             </button>
           </div>
         </div>
       )}
 
       {/* Main Content */}
-      <main className="flex-grow max-w-5xl mx-auto w-full p-4 sm:p-8">
+      <main className="mx-auto flex-grow w-full max-w-[1440px] p-4 sm:p-8">
+
+        {activeTab === 'now' && (
+          <NowView
+            snapshot={nowSnapshot}
+            focus={nowFocus}
+            isLoading={nowLoading}
+            isFocusLoading={nowFocusLoading}
+            error={nowError}
+            isCreatingStarter={nowCreatingStarter}
+            isStartingSession={nowStartingSession}
+            isCompletingAction={nowCompletingAction}
+            activeOutcomeAction={nowActiveOutcomeAction}
+            outcomeNote={nowOutcomeNote}
+            barrierType={nowBarrierType}
+            shrinkTitle={nowShrinkTitle}
+            onCreateStarterWorkspace={handleCreateStarterWorkspace}
+            onStartSession={handleStartNowSession}
+            onCompleteAction={handleCompleteNowAction}
+            onDeferAction={handleDeferNowAction}
+            onBlockAction={handleBlockNowAction}
+            onShrinkAction={handleShrinkNowAction}
+            onSelectRecommendation={handleSelectNowRecommendation}
+            onOutcomeNoteChange={setNowOutcomeNote}
+            onBarrierTypeChange={setNowBarrierType}
+            onShrinkTitleChange={setNowShrinkTitle}
+            onRefresh={loadNowDashboard}
+          />
+        )}
+
+        {activeTab === 'map' && (
+          <NavigationView
+            snapshot={navigationSnapshot}
+            focus={navigationFocus}
+            isLoading={navigationLoading}
+            isFocusLoading={navigationFocusLoading}
+            error={navigationError}
+            isStartingSession={mapStartingSession}
+            isCompletingAction={mapCompletingAction}
+            activeOutcomeAction={mapActiveOutcomeAction}
+            outcomeNote={mapOutcomeNote}
+            barrierType={mapBarrierType}
+            shrinkTitle={mapShrinkTitle}
+            onRefresh={loadNavigationSnapshot}
+            onSelectNode={handleSelectNavigationNode}
+            onSelectAction={handleSelectNavigationAction}
+            onStartSession={handleStartNavigationSession}
+            onCompleteAction={handleCompleteNavigationAction}
+            onDeferAction={handleDeferNavigationAction}
+            onBlockAction={handleBlockNavigationAction}
+            onShrinkAction={handleShrinkNavigationAction}
+            onOutcomeNoteChange={setMapOutcomeNote}
+            onBarrierTypeChange={setMapBarrierType}
+            onShrinkTitleChange={setMapShrinkTitle}
+            onOpenJournal={handleOpenJournal}
+            onCreateFollowUp={() =>
+              handleCreateJournalFollowUp({
+                nodeId: navigationFocus?.node?.id,
+                title: mapShrinkTitle || `Следующий шаг: ${navigationFocus?.node?.title ?? 'узел'}`,
+                note: mapOutcomeNote,
+                barrierType: mapBarrierType,
+              })
+            }
+          />
+        )}
+
+        {activeTab === 'journal' && (
+          <JournalView
+            snapshot={journalSnapshot}
+            isLoading={journalLoading}
+            error={journalError}
+            onRefresh={loadJournalSnapshot}
+            onOpenNode={handleOpenJournalNode}
+            onCreateFollowUp={handleCreateJournalFollowUp}
+          />
+        )}
 
         {/* VIEW: Dictionary List */}
         {activeTab === 'list' && (
@@ -631,15 +1181,15 @@ export default function App() {
 
               <div className="flex items-center justify-between mb-6 relative">
                 <h2 className="text-2xl font-black text-gray-800 flex items-center gap-3">
-                  <Plus size={28} className="text-indigo-500" /> Bulk Import
+                  <Plus size={28} className="text-indigo-500" /> Импорт
                 </h2>
                 {groqApiKey ? (
                   <span className="flex items-center gap-1.5 text-[10px] bg-indigo-50 text-indigo-600 px-4 py-1.5 rounded-full font-black border border-indigo-100 uppercase tracking-widest">
-                    <Sparkles size={12} /> AI Engine Active
+                    <Sparkles size={12} /> AI включен
                   </span>
                 ) : (
                   <span className="text-[10px] bg-red-50 text-red-500 px-4 py-1.5 rounded-full font-black border border-red-100 uppercase tracking-widest">
-                    AI Offline
+                    AI выкл
                   </span>
                 )}
               </div>
@@ -647,7 +1197,7 @@ export default function App() {
               <textarea
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                placeholder={`Type or paste ${activeSubject?.name || 'terms'} here...&#10;Format: term - description&#10;Physics: Quantum entanglement - a physical phenomenon...&#10;Biology: Mitochondria - powerhouse of the cell`}
+                placeholder={`Вставьте слова построчно&#10;Пример: word - перевод`}
                 className="w-full p-6 bg-gray-50 border-2 border-transparent rounded-3xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 focus:bg-white min-h-[160px] outline-none font-medium transition-all text-gray-700 relative"
               />
 
@@ -664,7 +1214,7 @@ export default function App() {
                 {isLoading && importProgress.total > 0 && (
                   <div className="space-y-2">
                     <div className="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-widest">
-                      <span>Processing terms...</span>
+                      <span>Обработка</span>
                       <span>{importProgress.current} / {importProgress.total}</span>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
@@ -678,7 +1228,7 @@ export default function App() {
 
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <p className="text-xs text-gray-400 font-bold uppercase tracking-wider flex items-center gap-2">
-                    <Library size={14} /> Subject: <span className="text-indigo-600">{activeSubject?.name}</span>
+                    <Library size={14} /> Тема: <span className="text-indigo-600">{activeSubject?.name}</span>
                   </p>
                   <div className="flex gap-3">
                     {isLoading && (
@@ -686,7 +1236,7 @@ export default function App() {
                         onClick={cancelImport}
                         className="px-6 py-4 rounded-2xl font-black uppercase tracking-widest text-red-600 bg-red-50 border-2 border-red-200 hover:bg-red-100 transition-all flex items-center gap-2"
                       >
-                        <X size={18} /> Cancel
+                        <X size={18} /> Отмена
                       </button>
                     )}
                     <button
@@ -694,7 +1244,7 @@ export default function App() {
                       disabled={isLoading || !inputText.trim() || !activeSubject}
                       className={`px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-white transition-all flex items-center gap-3 shadow-xl ${isLoading ? 'bg-gray-200 cursor-not-allowed text-gray-400 shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100 hover:scale-105 active:scale-95'}`}
                     >
-                      {isLoading ? `Processing... (${importProgress.current}/${importProgress.total})` : 'Import & Process'}
+                      {isLoading ? `Идет... (${importProgress.current}/${importProgress.total})` : 'Импорт'}
                     </button>
                   </div>
                 </div>
@@ -705,7 +1255,7 @@ export default function App() {
             <div className="space-y-6">
               <div className="flex justify-between items-center px-4">
                 <h3 className="text-xl font-black text-gray-800 uppercase tracking-tight flex items-center gap-2">
-                  <Book size={20} className="text-indigo-500" /> {activeSubject?.name} Archive
+                  <Book size={20} className="text-indigo-500" /> {activeSubject?.name}
                 </h3>
               </div>
 
@@ -714,7 +1264,7 @@ export default function App() {
                   <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
                     <Book size={48} className="text-gray-200" />
                   </div>
-                  <p className="font-black text-gray-300 uppercase tracking-widest text-sm">Nothing found in {activeSubject?.name}</p>
+                  <p className="font-black text-gray-300 uppercase tracking-widest text-sm">Пока пусто</p>
                 </div>
               ) : (
                 Object.keys(groupedWords).sort().map(category => (
@@ -803,7 +1353,7 @@ export default function App() {
                 <div className="mb-8 flex justify-between w-full max-w-2xl text-xs font-black text-gray-400 px-4 uppercase tracking-[0.2em]">
                   <span className="flex items-center gap-2">
                     <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse" />
-                    Subject: {activeSubject?.name}
+                    Тема: {activeSubject?.name}
                   </span>
                   <span>{currentIndex + 1} / {studyQueue.length}</span>
                 </div>
@@ -824,7 +1374,7 @@ export default function App() {
                 />
 
                 <p className="mt-12 text-indigo-300 text-[10px] font-black flex items-center gap-3 uppercase tracking-widest animate-pulse">
-                  <Volume2 size={16} /> Tap the speaker for pronunciation guidance
+                  <Volume2 size={16} /> Нажмите на звук
                 </p>
               </>
             ) : (
@@ -835,21 +1385,21 @@ export default function App() {
                 <div className="w-28 h-28 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-8 text-green-500 shadow-inner">
                   <Check size={56} strokeWidth={3} />
                 </div>
-                <h2 className="text-4xl font-black text-gray-800 mb-4 tracking-tighter italic">LEGENDARY!</h2>
-                <p className="text-gray-400 mb-10 font-bold uppercase tracking-widest text-xs">{activeSubject?.name} Session complete.</p>
+                <h2 className="text-4xl font-black text-gray-800 mb-4 tracking-tighter italic">Готово</h2>
+                <p className="text-gray-400 mb-10 font-bold uppercase tracking-widest text-xs">Сессия по теме {activeSubject?.name} завершена.</p>
 
                 <div className="flex flex-col gap-4">
                   <button
                     onClick={startStudy}
                     className="w-full py-5 bg-indigo-600 text-white rounded-[1.5rem] font-black uppercase tracking-widest hover:bg-indigo-700 shadow-2xl shadow-indigo-100 active:scale-95 transition-all"
                   >
-                    Go Again
+                    Еще раз
                   </button>
                   <button
                     onClick={() => setActiveTab('list')}
                     className="w-full py-5 bg-gray-50 text-gray-500 rounded-[1.5rem] font-black uppercase tracking-widest hover:bg-gray-100 transition-all border-2 border-transparent"
                   >
-                    Return to Library
+                    К словарю
                   </button>
                 </div>
               </div>
