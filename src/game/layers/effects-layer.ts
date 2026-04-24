@@ -7,14 +7,12 @@ import type { ViewportCamera } from '../viewport';
 export class EffectsLayer extends Container {
   private readonly world = new Container();
   private readonly grid = new Graphics();
-  private readonly fog = new Graphics();
   private readonly stars = new Graphics();
-  private readonly aura = new Graphics();
 
   constructor() {
     super();
     this.eventMode = 'none';
-    this.world.addChild(this.grid, this.aura, this.fog);
+    this.world.addChild(this.grid);
     this.addChild(this.stars, this.world);
   }
 
@@ -61,33 +59,6 @@ export class EffectsLayer extends Container {
       });
     }
 
-    this.aura.clear();
-    model.biomes.forEach((biome) => {
-      this.aura.circle(biome.center.x, biome.center.y, biome.radius + 28);
-      this.aura.fill({ color: biome.accent, alpha: 0.08 });
-    });
-
-    this.aura.circle(model.hub.position.x, model.hub.position.y, 74);
-    this.aura.fill({ color: 0xfbbf24, alpha: 0.12 });
-
-    this.fog.clear();
-    this.fog.rect(
-      model.bounds.minX - 320,
-      model.bounds.minY - 320,
-      model.bounds.width + 640,
-      model.bounds.height + 640,
-    );
-    this.fog.fill({ color: 0x020617, alpha: 0.18 });
-
-    model.nodes
-      .filter((node) => node.state !== 'locked')
-      .forEach((node) => {
-        this.fog.circle(node.position.x, node.position.y, 72);
-        this.fog.cut();
-      });
-
-    this.fog.circle(model.hub.position.x, model.hub.position.y, 96);
-    this.fog.cut();
   }
 
   setViewport(camera: ViewportCamera) {

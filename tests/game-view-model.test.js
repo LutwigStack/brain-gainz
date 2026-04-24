@@ -247,3 +247,130 @@ test('game view model falls back to derived positions only for nodes without per
   assert.notEqual(fallback?.position.y, null);
   assert.notEqual(fallback?.position.x, 500);
 });
+
+test('game view model can render only the selected sphere', () => {
+  const snapshot = {
+    spheres: [
+      {
+        id: 1,
+        name: 'Работа',
+        directions: [
+          {
+            id: 10,
+            name: 'Продукт',
+            node_count: 1,
+            open_action_count: 0,
+            skills: [
+              {
+                id: 100,
+                name: 'Граф',
+                node_count: 1,
+                open_action_count: 0,
+                nodes: [{ id: 1000, title: 'Старый узел', type: 'task', status: 'active', open_action_count: 0 }],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 2,
+        name: 'BrainGainz',
+        directions: [
+          {
+            id: 20,
+            name: 'Система',
+            node_count: 2,
+            open_action_count: 1,
+            skills: [
+              {
+                id: 200,
+                name: 'Концепт',
+                node_count: 2,
+                open_action_count: 1,
+                nodes: [
+                  { id: 2000, title: 'Корень', type: 'project', status: 'active', open_action_count: 1 },
+                  { id: 2001, title: 'Ветка', type: 'theory', status: 'active', open_action_count: 0 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    edges: [
+      { id: 1, source_node_id: 1000, target_node_id: 2000, edge_type: 'supports' },
+      { id: 2, source_node_id: 2000, target_node_id: 2001, edge_type: 'supports' },
+    ],
+    defaultSelection: { nodeId: 2000, actionId: null },
+  };
+
+  const model = createGameViewModel(snapshot, null, { visibleSphereId: 2 });
+
+  assert.deepEqual(model.nodes.map((node) => node.id), [2000, 2001]);
+  assert.deepEqual(model.edges.map((edge) => edge.id), [2]);
+  assert.equal(model.biomes.length, 1);
+  assert.equal(model.biomes[0].name, 'BrainGainz');
+});
+
+test('game view model keeps all detail nodes while marking overview metadata', () => {
+  const nodes = Array.from({ length: 41 }, (_, index) => ({
+    id: index + 1,
+    title: index === 0 ? 'Root' : index <= 7 ? `Section ${index}` : `Leaf ${index}`,
+    type: index === 0 ? 'project' : 'theory',
+    status: 'active',
+    open_action_count: 0,
+    x: index === 0 ? 0 : index <= 7 ? 280 : 560,
+    y: index === 0 ? 0 : index <= 7 ? index * 90 : (index - 8) * 40,
+  }));
+  const edges = [
+    ...nodes.slice(1, 8).map((node, index) => ({
+      id: index + 1,
+      source_node_id: 1,
+      target_node_id: node.id,
+      edge_type: 'supports',
+    })),
+    ...nodes.slice(8).map((node, index) => ({
+      id: index + 20,
+      source_node_id: 2,
+      target_node_id: node.id,
+      edge_type: 'supports',
+    })),
+  ];
+  const snapshot = {
+    spheres: [
+      {
+        id: 1,
+        name: 'Алгебра I',
+        directions: [
+          {
+            id: 10,
+            name: 'Курс',
+            node_count: nodes.length,
+            open_action_count: 0,
+            skills: [
+              {
+                id: 100,
+                name: 'Карта',
+                node_count: nodes.length,
+                open_action_count: 0,
+                nodes,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    edges,
+    defaultSelection: { nodeId: 1, actionId: null },
+  };
+
+  const model = createGameViewModel(snapshot, null, { visibleSphereId: 1 });
+
+  assert.equal(model.nodes.length, 41);
+  assert.equal(model.isLargeGraph, true);
+  assert.equal(model.nodes.find((node) => node.id === 1)?.isOverviewVisible, true);
+  assert.equal(model.nodes.find((node) => node.id === 2)?.descendantCount, 33);
+  assert.equal(model.nodes.find((node) => node.id === 8)?.isOverviewVisible, true);
+  assert.equal(model.nodes.find((node) => node.id === 9)?.isOverviewVisible, false);
+  assert.ok(model.overviewBounds);
+});

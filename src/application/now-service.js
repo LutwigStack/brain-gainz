@@ -10,6 +10,277 @@ const STARTER_SLUGS = {
   maintenanceAction: 'run-legacy-library-smoke-check',
 };
 
+const LINEAR_ALGEBRA_GRAPH_SLUGS = {
+  sphere: 'linear-algebra-course',
+  direction: 'algebra-1-course-map',
+  skill: 'linear-algebra-mind-map',
+  rootNode: 'linear-algebra-root',
+};
+
+const LINEAR_ALGEBRA_GRAPH_TREE = {
+  key: 'root',
+  title: 'Основные темы курса Алгебры I',
+  type: 'project',
+  children: [
+    {
+      key: 'systems-and-matrices',
+      title: 'I. Системы линейных уравнений (СЛУ) и матрицы',
+      children: [
+        {
+          key: 'slu-basics',
+          title: 'Общие понятия СЛУ',
+          children: [
+            { key: 'slu-definitions', title: 'Определения: СЛУ, коэффициенты, свободные члены, решение' },
+            { key: 'system-classification', title: 'Совместная / несовместная, определенная / неопределенная' },
+            { key: 'slu-matrices', title: 'Матрица коэффициентов и расширенная матрица' },
+          ],
+        },
+        {
+          key: 'gauss-method',
+          title: 'Метод Гаусса',
+          children: [
+            { key: 'elementary-transformations', title: 'Элементарные преобразования I, II, III типов' },
+            { key: 'row-echelon-forms', title: 'Ступенчатый и улучшенный ступенчатый вид' },
+            { key: 'pivot-free-unknowns', title: 'Главные и свободные неизвестные' },
+            { key: 'back-substitution', title: 'Обратный ход и общее решение' },
+            { key: 'homogeneous-slu', title: 'Однородные СЛУ: тривиальное и нетривиальное решения' },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'matrix-algebra',
+      title: 'II. Матричная алгебра',
+      children: [
+        {
+          key: 'matrix-operations',
+          title: 'Операции над матрицами',
+          children: [
+            { key: 'matrix-add-scalar', title: 'Сложение и умножение на число' },
+            { key: 'matrix-multiply', title: 'Умножение матриц: строка на столбец' },
+            { key: 'matrix-operation-properties', title: 'Ассоциативность и дистрибутивность' },
+            { key: 'transpose', title: 'Транспонирование' },
+          ],
+        },
+        {
+          key: 'invertibility-special-matrices',
+          title: 'Обратимость и специальные матрицы',
+          children: [
+            { key: 'identity-kronecker', title: 'Единичная матрица и символ Кронекера' },
+            { key: 'inverse-matrix', title: 'Обратная матрица: определение и критерий существования' },
+            { key: 'elementary-matrices', title: 'Элементарные матрицы и преобразования' },
+            { key: 'matrix-zero-divisors', title: 'Делители нуля в кольце матриц' },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'determinants',
+      title: 'III. Теория определителей',
+      children: [
+        {
+          key: 'combinatorics-basics',
+          title: 'Основы комбинаторики',
+          children: [
+            { key: 'permutations-sign', title: 'Перестановки: инверсии, четность и знак' },
+            { key: 'substitutions-sn', title: 'Подстановки: Sn, циклы, транспозиции' },
+          ],
+        },
+        {
+          key: 'determinant-definition',
+          title: 'Определитель матрицы',
+          children: [
+            { key: 'det-expanded-formula', title: 'Развернутая формула через подстановки' },
+            { key: 'det-properties', title: 'Полилинейность и кососимметричность' },
+            { key: 'det-transpose-triangular', title: 'Определитель транспонированной и треугольной матриц' },
+          ],
+        },
+        {
+          key: 'det-computation-apps',
+          title: 'Методы вычисления и применения',
+          children: [
+            { key: 'minors-cofactors', title: 'Миноры и алгебраические дополнения' },
+            { key: 'laplace-expansion', title: 'Разложение по строке / столбцу' },
+            { key: 'zero-corner-matrix', title: 'Матрица с углом нулей' },
+            { key: 'vandermonde', title: 'Определитель Вандермонда' },
+            { key: 'cramer-rule', title: 'Правило Крамера' },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'vector-spaces',
+      title: 'IV. Векторные пространства',
+      children: [
+        {
+          key: 'vector-basics',
+          title: 'Базовые понятия',
+          children: [
+            { key: 'vector-space-axioms', title: 'Аксиомы и примеры: Rn, функции, матрицы' },
+            { key: 'linear-combination', title: 'Линейная комбинация' },
+            { key: 'linear-dependence', title: 'Линейная зависимость и независимость' },
+            { key: 'dependence-lemma', title: 'Основная лемма о линейной зависимости' },
+          ],
+        },
+        {
+          key: 'basis-dimension',
+          title: 'Базис и размерность',
+          children: [
+            { key: 'basis-coordinates', title: 'Базис и координаты вектора' },
+            { key: 'rank-vector-system', title: 'Ранг системы векторов и размерность' },
+            { key: 'standard-basis-rn', title: 'Стандартный базис в Rn' },
+            { key: 'finite-isomorphism', title: 'Изоморфизм конечномерных пространств' },
+          ],
+        },
+        {
+          key: 'subspaces-and-slu',
+          title: 'Линейные подпространства и СЛУ',
+          children: [
+            { key: 'linear-hull', title: 'Линейная оболочка' },
+            { key: 'fundamental-solutions', title: 'Фундаментальная система решений' },
+            { key: 'homogeneous-nonhomogeneous-link', title: 'Однородные и неоднородные СЛУ: линейные многообразия' },
+            { key: 'matrix-rank', title: 'Ранг матрицы: строчный, столбцовый, минорный' },
+            { key: 'kronecker-capelli', title: 'Теорема Кронекера-Капелли' },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'algebraic-structures-numbers',
+      title: 'V. Общие алгебраические структуры и числа',
+      children: [
+        {
+          key: 'groups-rings-fields',
+          title: 'Группы, кольца, поля',
+          children: [
+            { key: 'groups', title: 'Группы: аксиомы, абелевы группы, подгруппы' },
+            { key: 'rings', title: 'Кольца: область целостности, обратимые элементы, делители нуля' },
+            { key: 'fields', title: 'Поля: характеристика, малая теорема Ферма, Fp' },
+          ],
+        },
+        {
+          key: 'complex-numbers',
+          title: 'Комплексные числа C',
+          children: [
+            { key: 'complex-axioms-pairs', title: 'Аксиоматическое определение и модель пар' },
+            { key: 'complex-algebraic-form', title: 'Алгебраическая форма, сопряжение, модуль' },
+            { key: 'complex-trig-exp', title: 'Тригонометрическая и экспоненциальная формы' },
+            { key: 'de-moivre-roots', title: 'Формула Муавра и корни n-й степени' },
+            { key: 'primitive-roots-unity', title: 'Первообразные корни из единицы' },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'polynomials',
+      title: 'VI. Многочлены',
+      children: [
+        {
+          key: 'one-variable-polynomials',
+          title: 'Кольцо многочленов одной переменной',
+          children: [
+            { key: 'polynomial-degree-operations', title: 'Степень и операции над многочленами' },
+            { key: 'lagrange-interpolation', title: 'Интерполяция и формула Лагранжа' },
+            { key: 'bezout-horner', title: 'Теорема Безу и схема Горнера' },
+          ],
+        },
+        {
+          key: 'polynomial-divisibility',
+          title: 'Теория делимости',
+          children: [
+            { key: 'euclidean-gcd', title: 'Алгоритм Евклида и НОД' },
+            { key: 'irreducible-factorial', title: 'Неприводимые многочлены и факториальность' },
+            { key: 'root-multiplicity-derivative', title: 'Кратность корней и формальная производная' },
+            { key: 'taylor-formula', title: 'Формула Тейлора' },
+          ],
+        },
+        {
+          key: 'algebraic-closed-roots',
+          title: 'Алгебраическая замкнутость и корни',
+          children: [
+            { key: 'fundamental-theorem-algebra', title: 'Основная теорема алгебры' },
+            { key: 'factorization-c-r', title: 'Разложение многочленов над C и R' },
+            { key: 'descartes-rule', title: 'Теорема Декарта' },
+          ],
+        },
+        {
+          key: 'multi-variable-polynomials',
+          title: 'Многочлены нескольких переменных',
+          children: [
+            { key: 'lexicographic-order', title: 'Лексикографический порядок и старший член' },
+            { key: 'symmetric-polynomials', title: 'Симметрические многочлены и основная теорема' },
+            { key: 'vieta-formulas', title: 'Формулы Виета' },
+            { key: 'discriminant-resultant', title: 'Дискриминант и результант' },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'rational-functions',
+      title: 'VII. Рациональные дроби',
+      children: [
+        {
+          key: 'field-of-fractions',
+          title: 'Поле частных',
+          children: [
+            { key: 'fraction-field-construction', title: 'Построение поля дробей из области целостности' },
+            { key: 'proper-irreducible-fractions', title: 'Правильные и несократимые дроби' },
+          ],
+        },
+        {
+          key: 'fraction-decomposition',
+          title: 'Разложение дробей',
+          children: [
+            { key: 'simple-fractions-c-r', title: 'Простейшие дроби над C и R' },
+            { key: 'proper-fraction-decomposition', title: 'Разложение правильной дроби в сумму простейших' },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const flattenLinearAlgebraGraph = () => {
+  const nodes = [];
+  let cursorY = 0;
+
+  const walk = (item, depth, parent = null) => {
+    const children = item.children ?? [];
+    const childCenters = children.map((child) => walk(child, depth + 1, item.key));
+    const y =
+      childCenters.length > 0
+        ? childCenters.reduce((sum, value) => sum + value, 0) / childCenters.length
+        : cursorY;
+
+    if (childCenters.length === 0) {
+      cursorY += 62;
+    } else {
+      cursorY += depth === 1 ? 34 : 10;
+    }
+
+    nodes.push({
+      key: item.key,
+      slug: item.key === 'root' ? LINEAR_ALGEBRA_GRAPH_SLUGS.rootNode : `linear-algebra-${item.key}`,
+      title: item.title,
+      type: item.type ?? (children.length > 0 ? 'theory' : 'task'),
+      parent,
+      x: -900 + depth * 360,
+      y,
+    });
+
+    return y;
+  };
+
+  const rootY = walk(LINEAR_ALGEBRA_GRAPH_TREE, 0, null);
+
+  return nodes.map((node) => ({
+    ...node,
+    y: Math.round(node.y - rootY),
+  }));
+};
+
+const LINEAR_ALGEBRA_GRAPH_NODES = flattenLinearAlgebraGraph();
+
 const BARRIER_TYPES = ['too complex', 'unclear next step', 'low energy', 'aversive / scary to start', 'wrong time / wrong context'];
 
 const MAX_QUEUE_ITEMS = 4;
@@ -1132,6 +1403,181 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       size_hint: 'small',
       is_minimum_step: 1,
     });
+
+    return this.getDashboard();
+  },
+
+  async createLinearAlgebraGraphWorkspace() {
+    const timestamp = currentTimestamp();
+
+    const existingSphere = await database.select('SELECT * FROM spheres WHERE slug = ? LIMIT 1', [
+      LINEAR_ALGEBRA_GRAPH_SLUGS.sphere,
+    ]);
+    const sphere =
+      existingSphere[0] ??
+      (await hierarchyStore.createSphere({
+        name: 'Алгебра I',
+        slug: LINEAR_ALGEBRA_GRAPH_SLUGS.sphere,
+        description: 'Иерархический граф курса линейной алгебры.',
+      }));
+
+    await database.execute(
+      `
+        UPDATE spheres
+        SET name = ?, description = ?, is_archived = 0, updated_at = ?
+        WHERE id = ?
+      `,
+      [sphere.name, 'Иерархический граф курса линейной алгебры.', timestamp, sphere.id],
+    );
+
+    const existingDirection = await database.select('SELECT * FROM directions WHERE slug = ? LIMIT 1', [
+      LINEAR_ALGEBRA_GRAPH_SLUGS.direction,
+    ]);
+    const direction =
+      existingDirection[0] ??
+      (await hierarchyStore.createDirection({
+        sphere_id: sphere.id,
+        name: 'Линейная алгебра',
+        slug: LINEAR_ALGEBRA_GRAPH_SLUGS.direction,
+        description: 'СЛУ, матрицы, определители, пространства, структуры, многочлены и дроби.',
+      }));
+
+    await database.execute(
+      `
+        UPDATE directions
+        SET sphere_id = ?, name = ?, description = ?, is_archived = 0, updated_at = ?
+        WHERE id = ?
+      `,
+      [
+        sphere.id,
+        'Линейная алгебра',
+        'СЛУ, матрицы, определители, пространства, структуры, многочлены и дроби.',
+        timestamp,
+        direction.id,
+      ],
+    );
+
+    const existingSkill = await database.select('SELECT * FROM skills WHERE slug = ? LIMIT 1', [
+      LINEAR_ALGEBRA_GRAPH_SLUGS.skill,
+    ]);
+    const skill =
+      existingSkill[0] ??
+      (await hierarchyStore.createSkill({
+        direction_id: direction.id,
+        name: 'Карта курса',
+        slug: LINEAR_ALGEBRA_GRAPH_SLUGS.skill,
+        description: 'Скелет учебного графа без внутренних материалов.',
+      }));
+
+    await database.execute(
+      `
+        UPDATE skills
+        SET direction_id = ?, name = ?, description = ?, is_archived = 0, updated_at = ?
+        WHERE id = ?
+      `,
+      [direction.id, 'Карта курса', 'Скелет учебного графа без внутренних материалов.', timestamp, skill.id],
+    );
+
+    const nodesByKey = new Map();
+
+    for (const [index, item] of LINEAR_ALGEBRA_GRAPH_NODES.entries()) {
+      const existingNode = await database.select('SELECT * FROM nodes WHERE slug = ? LIMIT 1', [item.slug]);
+      const existing = existingNode[0] ?? null;
+      let node = existing;
+
+      if (existing) {
+        await database.execute(
+          `
+            UPDATE nodes
+            SET skill_id = ?, title = ?, type = ?, status = ?, x = ?, y = ?, importance = ?, is_archived = 0, updated_at = ?
+            WHERE id = ?
+          `,
+          [
+            skill.id,
+            item.title,
+            item.type,
+            'active',
+            item.x,
+            item.y,
+            item.key === 'root' ? 'high' : 'medium',
+            timestamp,
+            existing.id,
+          ],
+        );
+        node = { ...existing, skill_id: skill.id, id: existing.id };
+      } else {
+        node = await hierarchyStore.createNode({
+          skill_id: skill.id,
+          type: item.type,
+          status: 'active',
+          title: item.title,
+          slug: item.slug,
+          summary: null,
+          x: item.x,
+          y: item.y,
+          importance: item.key === 'root' ? 'high' : 'medium',
+          created_at: new Date(Date.now() + index).toISOString(),
+          updated_at: new Date(Date.now() + index).toISOString(),
+        });
+      }
+
+      nodesByKey.set(item.key, node);
+    }
+
+    const rootNode = nodesByKey.get('root');
+    if (rootNode) {
+      const existingRootAction = await database.select(
+        'SELECT id FROM node_actions WHERE node_id = ? AND title = ? LIMIT 1',
+        [rootNode.id, 'Проверить и уточнить каркас курса'],
+      );
+
+      if (existingRootAction.length === 0) {
+        await hierarchyStore.createNodeAction({
+          node_id: rootNode.id,
+          title: 'Проверить и уточнить каркас курса',
+          details: 'Пройтись по крупным веткам и отметить, где нужны подузлы или перестановка.',
+          status: 'ready',
+          size_hint: 'small',
+          sort_order: 0,
+          is_minimum_step: 1,
+        });
+      }
+    }
+
+    for (const item of LINEAR_ALGEBRA_GRAPH_NODES) {
+      if (!item.parent) {
+        continue;
+      }
+
+      const parent = nodesByKey.get(item.parent);
+      const child = nodesByKey.get(item.key);
+
+      if (!parent || !child) {
+        continue;
+      }
+
+      const existingEdge = await database.select(
+        `
+          SELECT id
+          FROM node_dependencies
+          WHERE blocked_node_id = ?
+            AND blocking_node_id = ?
+            AND dependency_type = 'supports'
+          LIMIT 1
+        `,
+        [parent.id, child.id],
+      );
+
+      if (existingEdge.length > 0) {
+        continue;
+      }
+
+      await hierarchyStore.addNodeDependency({
+        blocked_node_id: parent.id,
+        blocking_node_id: child.id,
+        dependency_type: 'supports',
+      });
+    }
 
     return this.getDashboard();
   },

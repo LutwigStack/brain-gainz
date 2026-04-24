@@ -2,7 +2,7 @@ import type { GamePoint } from '../game/types';
 import type { NavigationSnapshot, NodeFocusSnapshot } from '../types/app-shell';
 
 export type BulkLayoutScope = 'region' | 'focus-neighborhood';
-export type BulkLayoutStrategy = 'tidy' | 'spread' | 'radial';
+export type BulkLayoutStrategy = 'hierarchy' | 'tidy' | 'spread' | 'radial';
 export type BulkLayoutPreviewPositions = Record<number, GamePoint>;
 
 export interface BulkLayoutPreview {
@@ -20,6 +20,8 @@ interface LayoutNode {
 
 const REGION_SPACING_X = 132;
 const REGION_SPACING_Y = 120;
+const HIERARCHY_SPACING_X = 340;
+const HIERARCHY_SPACING_Y = 92;
 const RING_RADIUS_BASE = 180;
 const RING_RADIUS_STEP = 92;
 
@@ -155,6 +157,102 @@ const buildRadialPositions = (nodes: LayoutNode[], focusNodeId: number | null): 
   return positions;
 };
 
+const buildHierarchyPositions = (
+  nodes: LayoutNode[],
+  targetIds: number[],
+  edges: NavigationSnapshot['edges'],
+): BulkLayoutPreviewPositions => {
+  const targetIdSet = new Set(targetIds);
+  const sortedNodes = [...nodes].sort((left, right) => targetIds.indexOf(left.id) - targetIds.indexOf(right.id));
+  const nodeIndex = new Map(sortedNodes.map((node) => [node.id, node]));
+  const childrenByParent = new Map<number, number[]>();
+  const childIds = new Set<number>();
+
+  edges.forEach((edge) => {
+    if (!targetIdSet.has(edge.source_node_id) || !targetIdSet.has(edge.target_node_id)) {
+      return;
+    }
+
+    const parentId = edge.edge_type === 'requires' ? edge.target_node_id : edge.source_node_id;
+    const childId = edge.edge_type === 'requires' ? edge.source_node_id : edge.target_node_id;
+
+    if (parentId === childId) {
+      return;
+    }
+
+    const children = childrenByParent.get(parentId) ?? [];
+    if (!children.includes(childId)) {
+      children.push(childId);
+      childrenByParent.set(parentId, children);
+      childIds.add(childId);
+    }
+  });
+
+  childrenByParent.forEach((children) => {
+    children.sort((left, right) => targetIds.indexOf(left) - targetIds.indexOf(right));
+  });
+
+  const roots = sortedNodes
+    .map((node) => node.id)
+    .filter((nodeId) => !childIds.has(nodeId));
+  const resolvedRoots = roots.length > 0 ? roots : sortedNodes.map((node) => node.id);
+  const visited = new Set<number>();
+  const positions: BulkLayoutPreviewPositions = {};
+  const centroid = computeCentroid(sortedNodes.map((node) => node.position));
+  const maxExistingDepth = Math.max(
+    0,
+    ...sortedNodes.map((node) => Math.max(0, Math.round((node.position.x - centroid.x) / HIERARCHY_SPACING_X))),
+  );
+  const startX = centroid.x - Math.max(1, maxExistingDepth + 1) * (HIERARCHY_SPACING_X / 2);
+  let cursorY = centroid.y - ((sortedNodes.length - 1) * HIERARCHY_SPACING_Y) / 2;
+
+  const layoutSubtree = (nodeId: number, depth: number): number => {
+    if (visited.has(nodeId)) {
+      return positions[nodeId]?.y ?? cursorY;
+    }
+
+    visited.add(nodeId);
+    const children = (childrenByParent.get(nodeId) ?? []).filter((childId) => nodeIndex.has(childId));
+
+    if (children.length === 0) {
+      const y = cursorY;
+      cursorY += HIERARCHY_SPACING_Y;
+      positions[nodeId] = {
+        x: Math.round(startX + depth * HIERARCHY_SPACING_X),
+        y: Math.round(y),
+      };
+      return y;
+    }
+
+    const childCenters = children.map((childId) => layoutSubtree(childId, depth + 1));
+    const y = childCenters.reduce((sum, value) => sum + value, 0) / childCenters.length;
+    positions[nodeId] = {
+      x: Math.round(startX + depth * HIERARCHY_SPACING_X),
+      y: Math.round(y),
+    };
+    return y;
+  };
+
+  resolvedRoots.forEach((rootId) => {
+    layoutSubtree(rootId, 0);
+    cursorY += HIERARCHY_SPACING_Y * 0.7;
+  });
+
+  sortedNodes.forEach((node) => {
+    if (positions[node.id]) {
+      return;
+    }
+
+    positions[node.id] = {
+      x: Math.round(startX),
+      y: Math.round(cursorY),
+    };
+    cursorY += HIERARCHY_SPACING_Y;
+  });
+
+  return positions;
+};
+
 export const resolveBulkLayoutTargetIds = (
   snapshot: NavigationSnapshot | null,
   focus: NodeFocusSnapshot | null,
@@ -233,7 +331,9 @@ export const buildBulkLayoutPreview = ({
   }
 
   const positions =
-    strategy === 'tidy'
+    strategy === 'hierarchy'
+      ? buildHierarchyPositions(targetNodes, targetIds, snapshot.edges)
+      : strategy === 'tidy'
       ? buildTidyPositions(targetNodes)
       : strategy === 'spread'
         ? buildSpreadPositions(targetNodes)

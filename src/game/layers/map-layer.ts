@@ -1,7 +1,7 @@
 import { Container, FederatedPointerEvent, Graphics, Text } from 'pixi.js';
 
 import { getGraphEdgeSemantics } from '../../application/graph-edge-semantics';
-import type { GameBiome, GameNode, GamePoint, GameSceneModel } from '../types';
+import type { GameNode, GamePoint, GameSceneModel } from '../types';
 import type { ViewportCamera } from '../viewport';
 
 const statePalette = {
@@ -12,6 +12,22 @@ const statePalette = {
   paused: { fill: 0x7c2d12, stroke: 0xfdba74, text: 0xffedd5, alpha: 0.84 },
 } as const;
 
+const NODE_BOX = {
+  minWidth: 150,
+  maxWidth: 320,
+  height: 42,
+  maxHeight: 82,
+  radius: 8,
+};
+
+const OVERVIEW_NODE_BOX = {
+  minWidth: 300,
+  maxWidth: 460,
+  height: 64,
+  maxHeight: 104,
+  radius: 8,
+};
+
 interface MapLayerHandlers {
   onNodePointerDown?: (nodeId: number, event: FederatedPointerEvent) => void;
   onEdgePointerDown?: (edgeId: number) => void;
@@ -19,6 +35,7 @@ interface MapLayerHandlers {
   connectSourceNodeId?: number | null;
   connectPreviewTarget?: GamePoint | null;
   connectEdgeType?: 'requires' | 'supports' | 'relates_to' | null;
+  overviewMode?: boolean;
 }
 
 const createQuadraticRoute = (
@@ -131,23 +148,51 @@ const drawArrowHead = (
   graphic.fill({ color, alpha });
 };
 
+const resolveNodeBox = (node: GameNode, overviewMode = false) => {
+  const box = overviewMode ? OVERVIEW_NODE_BOX : NODE_BOX;
+  const charWidth = overviewMode ? 8.2 : 6.2;
+  const lineLength = overviewMode ? 34 : 30;
+  const lineHeight = overviewMode ? 18 : 14;
+  const width = Math.min(
+    box.maxWidth,
+    Math.max(box.minWidth, 74 + node.title.length * charWidth),
+  );
+  const estimatedLines = Math.ceil(node.title.length / lineLength) + (overviewMode && (node.descendantCount ?? 0) > 0 ? 1 : 0);
+  const height = Math.min(box.maxHeight, Math.max(box.height, 28 + estimatedLines * lineHeight));
+
+  return { width, height };
+};
+
+const getNodeAnchor = (node: GameNode, toward: GamePoint, overviewMode = false): GamePoint => {
+  const box = resolveNodeBox(node, overviewMode);
+  const dx = toward.x - node.position.x;
+  const dy = toward.y - node.position.y;
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return {
+      x: node.position.x + Math.sign(dx || 1) * (box.width / 2),
+      y: node.position.y + Math.max(-box.height / 3, Math.min(box.height / 3, dy * 0.18)),
+    };
+  }
+
+  return {
+    x: node.position.x + Math.max(-box.width / 3, Math.min(box.width / 3, dx * 0.18)),
+    y: node.position.y + Math.sign(dy || 1) * (box.height / 2),
+  };
+};
+
 export class MapLayer extends Container {
   private readonly world = new Container();
-  private readonly biomeGraphics = new Graphics();
-  private readonly linkGraphics = new Graphics();
   private readonly edgeGraphics = new Graphics();
   private readonly edgeHitContainer = new Container();
   private readonly edgePreviewGraphics = new Graphics();
-  private readonly hubGraphics = new Graphics();
   private readonly legendGraphics = new Graphics();
   private readonly legendLabels = new Container();
-  private readonly biomeLabels = new Container();
   private readonly nodeContainer = new Container();
   private readonly pulses = new Map<number, Graphics>();
   private readonly nodeShells = new Map<number, Graphics>();
   private readonly nodeLabels = new Map<number, Text>();
   private readonly edgeHits = new Map<number, Graphics>();
-  private readonly biomeTexts = new Map<number, Text>();
   private readonly legendTexts = new Map<string, Text>();
   private readonly previewNodePositions = new Map<number, GamePoint>();
   private currentModel: GameSceneModel | null = null;
@@ -156,19 +201,16 @@ export class MapLayer extends Container {
   private connectSourceNodeId: number | null = null;
   private connectPreviewTarget: GamePoint | null = null;
   private connectEdgeType: 'requires' | 'supports' | 'relates_to' | null = null;
+  private overviewMode = false;
   private lastHandlers: MapLayerHandlers = {};
   private pulseTime = 0;
 
   constructor() {
     super();
     this.world.addChild(
-      this.biomeGraphics,
-      this.linkGraphics,
       this.edgeGraphics,
       this.edgeHitContainer,
       this.edgePreviewGraphics,
-      this.hubGraphics,
-      this.biomeLabels,
       this.nodeContainer,
     );
     this.addChild(this.world, this.legendGraphics, this.legendLabels);
@@ -182,15 +224,18 @@ export class MapLayer extends Container {
     this.connectSourceNodeId = handlers.connectSourceNodeId ?? null;
     this.connectPreviewTarget = handlers.connectPreviewTarget ?? null;
     this.connectEdgeType = handlers.connectEdgeType ?? null;
-    this.drawBiomes(model.biomes);
-    this.drawHub(model);
+    this.overviewMode = handlers.overviewMode ?? false;
     this.drawEdges(model, handlers);
     this.drawConnectPreview();
-    this.drawLegend(model);
+    this.drawLegend();
 
-    const activeIds = new Set(model.nodes.map((node) => node.id));
+    const activeIds = new Set(
+      model.nodes
+        .filter((node) => this.shouldRenderNode(node))
+        .map((node) => node.id),
+    );
 
-    model.nodes.forEach((node) => {
+    model.nodes.filter((node) => this.shouldRenderNode(node)).forEach((node) => {
       const shell = this.nodeShells.get(node.id) ?? new Graphics();
       const pulse = this.pulses.get(node.id) ?? new Graphics();
       const label =
@@ -220,7 +265,7 @@ export class MapLayer extends Container {
         handlers.onNodePointerDown?.(node.id, event);
       });
 
-      this.drawNode(node, shell, pulse, label, model);
+      this.drawNode(this.withRenderPosition(node), shell, pulse, label, model);
     });
 
     [...this.nodeShells.keys()].forEach((nodeId) => {
@@ -321,78 +366,28 @@ export class MapLayer extends Container {
       return;
     }
 
-    this.drawNode(node, shell, pulse, label, this.currentModel);
-  }
-
-  private drawBiomes(biomes: GameBiome[]) {
-    this.biomeGraphics.clear();
-    const activeBiomeIds = new Set(biomes.map((biome) => biome.id));
-
-    biomes.forEach((biome) => {
-      this.biomeGraphics.circle(biome.center.x, biome.center.y, biome.radius);
-      this.biomeGraphics.fill({ color: biome.color, alpha: 0.34 });
-      this.biomeGraphics.circle(biome.center.x, biome.center.y, biome.radius - 18);
-      this.biomeGraphics.stroke({ color: biome.accent, alpha: 0.28, width: 2 });
-
-      const label =
-        this.biomeTexts.get(biome.id) ??
-        new Text({
-          text: '',
-          style: {
-            fontFamily: 'Trebuchet MS',
-            fontSize: 14,
-            fontWeight: '700',
-            fill: biome.accent,
-          },
-        });
-
-      if (!this.biomeTexts.has(biome.id)) {
-        this.biomeTexts.set(biome.id, label);
-        this.biomeLabels.addChild(label);
-      }
-
-      label.text = biome.name.toUpperCase();
-      label.anchor.set(0.5);
-      label.position.set(biome.center.x, biome.center.y - biome.radius + 20);
-    });
-
-    [...this.biomeTexts.keys()].forEach((id) => {
-      if (activeBiomeIds.has(id)) {
-        return;
-      }
-      this.biomeTexts.get(id)?.destroy();
-      this.biomeTexts.delete(id);
-    });
-  }
-
-  private drawHub(model: GameSceneModel) {
-    this.linkGraphics.clear();
-    this.linkGraphics.setStrokeStyle({ width: 3, color: 0xfbbf24, alpha: 0.35 });
-
-    model.biomes.forEach((biome) => {
-      this.linkGraphics.moveTo(model.hub.position.x, model.hub.position.y);
-      this.linkGraphics.lineTo(biome.center.x, biome.center.y);
-    });
-
-    this.hubGraphics.clear();
-    this.hubGraphics.star(model.hub.position.x, model.hub.position.y, 8, 34, 16, 0);
-    this.hubGraphics.fill({ color: 0x3f2d0d, alpha: 0.96 });
-    this.hubGraphics.star(model.hub.position.x, model.hub.position.y, 8, 22, 10, 0);
-    this.hubGraphics.fill({ color: 0xfbbf24, alpha: 0.92 });
-    this.hubGraphics.circle(model.hub.position.x, model.hub.position.y, 42);
-    this.hubGraphics.stroke({ color: 0xfef3c7, alpha: 0.9, width: 3 });
+    this.drawNode(this.withRenderPosition(node), shell, pulse, label, this.currentModel);
   }
 
   private drawEdges(model: GameSceneModel, handlers: MapLayerHandlers) {
     this.edgeGraphics.clear();
-    const nodePositions = new Map(
-      model.nodes.map((node) => [node.id, this.previewNodePositions.get(node.id) ?? node.position]),
+    const nodeById = new Map(
+      model.nodes
+        .filter((node) => this.shouldRenderNode(node))
+        .map((node) => [
+          node.id,
+          {
+            ...node,
+            position: this.getRenderPosition(node),
+          },
+        ]),
     );
     const activeEdgeIds = new Set<number>();
+    const isLargeGraphDetail = !this.overviewMode && model.nodes.length >= 40;
 
     model.edges.forEach((edge) => {
-      const fromNode = nodePositions.get(edge.fromNodeId);
-      const toNode = nodePositions.get(edge.toNodeId);
+      const fromNode = nodeById.get(edge.fromNodeId);
+      const toNode = nodeById.get(edge.toNodeId);
 
       if (!fromNode || !toNode) {
         return;
@@ -400,19 +395,43 @@ export class MapLayer extends Container {
 
       activeEdgeIds.add(edge.id);
       const isSelected = edge.id === handlers.selectedEdgeId;
+      const isSelectedPathEdge = Boolean(fromNode.isOnSelectedPath && toNode.isOnSelectedPath);
+      const isOverviewPrimaryEdge =
+        this.overviewMode &&
+        edge.type !== 'relates_to' &&
+        ((fromNode.hierarchyDepth === 0 && toNode.hierarchyDepth === 1) || isSelectedPathEdge);
+      const isFocusEdge = !this.overviewMode && Boolean(handlers.selectedEdgeId) && isSelected;
       const semantics = getGraphEdgeSemantics(edge.type);
       const color = semantics.canvas.color;
-      const alpha = isSelected ? semantics.canvas.selectedAlpha : semantics.canvas.alpha;
+      const baseEdgeAlpha =
+        isLargeGraphDetail && !isFocusEdge ? Math.min(semantics.canvas.alpha, 0.18) : semantics.canvas.alpha;
+      const baseEdgeWidth =
+        isLargeGraphDetail && !isFocusEdge ? Math.min(semantics.canvas.width, 1.1) : semantics.canvas.width;
+      const shouldDrawGlow = semantics.canvas.pattern === 'glow' && (!isLargeGraphDetail || isFocusEdge);
+      const alpha = this.overviewMode
+        ? isSelectedPathEdge
+          ? 0.9
+          : isOverviewPrimaryEdge
+            ? 0.58
+            : 0.18
+        : isFocusEdge
+          ? semantics.canvas.selectedAlpha
+          : baseEdgeAlpha;
+      const fromAnchor = getNodeAnchor(fromNode, toNode.position, this.overviewMode);
+      const toAnchor = getNodeAnchor(toNode, fromNode.position, this.overviewMode);
       const route = createQuadraticRoute(
-        fromNode,
-        toNode,
+        fromAnchor,
+        toAnchor,
         edge.fromNodeId <= edge.toNodeId ? 1 : -1,
         semantics.canvas.bendStrength,
       );
 
-      if (semantics.canvas.pattern === 'glow') {
+      if (shouldDrawGlow) {
         this.edgeGraphics.setStrokeStyle({
-          width: (isSelected ? semantics.canvas.selectedWidth : semantics.canvas.width) + 4,
+          width:
+            (isFocusEdge || (this.overviewMode && isSelectedPathEdge)
+              ? semantics.canvas.selectedWidth
+              : baseEdgeWidth) + 4,
           color,
           alpha: alpha * 0.18,
         });
@@ -430,7 +449,13 @@ export class MapLayer extends Container {
         );
       } else {
         this.edgeGraphics.setStrokeStyle({
-          width: isSelected ? semantics.canvas.selectedWidth : semantics.canvas.width,
+          width: this.overviewMode
+            ? isSelectedPathEdge
+              ? 4
+              : 2.4
+            : isFocusEdge
+              ? semantics.canvas.selectedWidth
+              : baseEdgeWidth,
           color,
           alpha,
         });
@@ -439,11 +464,11 @@ export class MapLayer extends Container {
 
       drawArrowHead(
         this.edgeGraphics,
-        route[route.length - 2] ?? fromNode,
-        route[route.length - 1] ?? toNode,
+        route[route.length - 2] ?? fromAnchor,
+        route[route.length - 1] ?? toAnchor,
         color,
-        isSelected ? 0.92 : 0.72,
-        isSelected ? 14 : 12,
+        this.overviewMode ? alpha : isFocusEdge ? 0.92 : isLargeGraphDetail ? 0.42 : 0.72,
+        this.overviewMode ? 11 : isFocusEdge ? 14 : isLargeGraphDetail ? 7 : 12,
       );
 
       const hit =
@@ -496,9 +521,11 @@ export class MapLayer extends Container {
 
     const semantics = getGraphEdgeSemantics(this.connectEdgeType);
     const color = semantics.canvas.color;
-    const sourcePosition = this.previewNodePositions.get(source.id) ?? source.position;
+    const sourcePosition = this.getRenderPosition(source);
+    const sourceNode = { ...source, position: sourcePosition };
+    const sourceAnchor = getNodeAnchor(sourceNode, this.connectPreviewTarget, this.overviewMode);
     const route = createQuadraticRoute(
-      sourcePosition,
+      sourceAnchor,
       this.connectPreviewTarget,
       1,
       semantics.canvas.bendStrength,
@@ -517,7 +544,7 @@ export class MapLayer extends Container {
     }
     drawArrowHead(
       this.edgePreviewGraphics,
-      route[route.length - 2] ?? sourcePosition,
+      route[route.length - 2] ?? sourceAnchor,
       route[route.length - 1] ?? this.connectPreviewTarget,
       color,
       0.9,
@@ -525,46 +552,9 @@ export class MapLayer extends Container {
     );
   }
 
-  private drawLegend(model: GameSceneModel) {
+  private drawLegend() {
     this.legendGraphics.clear();
-    this.legendGraphics.roundRect(20, 432, 210, 118, 12);
-    this.legendGraphics.fill({ color: 0x0b1220, alpha: 0.78 });
-    this.legendGraphics.stroke({ color: 0x344157, alpha: 0.9, width: 2 });
-
-    const activeKeys = new Set(model.legend.map((item) => item.state));
-
-    model.legend.forEach((item, index) => {
-      this.legendGraphics.circle(42, 462 + index * 18, 5);
-      this.legendGraphics.fill({ color: item.color, alpha: 0.95 });
-
-      const label =
-        this.legendTexts.get(item.state) ??
-        new Text({
-          text: '',
-          style: {
-            fontFamily: 'Trebuchet MS',
-            fontSize: 11,
-            fontWeight: '700',
-            fill: 0xe2e8f0,
-          },
-        });
-
-      if (!this.legendTexts.has(item.state)) {
-        this.legendTexts.set(item.state, label);
-        this.legendLabels.addChild(label);
-      }
-
-      label.text = `${item.label}  ${item.count}`;
-      label.position.set(56, 454 + index * 18);
-    });
-
-    [...this.legendTexts.keys()].forEach((key) => {
-      if (activeKeys.has(key as typeof model.legend[number]['state'])) {
-        return;
-      }
-      this.legendTexts.get(key)?.destroy();
-      this.legendTexts.delete(key);
-    });
+    this.legendLabels.visible = false;
   }
 
   private drawNode(
@@ -576,44 +566,68 @@ export class MapLayer extends Container {
   ) {
     const palette = statePalette[node.state];
     const biome = model.biomes.find((item) => item.id === node.biomeId);
-    const radius = node.id === this.highlightedNodeId ? 22 : 18;
+    const box = resolveNodeBox(node, this.overviewMode);
+    const radius = this.overviewMode ? OVERVIEW_NODE_BOX.radius : NODE_BOX.radius;
+    const isHighlighted = node.id === this.highlightedNodeId;
     const isConnectSource = node.id === this.connectSourceNodeId;
+    const borderColor = isHighlighted
+      ? biome?.accent ?? palette.stroke
+      : isConnectSource
+        ? 0xfbbf24
+        : palette.stroke;
 
     pulse.clear();
-    pulse.circle(0, 0, radius + 12);
+    pulse.roundRect(
+      -box.width / 2 - 10,
+      -box.height / 2 - 10,
+      box.width + 20,
+      box.height + 20,
+      radius + 6,
+    );
     pulse.fill({ color: biome?.accent ?? 0x60a5fa, alpha: 0.18 });
     pulse.position.set(node.position.x, node.position.y);
 
     shell.clear();
-    shell.circle(0, 0, radius + 14);
+    shell.roundRect(
+      -box.width / 2 - 5,
+      -box.height / 2 - 5,
+      box.width + 10,
+      box.height + 10,
+      radius + 5,
+    );
     shell.fill({ color: palette.fill, alpha: 0.001 });
-    shell.circle(0, 0, radius);
+    shell.roundRect(-box.width / 2, -box.height / 2, box.width, box.height, radius);
     shell.fill({ color: palette.fill, alpha: palette.alpha });
-    shell.circle(0, 0, radius + 3);
+    shell.roundRect(
+      -box.width / 2 - 1,
+      -box.height / 2 - 1,
+      box.width + 2,
+      box.height + 2,
+      radius + 1,
+    );
     shell.stroke({
-      color:
-        node.id === this.highlightedNodeId
-          ? biome?.accent ?? palette.stroke
-          : isConnectSource
-            ? 0xfbbf24
-            : palette.stroke,
-      width: node.id === this.highlightedNodeId ? 4 : isConnectSource ? 3 : 2,
+      color: borderColor,
+      width: isHighlighted ? 3.5 : isConnectSource ? 3 : 2,
       alpha: 0.96,
     });
     shell.position.set(node.position.x, node.position.y);
 
-    label.text = node.title;
+    label.text =
+      this.overviewMode && (node.descendantCount ?? 0) > 0
+        ? `${node.title}\n${node.descendantCount} узл.`
+        : node.title;
     label.style = {
       fontFamily: 'Trebuchet MS',
-      fontSize: 10,
+      fontSize: this.overviewMode ? 16 : node.title.length > 46 ? 9 : 10,
       fontWeight: '700',
       fill: palette.text,
       align: 'center',
       wordWrap: true,
-      wordWrapWidth: 84,
+      wordWrapWidth: box.width - 20,
+      lineHeight: this.overviewMode ? 19 : undefined,
     };
-    label.anchor.set(0.5, 0);
-    label.position.set(node.position.x, node.position.y + radius + 10);
+    label.anchor.set(0.5);
+    label.position.set(node.position.x, node.position.y);
     label.alpha = node.state === 'locked' ? 0.72 : 1;
     label.visible = this.shouldShowNodeLabel(node.id);
   }
@@ -634,6 +648,25 @@ export class MapLayer extends Container {
   }
 
   private shouldShowNodeLabel(nodeId: number) {
-    return this.currentZoom >= 0.62 || nodeId === this.highlightedNodeId || nodeId === this.connectSourceNodeId;
+    return this.overviewMode || this.currentZoom >= 0.34 || nodeId === this.highlightedNodeId || nodeId === this.connectSourceNodeId;
+  }
+
+  private shouldRenderNode(node: GameNode) {
+    return !this.overviewMode || node.isOverviewVisible === true;
+  }
+
+  private getRenderPosition(node: GameNode): GamePoint {
+    return (
+      this.previewNodePositions.get(node.id) ??
+      (this.overviewMode ? node.overviewPosition : null) ??
+      node.position
+    );
+  }
+
+  private withRenderPosition(node: GameNode): GameNode {
+    return {
+      ...node,
+      position: this.getRenderPosition(node),
+    };
   }
 }

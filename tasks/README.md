@@ -26,8 +26,8 @@ Everything else must be `planned`, `done`, or `parked`.
 
 ## Current Epic
 
-- `active` - [05-node-editor-model-expansion](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/05-node-editor-model-expansion/README.md)
+- none
 
 ## Current Workstream
 
-- `active` - [05-node-editor-model-expansion/workstreams/01-schema-for-editor-owned-node-fields.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/05-node-editor-model-expansion/workstreams/01-schema-for-editor-owned-node-fields.md)
+- none

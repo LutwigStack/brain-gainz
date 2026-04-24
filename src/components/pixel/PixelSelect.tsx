@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode, SelectHTMLAttributes } from 'react';
+import { useId, type CSSProperties, type ReactNode, type SelectHTMLAttributes } from 'react';
 
 import { pixelColors, pixelSpacing, pixelTypography } from '../../theme/pixel';
 import { PixelStack } from './PixelStack';
@@ -28,22 +28,27 @@ export interface PixelSelectProps
   extends SelectHTMLAttributes<HTMLSelectElement>,
     PixelSelectBaseProps {}
 
-export const PixelSelect = ({ label, hint, id, style, children, ...props }: PixelSelectProps) => (
-  <PixelStack gap="xs">
-    {label ? (
-      <label htmlFor={id}>
-        <PixelText as="span" size="xs" color="textMuted" uppercase>
-          {label}
+export const PixelSelect = ({ label, hint, id, style, children, ...props }: PixelSelectProps) => {
+  const generatedId = useId();
+  const selectId = id ?? `pixel-select-${generatedId}`;
+
+  return (
+    <PixelStack gap="xs">
+      {label ? (
+        <label htmlFor={selectId}>
+          <PixelText as="span" size="xs" color="textMuted" uppercase>
+            {label}
+          </PixelText>
+        </label>
+      ) : null}
+      <select {...props} id={selectId} style={{ ...selectStyle, ...style }}>
+        {children}
+      </select>
+      {hint ? (
+        <PixelText as="p" readable size="sm" color="textDim">
+          {hint}
         </PixelText>
-      </label>
-    ) : null}
-    <select {...props} id={id} style={{ ...selectStyle, ...style }}>
-      {children}
-    </select>
-    {hint ? (
-      <PixelText as="p" readable size="sm" color="textDim">
-        {hint}
-      </PixelText>
-    ) : null}
-  </PixelStack>
-);
+      ) : null}
+    </PixelStack>
+  );
+};

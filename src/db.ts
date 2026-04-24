@@ -59,6 +59,7 @@ type StoresRegistry = {
   nowService: {
     getDashboard: () => Promise<NowDashboardSnapshot>;
     createStarterWorkspace: () => Promise<NowDashboardSnapshot>;
+    createLinearAlgebraGraphWorkspace: () => Promise<NowDashboardSnapshot>;
     startTodaySessionFromPrimaryRecommendation: () => Promise<unknown>;
     startTodaySessionFromRecommendation: (actionId?: number | null) => Promise<unknown>;
     getNodeFocus: (nodeId: number, actionId?: number | null) => Promise<NodeFocusSnapshot | null>;
@@ -253,6 +254,11 @@ export const getNowDashboard = async (): Promise<NowDashboardSnapshot> => {
 export const createStarterWorkspace = async (): Promise<NowDashboardSnapshot> => {
   const { nowService } = await getStores();
   return nowService.createStarterWorkspace();
+};
+
+export const createLinearAlgebraGraphWorkspace = async (): Promise<NowDashboardSnapshot> => {
+  const { nowService } = await getStores();
+  return nowService.createLinearAlgebraGraphWorkspace();
 };
 
 export const startTodaySessionFromPrimaryRecommendation = async () => {

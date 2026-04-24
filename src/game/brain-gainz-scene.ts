@@ -45,6 +45,7 @@ interface SceneCallbacks {
   selectedEdgeId?: number | null;
   connectSourceNodeId?: number | null;
   connectEdgeType?: 'requires' | 'supports' | 'relates_to' | null;
+  overviewMode?: boolean;
 }
 
 export class BrainGainzScene {
@@ -97,7 +98,10 @@ export class BrainGainzScene {
     this.backdrop.fill({ color: 0x08101d, alpha: 1 });
 
     if (!options?.preserveViewport || !this.currentCamera) {
-      this.currentCamera = fitCameraToBounds(model.bounds, { width, height });
+      this.currentCamera = fitCameraToBounds(
+        model.isLargeGraph && model.overviewBounds ? model.overviewBounds : model.bounds,
+        { width, height },
+      );
     }
 
     this.mapLayer.render(model, {
@@ -107,6 +111,7 @@ export class BrainGainzScene {
       connectSourceNodeId: callbacks.connectSourceNodeId ?? null,
       connectPreviewTarget: this.connectPreviewTarget,
       connectEdgeType: callbacks.connectEdgeType ?? null,
+      overviewMode: callbacks.overviewMode ?? false,
     });
     this.effectsLayer.render(model, width, height);
     this.heroLayer.render(model);
@@ -128,7 +133,25 @@ export class BrainGainzScene {
       return null;
     }
 
-    this.currentCamera = fitCameraToBounds(this.currentModel.bounds, {
+    const bounds =
+      this.currentModel.isLargeGraph && this.currentModel.overviewBounds
+        ? this.currentModel.overviewBounds
+        : this.currentModel.bounds;
+
+    this.currentCamera = fitCameraToBounds(bounds, {
+      width: this.app.renderer.width,
+      height: this.app.renderer.height,
+    });
+    this.applyViewport();
+    return this.currentCamera;
+  }
+
+  fitToOverview() {
+    if (!this.currentModel) {
+      return null;
+    }
+
+    this.currentCamera = fitCameraToBounds(this.currentModel.overviewBounds ?? this.currentModel.bounds, {
       width: this.app.renderer.width,
       height: this.app.renderer.height,
     });

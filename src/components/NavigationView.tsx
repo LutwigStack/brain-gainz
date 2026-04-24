@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   Archive,
   CheckCircle2,
   Compass,
   Copy,
   GitBranch,
+  Grid2X2,
   Map as MapIcon,
   PauseCircle,
   PencilLine,
   Play,
   Plus,
   RefreshCw,
+  RotateCcw,
   Save,
   Scissors,
   Target,
@@ -45,6 +47,7 @@ import {
   type BulkLayoutScope,
   type BulkLayoutStrategy,
 } from '../application/map-layout';
+import { buildGraphHierarchyIndex } from '../application/graph-hierarchy';
 import {
   canDuplicateNodeEditorDraft,
   createNodeEditorDraft,
@@ -128,37 +131,18 @@ const edgeTypeOptions = [
 ] as const;
 
 const bulkLayoutScopeOptions = [
-  { value: 'region', label: '\u0420\u0435\u0433\u0438\u043e\u043d' },
+  { value: 'region', label: 'Вся структура' },
   { value: 'focus-neighborhood', label: '\u0412\u043e\u043a\u0440\u0443\u0433 \u0444\u043e\u043a\u0443\u0441\u0430' },
 ] as const;
 
 const bulkLayoutStrategyOptions = [
+  { value: 'hierarchy', label: '\u0418\u0435\u0440\u0430\u0440\u0445\u0438\u044f' },
   { value: 'tidy', label: '\u0423\u043f\u043e\u0440\u044f\u0434\u043e\u0447\u0438\u0442\u044c' },
   { value: 'spread', label: '\u0420\u0430\u0437\u0434\u0432\u0438\u043d\u0443\u0442\u044c' },
   { value: 'radial', label: '\u0420\u0430\u0434\u0438\u0430\u043b\u044c\u043d\u043e' },
 ] as const;
 
-const renderNodeCard = (
-  node: NavigationNodeSummary,
-  isSelected: boolean,
-  onSelectNode: (node: NavigationNodeSummary) => void,
-) => (
-  <PixelActionCard
-    key={node.id}
-    onClick={() => onSelectNode(node)}
-    active={isSelected}
-    title={node.title}
-    description={node.next_action_title ? `Дальше: ${node.next_action_title}` : undefined}
-    meta={`${typeLabel(node.type)} · ${statusLabel(node.status)}`}
-    aside={
-      <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
-        <PixelText as="span" size="xs" color="textMuted" uppercase>
-          {node.open_action_count} шаг.
-        </PixelText>
-      </PixelSurface>
-    }
-  />
-);
+const linearAlgebraTemplateValue = 'template:linear-algebra';
 
 interface GraphRailEdgeEntry {
   edge: NavigationGraphEdge;
@@ -184,6 +168,7 @@ interface NavigationViewProps {
   barrierType: BarrierType;
   shrinkTitle: string;
   onRefresh: () => void;
+  onCreateLinearAlgebraGraph: () => Promise<void> | void;
   onSelectNode: (node: NavigationNodeSummary) => void;
   onSelectAction: (action: NodeAction) => void;
   onStartSession: () => void;
@@ -230,6 +215,7 @@ export const NavigationView = ({
   barrierType,
   shrinkTitle,
   onRefresh,
+  onCreateLinearAlgebraGraph,
   onSelectNode,
   onSelectAction,
   onStartSession,
@@ -261,7 +247,7 @@ export const NavigationView = ({
   const [isSnapToGrid, setIsSnapToGrid] = useState(true);
   const [isEdgeConnectMode, setIsEdgeConnectMode] = useState(false);
   const [layoutScope, setLayoutScope] = useState<BulkLayoutScope>('region');
-  const [layoutStrategy, setLayoutStrategy] = useState<BulkLayoutStrategy>('tidy');
+  const [layoutStrategy, setLayoutStrategy] = useState<BulkLayoutStrategy>('hierarchy');
   const [layoutPreview, setLayoutPreview] = useState<BulkLayoutPreview | null>(null);
   const [pendingEdgeSourceNodeId, setPendingEdgeSourceNodeId] = useState<number | null>(null);
   const [pendingEdgeType, setPendingEdgeType] = useState<GraphEdgeType>('requires');
@@ -269,7 +255,7 @@ export const NavigationView = ({
   const [isMapFocused, setIsMapFocused] = useState(false);
   const [mapCommand, setMapCommand] = useState<{
     id: number;
-    type: 'focus-node' | 'fit-graph' | 'reset-camera';
+    type: 'overview-graph' | 'focus-node' | 'fit-graph' | 'reset-camera';
   } | null>(null);
 
   const updateDraft = (patch: Partial<NodeEditorDraft>) => {
@@ -350,8 +336,9 @@ export const NavigationView = ({
     }
   }
   const graphEdges = snapshot?.edges ?? [];
-  const mapModel = createGameViewModel(snapshot, focus);
+  const mapModel = createGameViewModel(snapshot, focus, { visibleSphereId: selectedSphereId });
   const mapPositionIndex = new globalThis.Map(mapModel.nodes.map((node) => [node.id, node.position]));
+  const structureHierarchy = buildGraphHierarchyIndex(snapshot, selectedSphereId, focus?.node?.id ?? null);
   const resolvedSelectedEdgeId =
     selectedEdgeId != null && graphEdges.some((edge) => edge.id === selectedEdgeId) ? selectedEdgeId : null;
   const selectedEdge =
@@ -417,7 +404,37 @@ export const NavigationView = ({
       ? selectedSphere?.name ?? 'регион'
       : focus?.node?.title ?? 'фокусный узел';
 
-  const runMapCommand = (type: 'focus-node' | 'fit-graph' | 'reset-camera') => {
+  const findSphereEntryNode = (sphereId: number): NavigationNodeSummary | null => {
+    const sphere = spheres.find((item) => item.id === sphereId);
+    const nodes = sphere?.directions.flatMap((direction) => direction.skills.flatMap((skill) => skill.nodes)) ?? [];
+
+    return (
+      nodes.find((node) => node.type === 'project') ??
+      nodes.find((node) => node.open_action_count > 0) ??
+      nodes[0] ??
+      null
+    );
+  };
+
+  const handleSelectStructure = async (value: string) => {
+    if (value === linearAlgebraTemplateValue) {
+      clearMapTransientState();
+      await onCreateLinearAlgebraGraph();
+      return;
+    }
+
+    const nextSphereId = Number(value);
+    const entryNode = Number.isFinite(nextSphereId) ? findSphereEntryNode(nextSphereId) : null;
+
+    if (!entryNode) {
+      return;
+    }
+
+    clearMapTransientState();
+    onSelectNode(entryNode);
+  };
+
+  const runMapCommand = (type: 'overview-graph' | 'focus-node' | 'fit-graph' | 'reset-camera') => {
     setMapCommand({
       id: Date.now(),
       type,
@@ -521,6 +538,9 @@ export const NavigationView = ({
             runMapCommand('focus-node');
           }
           break;
+        case 'overview-graph':
+          runMapCommand('overview-graph');
+          break;
         case 'fit-graph':
           runMapCommand('fit-graph');
           break;
@@ -612,6 +632,21 @@ export const NavigationView = ({
     setLayoutPreview(preview);
   };
 
+  const handlePreviewHierarchyLayout = () => {
+    setLayoutScope('region');
+    setLayoutStrategy('hierarchy');
+    const preview = buildBulkLayoutPreview({
+      snapshot,
+      focus,
+      scope: 'region',
+      strategy: 'hierarchy',
+      selectedSphereId,
+      positionIndex: mapPositionIndex,
+    });
+
+    setLayoutPreview(preview);
+  };
+
   const handleApplyBulkLayout = async () => {
     if (!resolvedLayoutPreview || isMapMutating) {
       return;
@@ -649,6 +684,66 @@ export const NavigationView = ({
     { label: 'Ветки', value: `${workspaceDirections}/${workspaceSkills}` },
     { label: 'Фокус', value: selectedAction?.title ?? focus?.node?.title ?? 'не выбран' },
   ];
+  const renderStructureTreeNode = (nodeId: number): ReactNode => {
+    const entry = structureHierarchy.entries.get(nodeId);
+    if (!entry) {
+      return null;
+    }
+
+    const isSelected = focus?.node?.id === nodeId;
+    const hasChildren = entry.childIds.length > 0;
+    const selectTreeNode = () => {
+      if (entry.depth <= 1) {
+        runMapCommand('overview-graph');
+      }
+      void handleCanvasNodeSelect(entry.node);
+    };
+    const rowClassName = `w-full min-w-0 rounded border px-2 py-1.5 text-left transition ${
+      isSelected
+        ? 'border-[var(--pixel-accent)] bg-[rgba(94,234,212,0.14)] text-[var(--pixel-text)]'
+        : 'border-[var(--pixel-line-soft)] bg-[rgba(8,16,29,0.48)] text-[var(--pixel-text-muted)] hover:border-[var(--pixel-line)] hover:text-[var(--pixel-text)]'
+    }`;
+    const rowContent = (
+      <span className="flex min-w-0 items-center justify-between gap-2">
+        <span className="min-w-0 truncate">{entry.node.title}</span>
+        <span className="shrink-0 text-[10px] uppercase text-[var(--pixel-text-dim)]">
+          {hasChildren ? `${entry.descendantCount} узл.` : statusLabel(entry.node.status)}
+        </span>
+      </span>
+    );
+    const leafRow = (
+      <button
+        type="button"
+        onClick={selectTreeNode}
+        className={rowClassName}
+        style={{ marginLeft: entry.depth * 12, width: `calc(100% - ${entry.depth * 12}px)` }}
+      >
+        {rowContent}
+      </button>
+    );
+    const parentRow = (
+      <summary
+        className={`list-none cursor-pointer ${rowClassName}`}
+        onClick={selectTreeNode}
+        style={{ marginLeft: entry.depth * 12, width: `calc(100% - ${entry.depth * 12}px)` }}
+      >
+        {rowContent}
+      </summary>
+    );
+
+    if (!hasChildren) {
+      return <div key={nodeId}>{leafRow}</div>;
+    }
+
+    return (
+      <details key={nodeId} open={entry.depth <= 1 || entry.isOnSelectedPath} className="min-w-0">
+        {parentRow}
+        <div className="mt-1 grid gap-1">
+          {entry.childIds.map((childId) => renderStructureTreeNode(childId))}
+        </div>
+      </details>
+    );
+  };
 
   return (
     <div className="space-y-3">
@@ -701,6 +796,32 @@ export const NavigationView = ({
             />
 
             <div className="mt-3 min-w-0 space-y-3">
+              <PixelSurface frame="ghost" padding="sm">
+                <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(220px,360px)_minmax(0,1fr)] md:items-end">
+                  <PixelSelect
+                    label="Структура"
+                    value={selectedSphereId ?? ''}
+                    onChange={(event) => handleSelectStructure(event.target.value)}
+                    disabled={isLoading || isMapMutating}
+                  >
+                    {spheres.length === 0 ? (
+                      <option value="">Выберите структуру</option>
+                    ) : null}
+                    {spheres.every((sphere) => sphere.name !== 'Алгебра I') ? (
+                      <option value={linearAlgebraTemplateValue}>Алгебра I · базовый шаблон</option>
+                    ) : null}
+                    {spheres.map((sphere) => (
+                      <option key={sphere.id} value={sphere.id}>
+                        {sphere.name} · {sphere.node_count} узл.
+                      </option>
+                    ))}
+                  </PixelSelect>
+                  <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+                    Выбор переключает карту на записанную структуру; базовый шаблон создается при первом выборе.
+                  </PixelText>
+                </div>
+              </PixelSurface>
+
               <PixelSurface frame="inset" padding="xs">
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   {mapStats.map((item) => (
@@ -718,6 +839,70 @@ export const NavigationView = ({
                       </PixelText>
                     </div>
                   ))}
+                </div>
+              </PixelSurface>
+
+              <PixelSurface frame="ghost" padding="sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    Управление картой
+                  </PixelText>
+                  <PixelButton
+                    tone="ghost"
+                    onClick={() => runMapCommand('overview-graph')}
+                    disabled={!hasMapNodes || !mapModel.isLargeGraph}
+                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                  >
+                    <MapIcon size={14} /> Обзор
+                  </PixelButton>
+                  <PixelButton
+                    tone="ghost"
+                    onClick={() => runMapCommand('focus-node')}
+                    disabled={!focus?.node}
+                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                  >
+                    <Target size={14} /> К фокусу
+                  </PixelButton>
+                  <PixelButton
+                    tone="ghost"
+                    onClick={() => runMapCommand('fit-graph')}
+                    disabled={!hasMapNodes}
+                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                  >
+                    <Compass size={14} /> Вписать
+                  </PixelButton>
+                  <PixelButton
+                    tone="ghost"
+                    onClick={() => runMapCommand('reset-camera')}
+                    disabled={!hasMapNodes}
+                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                  >
+                    <RotateCcw size={14} /> Сброс
+                  </PixelButton>
+                  <PixelButton
+                    tone={isSnapToGrid ? 'accent' : 'ghost'}
+                    onClick={() => setIsSnapToGrid((current) => !current)}
+                    disabled={!hasMapNodes}
+                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                  >
+                    <Grid2X2 size={14} /> Сетка {isSnapToGrid ? 'вкл' : 'выкл'}
+                  </PixelButton>
+                  <PixelButton
+                    tone={isLayoutPreviewActive && resolvedLayoutPreview.strategy === 'hierarchy' ? 'accent' : 'ghost'}
+                    onClick={handlePreviewHierarchyLayout}
+                    disabled={isMapMutating || !selectedSphere}
+                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                  >
+                    <GitBranch size={14} /> Иерархия
+                  </PixelButton>
+                  <PixelButton
+                    tone="accent"
+                    onClick={handleApplyBulkLayout}
+                    disabled={!resolvedLayoutPreview || isMapMutating}
+                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                  >
+                    <Save size={14} /> Применить
+                  </PixelButton>
                 </div>
               </PixelSurface>
 
@@ -869,10 +1054,11 @@ export const NavigationView = ({
               </div>
 
               <PixelSurface frame="inset" padding="xxs" className="min-w-0 overflow-hidden">
-                <GameMapCanvas
-                  snapshot={snapshot}
-                  focus={focus}
-                  onSelectNode={handleCanvasNodeSelect}
+                  <GameMapCanvas
+                    snapshot={snapshot}
+                    focus={focus}
+                    visibleSphereId={selectedSphereId}
+                    onSelectNode={handleCanvasNodeSelect}
                   onFocusChange={setIsMapFocused}
                   onSelectEdge={(edgeId) => {
                     setSelectedEdgeId(edgeId);
@@ -886,7 +1072,6 @@ export const NavigationView = ({
                   selectedEdgeId={selectedEdgeId}
                   connectSourceNodeId={pendingEdgeSourceNodeId}
                   connectEdgeType={isEdgeConnectMode ? pendingEdgeType : null}
-                  onToggleSnapToGrid={() => setIsSnapToGrid((current) => !current)}
                   onCreateNodeAt={async ({ x, y }) => {
                     if (!selectedSkill || isMapMutating) {
                       return false;
@@ -936,13 +1121,13 @@ export const NavigationView = ({
             <PixelPanelHeader
               eyebrow={
                 <span className="flex items-center gap-2">
-                  <GitBranch size={14} className="text-[var(--pixel-accent)]" /> Навигационные ветки
+                  <GitBranch size={14} className="text-[var(--pixel-accent)]" /> Дерево структуры
                 </span>
               }
               title={selectedSphere?.name ?? 'Структура карты'}
               description={
                 selectedSphere
-                  ? 'Под картой: направления, навыки и узлы региона.'
+                  ? 'Разделы, темы и листья выбранной структуры.'
                   : 'Пока пусто. Сначала создайте стартовый набор.'
               }
             />
@@ -951,44 +1136,14 @@ export const NavigationView = ({
               <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
                 Пока пусто. Сначала создайте стартовый набор.
               </PixelText>
-            ) : (
-              <div className="mt-3 grid min-w-0 gap-3 2xl:grid-cols-2">
-                {selectedSphere.directions.map((direction) => (
-                  <PixelSurface
-                    key={direction.id}
-                    frame={direction.id === selectedDirectionId ? 'inset' : 'ghost'}
-                    padding="md"
-                  >
-                    <PixelPanelHeader
-                      eyebrow="Направление"
-                      title={direction.name}
-                      description={`${direction.node_count} узл. · ${direction.open_action_count} шаг.`}
-                    />
-
-                    <div className="mt-3 space-y-3">
-                      {direction.skills.map((skill) => (
-                        <PixelSurface
-                          key={skill.id}
-                          frame={skill.id === selectedSkillId ? 'panel' : 'ghost'}
-                          padding="sm"
-                        >
-                          <PixelPanelHeader
-                            eyebrow="Навык"
-                            title={skill.name}
-                            description={`${skill.node_count} узл. · ${skill.open_action_count} шаг.`}
-                          />
-
-                          <div className="mt-2 space-y-2">
-                            {skill.nodes.map((node) =>
-                              renderNodeCard(node, focus?.node?.id === node.id, handleCanvasNodeSelect),
-                            )}
-                          </div>
-                        </PixelSurface>
-                      ))}
-                    </div>
-                  </PixelSurface>
-                ))}
+            ) : structureHierarchy.roots.length > 0 ? (
+              <div className="mt-3 grid min-w-0 gap-1">
+                {structureHierarchy.roots.map((nodeId) => renderStructureTreeNode(nodeId))}
               </div>
+            ) : (
+              <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
+                В этой структуре пока нет узлов.
+              </PixelText>
             )}
           </PixelSurface>
         </div>
@@ -1030,7 +1185,7 @@ export const NavigationView = ({
                         disabled={isEditorBusy}
                         style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                       >
-                        <PencilLine size={14} /> Открыть
+                        <PencilLine size={14} /> Редактировать
                       </PixelButton>
                     }
                   />
@@ -1260,7 +1415,7 @@ export const NavigationView = ({
                       onClick={() => setIsSummaryExpanded(true)}
                       style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                     >
-                      <Compass size={14} /> Открыть
+                      <Compass size={14} /> Сводка
                     </PixelButton>
                   }
                 />
@@ -1502,6 +1657,9 @@ export const NavigationView = ({
           <PixelSurface
             frame="panel"
             padding="md"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Редактор узла"
             className="relative max-h-[calc(100dvh-2rem)] w-full max-w-[820px] overflow-auto"
           >
             <PixelStack gap="md">
@@ -1720,6 +1878,9 @@ export const NavigationView = ({
           <PixelSurface
             frame="panel"
             padding="md"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Сводка узла"
             className="relative max-h-[calc(100dvh-2rem)] w-full max-w-[860px] overflow-auto"
           >
             <PixelStack gap="md">

@@ -16,7 +16,7 @@ test('map shortcuts resolve common map intents when map owns focus', () => {
   assert.equal(resolveMapShortcutIntent({ key: 'l' }, baseContext), 'toggle-connect-edge');
   assert.equal(resolveMapShortcutIntent({ key: 'g' }, baseContext), 'toggle-snap-grid');
   assert.equal(resolveMapShortcutIntent({ key: 'f' }, baseContext), 'focus-node');
-  assert.equal(resolveMapShortcutIntent({ key: 'F', shiftKey: true }, baseContext), 'fit-graph');
+  assert.equal(resolveMapShortcutIntent({ key: 'F', shiftKey: true }, baseContext), 'overview-graph');
   assert.equal(resolveMapShortcutIntent({ key: '0' }, baseContext), 'reset-camera');
   assert.equal(resolveMapShortcutIntent({ key: 'r' }, baseContext), 'refresh-map');
   assert.equal(resolveMapShortcutIntent({ key: 'Escape' }, baseContext), 'cancel-transients');

@@ -11,8 +11,14 @@ export interface GameNode {
   subtitle: string;
   state: GameNodeState;
   position: GamePoint;
+  overviewPosition?: GamePoint;
   biomeId: number;
   nextActionTitle?: string | null;
+  hierarchyDepth?: number;
+  parentNodeId?: number | null;
+  descendantCount?: number;
+  isOverviewVisible?: boolean;
+  isOnSelectedPath?: boolean;
 }
 
 export interface GameEdge {
@@ -68,4 +74,6 @@ export interface GameSceneModel {
   hero: GameHero;
   highlightedNodeId: number | null;
   bounds: GameBounds;
+  overviewBounds?: GameBounds;
+  isLargeGraph?: boolean;
 }

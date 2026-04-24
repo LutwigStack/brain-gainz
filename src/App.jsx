@@ -239,6 +239,39 @@ export default function App() {
     }
   };
 
+  const handleCreateLinearAlgebraGraph = async () => {
+    setNowCreatingStarter(true);
+    setNowError(null);
+    setNavigationError(null);
+
+    try {
+      const snapshot = await db.createLinearAlgebraGraphWorkspace();
+      setNowSnapshot(snapshot);
+      const navigation = await db.getNavigationSnapshot();
+      const rootNode = navigation.spheres
+        .flatMap((sphere) => sphere.directions)
+        .flatMap((direction) => direction.skills)
+        .flatMap((skill) => skill.nodes)
+        .find((node) => node.title === 'Основные темы курса Алгебры I');
+      const nextSelection = rootNode
+        ? { nodeId: rootNode.id, actionId: rootNode.next_action_id ?? null }
+        : chooseNowSelection(snapshot);
+      setNowSelection(nextSelection);
+      await loadNowFocus(nextSelection);
+      setNavigationSnapshot(navigation);
+      setNavigationSelection(nextSelection);
+      await loadNavigationFocus(nextSelection);
+      setActiveTab('map');
+    } catch (error) {
+      console.error('Failed to create linear algebra graph', error);
+      const message = error.message || 'Не удалось создать граф алгебры.';
+      setNowError(message);
+      setNavigationError(message);
+    } finally {
+      setNowCreatingStarter(false);
+    }
+  };
+
   const applyOutcomeResult = async (result) => {
     if (!result) {
       return;
@@ -680,6 +713,8 @@ export default function App() {
       }}
     >
       <header
+        inert={showSettings ? '' : undefined}
+        aria-hidden={showSettings ? true : undefined}
         className="sticky top-0 z-50 px-3 pb-2 pt-2 sm:px-4"
         style={{
           paddingTop: runtime.usesSafeAreaInsets ? 'max(0.5rem, env(safe-area-inset-top))' : undefined,
@@ -752,7 +787,14 @@ export default function App() {
 
       {showSettings && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
-          <PixelSurface frame="panel" padding="xl" className="max-h-[calc(100dvh-1.5rem)] w-full max-w-[520px] overflow-auto">
+          <PixelSurface
+            frame="panel"
+            padding="xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Настройки"
+            className="max-h-[calc(100dvh-1.5rem)] w-full max-w-[520px] overflow-auto"
+          >
             <PixelStack gap="lg">
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -856,14 +898,18 @@ export default function App() {
               </PixelStack>
 
               <PixelButton tone="accent" onClick={() => setShowSettings(false)} fullWidth>
-                Сохранить
+                Готово
               </PixelButton>
             </PixelStack>
           </PixelSurface>
         </div>
       )}
 
-      <main className="w-full min-w-0 flex-grow px-3 pb-4 pt-1 sm:px-4 sm:pb-6 sm:pt-1">
+      <main
+        inert={showSettings ? '' : undefined}
+        aria-hidden={showSettings ? true : undefined}
+        className="w-full min-w-0 flex-grow px-3 pb-4 pt-1 sm:px-4 sm:pb-6 sm:pt-1"
+      >
         <Suspense fallback={screenFallback}>
         {normalizedActiveTab === 'now' && (
           <NowView
@@ -897,6 +943,7 @@ export default function App() {
             barrierType={mapBarrierType}
             shrinkTitle={mapShrinkTitle}
             onRefresh={loadNavigationSnapshot}
+            onCreateLinearAlgebraGraph={handleCreateLinearAlgebraGraph}
             onSelectNode={handleSelectNavigationNode}
             onSelectAction={handleSelectNavigationAction}
             onStartSession={handleStartNavigationSession}

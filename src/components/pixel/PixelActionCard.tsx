@@ -25,20 +25,25 @@ export const PixelActionCard = ({
   active = false,
   style,
   ...props
-}: PixelActionCardProps) => (
-  <button
-    {...props}
-    style={{
-      display: 'block',
-      width: '100%',
-      textAlign: 'left',
-      background: 'transparent',
-      border: 0,
-      padding: 0,
-      cursor: props.disabled ? 'not-allowed' : 'pointer',
-      ...style,
-    }}
-  >
+}: PixelActionCardProps) => {
+  const isInteractive = Boolean(
+    props.onClick ||
+      props.onDoubleClick ||
+      props.onKeyDown ||
+      props.onMouseDown ||
+      props.onPointerDown,
+  );
+  const wrapperStyle = {
+    display: 'block',
+    width: '100%',
+    textAlign: 'left' as const,
+    background: 'transparent',
+    border: 0,
+    padding: 0,
+    cursor: isInteractive ? (props.disabled ? 'not-allowed' : 'pointer') : 'default',
+    ...style,
+  };
+  const content = (
     <PixelSurface
       frame={active ? 'accent' : 'panel'}
       padding="md"
@@ -74,5 +79,15 @@ export const PixelActionCard = ({
         </PixelStack>
       </div>
     </PixelSurface>
-  </button>
-);
+  );
+
+  if (!isInteractive) {
+    return <div style={wrapperStyle}>{content}</div>;
+  }
+
+  return (
+    <button {...props} style={wrapperStyle}>
+      {content}
+    </button>
+  );
+};

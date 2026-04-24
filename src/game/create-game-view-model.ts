@@ -1,4 +1,5 @@
 import type { NavigationSnapshot, NodeFocusSnapshot } from '../types/app-shell';
+import { buildGraphHierarchyIndex, isOverviewNodeVisible } from '../application/graph-hierarchy.ts';
 import type {
   GameBiome,
   GameBounds,
@@ -15,6 +16,9 @@ const BIOME_RING_RADIUS = 360;
 const BIOME_RADIUS = 164;
 const DIRECTION_RING_STEP = 48;
 const NODE_STEP = 72;
+const LARGE_GRAPH_NODE_THRESHOLD = 40;
+const OVERVIEW_X_STEP = 380;
+const OVERVIEW_SECTION_STEP = 88;
 
 const biomePalette = [
   { color: 0x17335f, accent: 0x60a5fa },
@@ -174,9 +178,97 @@ const computeBounds = (nodes: GameNode[], biomes: GameBiome[]): GameBounds => {
   };
 };
 
+const computeNodeBounds = (
+  nodes: GameNode[],
+  getPosition: (node: GameNode) => GamePoint = (node) => node.position,
+): GameBounds => {
+  if (nodes.length === 0) {
+    return {
+      minX: -240,
+      minY: -180,
+      maxX: 240,
+      maxY: 180,
+      width: 480,
+      height: 360,
+      center: { x: 0, y: 0 },
+    };
+  }
+
+  const paddingX = 220;
+  const paddingY = 120;
+  const positions = nodes.map(getPosition);
+  const minX = Math.min(...positions.map((position) => position.x)) - paddingX;
+  const minY = Math.min(...positions.map((position) => position.y)) - paddingY;
+  const maxX = Math.max(...positions.map((position) => position.x)) + paddingX;
+  const maxY = Math.max(...positions.map((position) => position.y)) + paddingY;
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+    center: {
+      x: minX + (maxX - minX) / 2,
+      y: minY + (maxY - minY) / 2,
+    },
+  };
+};
+
+const createOverviewPositions = (nodes: GameNode[], hierarchy: ReturnType<typeof buildGraphHierarchyIndex>) => {
+  const activeNodeIds = new Set(nodes.map((node) => node.id));
+  const positions = new Map<number, GamePoint>();
+  const roots = hierarchy.roots.filter((nodeId) => activeNodeIds.has(nodeId));
+
+  roots.forEach((rootId, rootIndex) => {
+    const rootY = rootIndex * OVERVIEW_SECTION_STEP * 9;
+    positions.set(rootId, { x: 0, y: rootY });
+
+    const rootEntry = hierarchy.entries.get(rootId);
+    const sectionIds = rootEntry?.childIds.filter((nodeId) => activeNodeIds.has(nodeId)) ?? [];
+    const firstSectionY = rootY - ((sectionIds.length - 1) * OVERVIEW_SECTION_STEP) / 2;
+
+    sectionIds.forEach((sectionId, sectionIndex) => {
+      const sectionY = firstSectionY + sectionIndex * OVERVIEW_SECTION_STEP;
+      positions.set(sectionId, { x: OVERVIEW_X_STEP, y: sectionY });
+
+      let currentId = sectionId;
+      let depth = 2;
+      while (depth < 8) {
+        const currentEntry = hierarchy.entries.get(currentId);
+        const pathChildId = currentEntry?.childIds.find((nodeId) => hierarchy.selectedPathIds.has(nodeId));
+        if (pathChildId == null || !activeNodeIds.has(pathChildId)) {
+          break;
+        }
+
+        positions.set(pathChildId, { x: OVERVIEW_X_STEP * depth, y: sectionY });
+        currentId = pathChildId;
+        depth += 1;
+      }
+    });
+  });
+
+  let fallbackIndex = 0;
+  nodes.forEach((node) => {
+    if (!node.isOverviewVisible || positions.has(node.id)) {
+      return;
+    }
+
+    positions.set(node.id, {
+      x: (node.hierarchyDepth ?? 0) * OVERVIEW_X_STEP,
+      y: roots.length * OVERVIEW_SECTION_STEP * 9 + fallbackIndex * OVERVIEW_SECTION_STEP,
+    });
+    fallbackIndex += 1;
+  });
+
+  return positions;
+};
+
 export const createGameViewModel = (
   snapshot: NavigationSnapshot | null,
   focus: NodeFocusSnapshot | null,
+  options: { visibleSphereId?: number | null } = {},
 ): GameSceneModel => {
   if (!snapshot) {
     return {
@@ -199,17 +291,21 @@ export const createGameViewModel = (
     };
   }
 
+  const visibleSpheres =
+    options.visibleSphereId == null
+      ? snapshot.spheres
+      : snapshot.spheres.filter((sphere) => sphere.id === options.visibleSphereId);
   const nodes: GameNode[] = [];
-  const biomes = snapshot.spheres.map((sphere, index) =>
+  const biomes = visibleSpheres.map((sphere, index) =>
     createBiome(
       sphere.name,
       index,
-      snapshot.spheres.length,
+      visibleSpheres.length,
       sphere.directions.reduce((sum, direction) => sum + direction.node_count, 0),
     ),
   );
 
-  snapshot.spheres.forEach((sphere, sphereIndex) => {
+  visibleSpheres.forEach((sphere, sphereIndex) => {
     const biome = biomes[sphereIndex];
     const totalDirections = Math.max(sphere.directions.length, 1);
 
@@ -242,6 +338,22 @@ export const createGameViewModel = (
   });
 
   const activeNodeIds = new Set(nodes.map((node) => node.id));
+  const selectedNodeId = focus?.node?.id ?? snapshot.defaultSelection?.nodeId ?? nodes[0]?.id ?? null;
+  const hierarchy = buildGraphHierarchyIndex(snapshot, options.visibleSphereId ?? null, selectedNodeId);
+
+  nodes.forEach((node) => {
+    const entry = hierarchy.entries.get(node.id);
+    node.hierarchyDepth = entry?.depth ?? 0;
+    node.parentNodeId = entry?.parentId ?? null;
+    node.descendantCount = entry?.descendantCount ?? 0;
+    node.isOnSelectedPath = entry?.isOnSelectedPath ?? false;
+    node.isOverviewVisible = isOverviewNodeVisible(entry);
+  });
+  const overviewPositions = createOverviewPositions(nodes, hierarchy);
+  nodes.forEach((node) => {
+    node.overviewPosition = overviewPositions.get(node.id);
+  });
+
   const edges: GameEdge[] = snapshot.edges
     .filter(
       (edge, index, collection) =>
@@ -256,7 +368,8 @@ export const createGameViewModel = (
       type: edge.edge_type,
     }));
 
-  const selectedNodeId = focus?.node?.id ?? snapshot.defaultSelection?.nodeId ?? nodes[0]?.id ?? null;
+  const isLargeGraph = nodes.length >= LARGE_GRAPH_NODE_THRESHOLD;
+  const overviewNodes = nodes.filter((node) => node.isOverviewVisible);
 
   return {
     biomes,
@@ -273,5 +386,10 @@ export const createGameViewModel = (
     },
     highlightedNodeId: selectedNodeId,
     bounds: computeBounds(nodes, biomes),
+    overviewBounds: computeNodeBounds(
+      overviewNodes.length > 0 ? overviewNodes : nodes,
+      (node) => node.overviewPosition ?? node.position,
+    ),
+    isLargeGraph,
   };
 };

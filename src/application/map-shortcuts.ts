@@ -2,6 +2,7 @@ export type MapShortcutIntent =
   | 'toggle-create-node'
   | 'toggle-connect-edge'
   | 'toggle-snap-grid'
+  | 'overview-graph'
   | 'focus-node'
   | 'fit-graph'
   | 'reset-camera'
@@ -57,7 +58,7 @@ export const resolveMapShortcutIntent = (
     case 'g':
       return 'toggle-snap-grid';
     case 'f':
-      return context.hasFocusNode ? (input.shiftKey ? 'fit-graph' : 'focus-node') : null;
+      return context.hasFocusNode ? (input.shiftKey ? 'overview-graph' : 'focus-node') : null;
     case '0':
       return 'reset-camera';
     case 'r':

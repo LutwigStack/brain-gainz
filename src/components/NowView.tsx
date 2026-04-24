@@ -235,7 +235,7 @@ export const NowView = ({
 
                 <div className="flex flex-wrap gap-2 lg:justify-end">
                   <PixelButton tone="ghost" onClick={() => onSelectRecommendation(primaryCandidate)}>
-                    <Compass size={16} /> Выбрать
+                    <Compass size={16} /> Сделать фокусом
                   </PixelButton>
                   <PixelButton tone="accent" onClick={() => onOpenMap(primaryCandidate)}>
                     <MapIcon size={16} /> Открыть карту

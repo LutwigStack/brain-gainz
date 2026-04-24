@@ -2,7 +2,7 @@
 
 ## Status
 
-`active`
+`done`
 
 ## Goal
 
@@ -36,6 +36,6 @@ Excludes:
 
 ## Workstreams
 
-- `active` - [workstreams/01-schema-for-editor-owned-node-fields.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/05-node-editor-model-expansion/workstreams/01-schema-for-editor-owned-node-fields.md)
-- `planned` - [workstreams/02-boundary-and-store-contracts.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/05-node-editor-model-expansion/workstreams/02-boundary-and-store-contracts.md)
-- `planned` - [workstreams/03-rail-ui-migration-to-expanded-model.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/05-node-editor-model-expansion/workstreams/03-rail-ui-migration-to-expanded-model.md)
+- `done` - [workstreams/01-schema-for-editor-owned-node-fields.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/05-node-editor-model-expansion/workstreams/01-schema-for-editor-owned-node-fields.md)
+- `done` - [workstreams/02-boundary-and-store-contracts.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/05-node-editor-model-expansion/workstreams/02-boundary-and-store-contracts.md)
+- `done` - [workstreams/03-rail-ui-migration-to-expanded-model.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/05-node-editor-model-expansion/workstreams/03-rail-ui-migration-to-expanded-model.md)

@@ -114,6 +114,21 @@ test('buildBulkLayoutPreview creates a tidy preview for the current region', () 
   assert.ok(preview?.positions[3]);
 });
 
+test('buildBulkLayoutPreview creates a left-to-right hierarchy from graph edges', () => {
+  const preview = buildBulkLayoutPreview({
+    snapshot,
+    focus,
+    scope: 'region',
+    strategy: 'hierarchy',
+    selectedSphereId: 1,
+    positionIndex,
+  });
+
+  assert.equal(preview?.nodeIds.length, 3);
+  assert.equal(preview.positions[2].x < preview.positions[1].x, true);
+  assert.equal(preview.positions[3].x < preview.positions[1].x, true);
+});
+
 test('buildBulkLayoutPreview keeps the focus node in radial preview when focus-neighborhood is selected', () => {
   const preview = buildBulkLayoutPreview({
     snapshot,

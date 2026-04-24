@@ -1,7 +1,7 @@
 ﻿import { Application } from 'pixi.js';
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 
-import { PixelButton, PixelSurface, PixelText } from '../../components/pixel';
+import { PixelSurface, PixelText } from '../../components/pixel';
 import type { NavigationNodeSummary, NavigationSnapshot, NodeFocusSnapshot } from '../../types/app-shell';
 import { BrainGainzScene } from '../brain-gainz-scene';
 import { createGameViewModel } from '../create-game-view-model';
@@ -17,13 +17,13 @@ interface GameMapCanvasProps {
   onMoveNode?: (input: { nodeId: number; x: number; y: number }) => Promise<void> | void;
   canDragNodes?: boolean;
   previewNodePositions?: Record<number, GamePoint> | null;
-  onToggleSnapToGrid?: () => void;
   createMode?: boolean;
   snapToGrid?: boolean;
   selectedEdgeId?: number | null;
   connectSourceNodeId?: number | null;
   connectEdgeType?: 'requires' | 'supports' | 'relates_to' | null;
-  mapCommand?: { id: number; type: 'focus-node' | 'fit-graph' | 'reset-camera' } | null;
+  visibleSphereId?: number | null;
+  mapCommand?: { id: number; type: 'overview-graph' | 'focus-node' | 'fit-graph' | 'reset-camera' } | null;
   onFocusChange?: (focused: boolean) => void;
   className?: string;
 }
@@ -54,6 +54,8 @@ const MINIMAP_SIZE = {
   width: 220,
   height: 156,
 };
+
+type OverviewPreference = 'auto' | 'overview' | 'detail';
 
 const applyPreviewToModel = (
   model: GameSceneModel,
@@ -112,12 +114,12 @@ export const GameMapCanvas = ({
   onMoveNode,
   canDragNodes = true,
   previewNodePositions = null,
-  onToggleSnapToGrid,
   createMode = false,
   snapToGrid = true,
   selectedEdgeId = null,
   connectSourceNodeId = null,
   connectEdgeType = null,
+  visibleSphereId = null,
   mapCommand = null,
   onFocusChange,
   className = 'h-[clamp(620px,calc(100dvh-180px),1080px)] w-full overflow-hidden rounded-[1rem] border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)]',
@@ -126,20 +128,27 @@ export const GameMapCanvas = ({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
   const sceneRef = useRef<BrainGainzScene | null>(null);
-  const modelRef = useRef(createGameViewModel(snapshot, focus));
+  const modelRef = useRef(createGameViewModel(snapshot, focus, { visibleSphereId }));
+  const viewportSphereRef = useRef<number | null>(visibleSphereId);
+  const visibleSphereIdRef = useRef<number | null>(visibleSphereId);
   const canDragNodesRef = useRef(canDragNodes);
   const createModeRef = useRef(createMode);
   const snapToGridRef = useRef(snapToGrid);
   const selectedEdgeIdRef = useRef(selectedEdgeId);
   const connectSourceNodeIdRef = useRef(connectSourceNodeId);
   const connectEdgeTypeRef = useRef(connectEdgeType);
+  const viewportCameraRef = useRef<ViewportCamera | null>(null);
   const [viewportCamera, setViewportCamera] = useState<ViewportCamera | null>(null);
   const [hostSize, setHostSize] = useState({ width: 0, height: 0 });
-  const onSelectNodeEvent = useEffectEvent((nodeId: number) => {
-    const node = findNodeById(snapshot, nodeId);
-    if (node) {
-      onSelectNode(node);
-    }
+  const [overviewPreference, setOverviewPreference] = useState<{
+    sphereId: number | null;
+    mode: OverviewPreference;
+  }>({ sphereId: visibleSphereId, mode: 'auto' });
+  const handleViewportChange = useEffectEvent((camera: ViewportCamera) => {
+    viewportCameraRef.current = camera;
+    setViewportCamera((current) =>
+      current && current.x === camera.x && current.y === camera.y && current.zoom === camera.zoom ? current : camera,
+    );
   });
   const onCreateNodeAtEvent = useEffectEvent(async (position: { x: number; y: number }) => {
     if (!onCreateNodeAt) {
@@ -156,9 +165,27 @@ export const GameMapCanvas = ({
   });
 
   const model = useMemo(
-    () => applyPreviewToModel(createGameViewModel(snapshot, focus), previewNodePositions),
-    [focus, previewNodePositions, snapshot],
+    () => applyPreviewToModel(createGameViewModel(snapshot, focus, { visibleSphereId }), previewNodePositions),
+    [focus, previewNodePositions, snapshot, visibleSphereId],
   );
+  const resolvedOverviewPreference: OverviewPreference =
+    overviewPreference.sphereId === visibleSphereId ? overviewPreference.mode : 'overview';
+  const shouldRenderOverview = Boolean(
+    model.isLargeGraph &&
+      (resolvedOverviewPreference === 'overview' ||
+        (resolvedOverviewPreference === 'auto' && ((viewportCamera?.zoom ?? 1) < 0.32))),
+  );
+  const onSelectNodeEvent = useEffectEvent((nodeId: number) => {
+    const node = findNodeById(snapshot, nodeId);
+    if (node) {
+      const gameNode = model.nodes.find((item) => item.id === nodeId);
+      setOverviewPreference({
+        sphereId: visibleSphereId,
+        mode: shouldRenderOverview && (gameNode?.hierarchyDepth ?? 99) <= 1 ? 'overview' : 'detail',
+      });
+      onSelectNode(node);
+    }
+  });
 
   useEffect(() => {
     canDragNodesRef.current = canDragNodes;
@@ -183,6 +210,10 @@ export const GameMapCanvas = ({
   useEffect(() => {
     connectEdgeTypeRef.current = connectEdgeType;
   }, [connectEdgeType]);
+
+  useEffect(() => {
+    visibleSphereIdRef.current = visibleSphereId;
+  }, [visibleSphereId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,10 +257,11 @@ export const GameMapCanvas = ({
             selectedEdgeId: selectedEdgeIdRef.current,
             connectSourceNodeId: connectSourceNodeIdRef.current,
             connectEdgeType: connectEdgeTypeRef.current,
+            overviewMode: false,
         },
         {
           preserveViewport: false,
-          onViewportChange: setViewportCamera,
+          onViewportChange: handleViewportChange,
         },
       );
 
@@ -262,6 +294,9 @@ export const GameMapCanvas = ({
         if (event.ctrlKey || event.metaKey) {
           event.preventDefault();
           const scaleDelta = event.deltaY > 0 ? 0.92 : 1.08;
+          if (event.deltaY < 0) {
+            setOverviewPreference({ sphereId: visibleSphereIdRef.current, mode: 'detail' });
+          }
           sceneRef.current.zoomAtScreenPoint(screenPoint, scaleDelta);
           return;
         }
@@ -293,6 +328,8 @@ export const GameMapCanvas = ({
   }, []);
 
   useEffect(() => {
+    const shouldPreserveViewport = viewportSphereRef.current === visibleSphereId;
+    viewportSphereRef.current = visibleSphereId;
     modelRef.current = model;
     sceneRef.current?.render(
       model,
@@ -307,13 +344,14 @@ export const GameMapCanvas = ({
           selectedEdgeId,
           connectSourceNodeId,
           connectEdgeType,
+          overviewMode: shouldRenderOverview,
       },
       {
-        preserveViewport: true,
-        onViewportChange: setViewportCamera,
+        preserveViewport: shouldPreserveViewport,
+        onViewportChange: handleViewportChange,
       },
     );
-  }, [canDragNodes, connectEdgeType, connectSourceNodeId, createMode, model, selectedEdgeId, snapToGrid]);
+  }, [canDragNodes, connectEdgeType, connectSourceNodeId, createMode, model, selectedEdgeId, shouldRenderOverview, snapToGrid, visibleSphereId]);
 
   const minimap = useMemo(() => {
     if (!viewportCamera || hostSize.width <= 0 || hostSize.height <= 0) {
@@ -371,12 +409,20 @@ export const GameMapCanvas = ({
     }
 
     switch (mapCommand.type) {
+      case 'overview-graph':
+        setTimeout(() => setOverviewPreference({ sphereId: visibleSphereId, mode: 'overview' }), 0);
+        sceneRef.current.fitToOverview();
+        break;
       case 'focus-node':
-        if (highlightedNode && viewportCamera) {
-          sceneRef.current.centerOnPoint(highlightedNode.position, viewportCamera.zoom);
+        setTimeout(() => setOverviewPreference({ sphereId: visibleSphereId, mode: 'detail' }), 0);
+        if (highlightedNode) {
+          sceneRef.current.centerOnPoint(highlightedNode.position, Math.max(viewportCameraRef.current?.zoom ?? 1, 0.9));
         }
         break;
       case 'fit-graph':
+        if (model.isLargeGraph) {
+          setTimeout(() => setOverviewPreference({ sphereId: visibleSphereId, mode: 'overview' }), 0);
+        }
         sceneRef.current.fitToGraph();
         break;
       case 'reset-camera':
@@ -385,7 +431,7 @@ export const GameMapCanvas = ({
       default:
         break;
     }
-  }, [highlightedNode, mapCommand, viewportCamera]);
+  }, [highlightedNode, mapCommand, model.isLargeGraph, visibleSphereId]);
 
   const recenterFromMinimap = (clientX: number, clientY: number, element: HTMLDivElement) => {
     if (!minimap || !viewportCamera) {
@@ -435,44 +481,16 @@ export const GameMapCanvas = ({
       ) : null}
 
       <div className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-2 sm:left-3 sm:top-3 sm:max-w-[calc(100%-1.5rem)]">
-        <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="pointer-events-auto">
+        <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
           <div className="flex flex-wrap items-center gap-2">
-            <PixelButton
-              tone="ghost"
-              onClick={() => sceneRef.current?.fitToGraph()}
-              style={{ minHeight: 28, padding: '4px 8px' }}
-            >
-              Вписать
-            </PixelButton>
-            <PixelButton
-              tone="ghost"
-              onClick={() => sceneRef.current?.resetCamera()}
-              style={{ minHeight: 28, padding: '4px 8px' }}
-            >
-              Сброс
-            </PixelButton>
-            <PixelButton
-              tone="ghost"
-              onClick={() => {
-                if (highlightedNode && viewportCamera) {
-                  sceneRef.current?.centerOnPoint(highlightedNode.position, viewportCamera.zoom);
-                }
-              }}
-              disabled={!highlightedNode}
-              style={{ minHeight: 28, padding: '4px 8px' }}
-            >
-              К фокусу
-            </PixelButton>
-            <PixelButton
-              tone={snapToGrid ? 'accent' : 'ghost'}
-              onClick={onToggleSnapToGrid}
-              style={{ minHeight: 28, padding: '4px 8px' }}
-            >
-              Сетка {snapToGrid ? 'вкл' : 'выкл'}
-            </PixelButton>
             <PixelText as="span" size="xs" color="textMuted" uppercase className="hidden sm:inline">
               {formatZoomPercent(viewportCamera)}
             </PixelText>
+            {shouldRenderOverview ? (
+              <PixelText as="span" size="xs" color="accent" uppercase>
+                Обзор структуры
+              </PixelText>
+            ) : null}
             {createMode ? (
               <PixelText as="span" size="xs" color="accent" uppercase>
                 {'\u0420\u0435\u0436\u0438\u043c: \u043d\u043e\u0432\u044b\u0439 \u0443\u0437\u0435\u043b'}
@@ -490,7 +508,7 @@ export const GameMapCanvas = ({
         </PixelSurface>
       </div>
 
-      {minimap && !isEmptyMap ? (
+      {minimap && !isEmptyMap && !shouldRenderOverview ? (
         <div className="pointer-events-none absolute bottom-3 right-3 z-10 hidden sm:block">
           <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="pointer-events-auto">
             <div className="flex items-center justify-between gap-3 pb-2">
