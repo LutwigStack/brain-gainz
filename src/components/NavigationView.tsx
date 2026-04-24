@@ -138,20 +138,6 @@ const bulkLayoutStrategyOptions = [
   { value: 'radial', label: '\u0420\u0430\u0434\u0438\u0430\u043b\u044c\u043d\u043e' },
 ] as const;
 
-const pickSphereFocusNode = (sphere: NavigationSnapshot['spheres'][number]) => {
-  const nodes = sphere.directions.flatMap((direction) =>
-    direction.skills.flatMap((skill) => skill.nodes),
-  );
-
-  return (
-    nodes.find((node) => node.next_action_id != null) ??
-    nodes.find((node) => node.open_action_count > 0 && node.status !== 'done') ??
-    nodes.find((node) => node.status === 'doing' || node.status === 'ready') ??
-    nodes[0] ??
-    null
-  );
-};
-
 const renderNodeCard = (
   node: NavigationNodeSummary,
   isSelected: boolean,
@@ -316,9 +302,6 @@ export const NavigationView = ({
   const totalDirections = selectedSphere?.directions.length ?? 0;
   const totalSkills =
     selectedSphere?.directions.reduce((sum, direction) => sum + direction.skills.length, 0) ?? 0;
-  const totalNodes = selectedSphere?.node_count ?? 0;
-  const totalActions = selectedSphere?.open_action_count ?? 0;
-
   const workspaceDirections = spheres.reduce((sum, sphere) => sum + sphere.directions.length, 0);
   const workspaceSkills = spheres.reduce(
     (sum, sphere) =>
@@ -465,8 +448,10 @@ export const NavigationView = ({
     });
   }, [isMapMutating]);
 
+  const focusNodeId = focus?.node?.id ?? null;
+
   const toggleConnectEdgeMode = useCallback(() => {
-    if (isMapMutating || !focus?.node) {
+    if (isMapMutating || focusNodeId == null) {
       return;
     }
 
@@ -475,13 +460,13 @@ export const NavigationView = ({
       if (next) {
         setIsMapCreateMode(false);
         setSelectedEdgeId(null);
-        setPendingEdgeSourceNodeId(focus.node.id);
+        setPendingEdgeSourceNodeId(focusNodeId);
       } else {
         setPendingEdgeSourceNodeId(null);
       }
       return next;
     });
-  }, [focus?.node, isMapMutating]);
+  }, [focusNodeId, isMapMutating]);
 
   const isInteractiveTextElement = (target: EventTarget | null) => {
     if (!(target instanceof Element)) {
@@ -675,8 +660,8 @@ export const NavigationView = ({
         </PixelSurface>
       ) : null}
 
-      <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="space-y-4">
+      <section className="grid min-w-0 items-start gap-3 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="min-w-0 space-y-4">
           <PixelSurface frame="panel" padding="md">
             <PixelPanelHeader
               eyebrow="Граф"
@@ -715,7 +700,7 @@ export const NavigationView = ({
               }
             />
 
-            <div className="mt-3 space-y-3">
+            <div className="mt-3 min-w-0 space-y-3">
               <PixelSurface frame="inset" padding="xs">
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   {mapStats.map((item) => (
@@ -736,7 +721,7 @@ export const NavigationView = ({
                 </div>
               </PixelSurface>
 
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
                 <PixelSurface frame={isMapCreateMode || isEdgeConnectMode || isLayoutPreviewActive ? 'accent' : 'ghost'} padding="sm">
                   <div className="flex flex-wrap items-center gap-2">
                     <PixelText as="span" size="xs" color={isMapCreateMode || isEdgeConnectMode || isLayoutPreviewActive ? 'accent' : 'textMuted'} uppercase>
@@ -883,7 +868,7 @@ export const NavigationView = ({
                 ) : null}
               </div>
 
-              <PixelSurface frame="inset" padding="xxs" className="overflow-hidden">
+              <PixelSurface frame="inset" padding="xxs" className="min-w-0 overflow-hidden">
                 <GameMapCanvas
                   snapshot={snapshot}
                   focus={focus}
@@ -921,7 +906,7 @@ export const NavigationView = ({
                     return created;
                   }}
                   onMoveNode={isLayoutPreviewActive ? undefined : onMoveNode}
-                  className="h-[520px] w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] sm:h-[clamp(680px,calc(100dvh-220px),1040px)]"
+                  className="h-[480px] min-w-0 max-w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] sm:h-[clamp(680px,calc(100dvh-220px),1040px)]"
                 />
               </PixelSurface>
 
@@ -947,7 +932,7 @@ export const NavigationView = ({
             </div>
           </PixelSurface>
 
-          <PixelSurface frame="panel" padding="lg">
+          <PixelSurface frame="panel" padding="lg" className="min-w-0">
             <PixelPanelHeader
               eyebrow={
                 <span className="flex items-center gap-2">
@@ -967,7 +952,7 @@ export const NavigationView = ({
                 Пока пусто. Сначала создайте стартовый набор.
               </PixelText>
             ) : (
-              <div className="mt-3 grid gap-3 2xl:grid-cols-2">
+              <div className="mt-3 grid min-w-0 gap-3 2xl:grid-cols-2">
                 {selectedSphere.directions.map((direction) => (
                   <PixelSurface
                     key={direction.id}
@@ -1008,7 +993,7 @@ export const NavigationView = ({
           </PixelSurface>
         </div>
 
-        <div className="self-start xl:sticky xl:top-3 xl:justify-self-end xl:w-[340px] 2xl:w-[360px]">
+        <div className="min-w-0 max-w-full self-start xl:sticky xl:top-3 xl:justify-self-end xl:w-[340px] 2xl:w-[360px]">
           <PixelStack gap="md">
             <PixelSurface frame="panel" padding="md">
               {isFocusLoading ? (

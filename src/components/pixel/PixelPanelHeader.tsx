@@ -18,14 +18,14 @@ export const PixelPanelHeader = ({
   ...props
 }: PixelPanelHeaderProps) => (
   <div {...props}>
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <PixelStack gap="xs">
+    <div className="flex min-w-0 flex-wrap items-start justify-between gap-4">
+      <PixelStack gap="xs" className="min-w-0">
         {eyebrow ? (
           <PixelText as="p" size="xs" color="textMuted" uppercase>
             {eyebrow}
           </PixelText>
         ) : null}
-        <PixelText as="h3" size="lg" style={{ margin: 0 }}>
+        <PixelText as="h3" readable size="lg" style={{ margin: 0, fontWeight: 700 }}>
           {title}
         </PixelText>
         {description ? (
@@ -35,7 +35,7 @@ export const PixelPanelHeader = ({
         ) : null}
       </PixelStack>
 
-      {aside ? <div>{aside}</div> : null}
+      {aside ? <div className="min-w-0">{aside}</div> : null}
     </div>
   </div>
 );

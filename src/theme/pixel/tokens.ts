@@ -81,6 +81,7 @@ export const pixelTypography = {
     relaxed: 1.6,
   },
   tracking: {
+    normal: '0',
     tight: '0.04em',
     wide: '0.08em',
     widest: '0.14em',

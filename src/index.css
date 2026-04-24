@@ -1,6 +1,12 @@
 @import "tailwindcss";
 
 @layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
   html {
     min-height: 100%;
     background: var(--pixel-canvas);

@@ -24,7 +24,7 @@ export const PixelText = ({
   color = 'text',
   size = 'sm',
   lineHeight = 'base',
-  tracking = 'wide',
+  tracking = 'normal',
   readable = false,
   uppercase = false,
   style,

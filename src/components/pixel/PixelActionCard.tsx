@@ -46,14 +46,14 @@ export const PixelActionCard = ({
         opacity: props.disabled ? 0.55 : 1,
       }}
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <PixelStack gap="xs">
+      <div className="grid min-w-0 gap-3 2xl:grid-cols-[minmax(0,1fr)_auto]">
+        <PixelStack gap="xs" className="min-w-0 flex-1">
           {eyebrow ? (
             <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
               {eyebrow}
             </PixelText>
           ) : null}
-          <PixelText as="p" size="sm" style={{ margin: 0 }}>
+          <PixelText as="p" readable size="sm" style={{ margin: 0, fontWeight: 700 }}>
             {title}
           </PixelText>
           {description ? (
@@ -64,9 +64,9 @@ export const PixelActionCard = ({
           {badges ? <div className="mt-2 flex flex-wrap gap-2">{badges}</div> : null}
         </PixelStack>
 
-        <PixelStack gap="xs" align="flex-end">
+        <PixelStack gap="xs" align="flex-start" className="min-w-0 2xl:items-end 2xl:justify-self-end">
           {meta ? (
-            <PixelText as="div" readable size="sm" color="textMuted" style={{ textAlign: 'right' }}>
+            <PixelText as="div" readable size="sm" color="textMuted" style={{ textAlign: 'left' }}>
               {meta}
             </PixelText>
           ) : null}

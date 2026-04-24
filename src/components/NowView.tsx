@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   Compass,
   Layers,
+  Map as MapIcon,
   RefreshCw,
 } from 'lucide-react';
 
@@ -121,6 +122,7 @@ interface NowViewProps {
   isCreatingStarter: boolean;
   onCreateStarterWorkspace: () => void;
   onSelectRecommendation: (recommendation: RecommendationCandidate) => void;
+  onOpenMap: (recommendation: RecommendationCandidate) => void;
   onRefresh: () => void;
 }
 
@@ -133,6 +135,7 @@ export const NowView = ({
   isCreatingStarter,
   onCreateStarterWorkspace,
   onSelectRecommendation,
+  onOpenMap,
   onRefresh,
 }: NowViewProps) => {
   const metrics = snapshot?.metrics ?? emptyMetrics;
@@ -145,6 +148,7 @@ export const NowView = ({
   const weakeningItems = primaryRecommendation
     ? [primaryRecommendation]
     : queue.filter(isRecommendationCandidate).slice(0, 1);
+  const primaryCandidate = primaryRecommendation ?? weakeningItems[0] ?? null;
   const optionalItems = queue
     .filter((item) => item.actionId !== weakeningItems[0]?.actionId)
     .slice(0, 4);
@@ -172,19 +176,19 @@ export const NowView = ({
   });
 
   return (
-    <div className="space-y-6">
-      <PixelSurface frame="panel" padding="xxl">
+    <div className="space-y-4">
+      <PixelSurface frame="panel" padding="xl">
         <PixelStack gap="lg">
           <PixelPanelHeader
             eyebrow="Сейчас"
             title={
               <span className="flex items-center gap-3">
-            <Brain size={24} className="text-[var(--pixel-accent)]" /> Короткая сводка
+                <Brain size={24} className="text-[var(--pixel-accent)]" /> Следующий ход
               </span>
             }
-            description="Что слабеет, что почти закрыто и что можно взять следующим."
+            description="Один шаг, который сейчас лучше всего поддерживает карту."
             aside={
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2">
                 <PixelButton onClick={onRefresh} disabled={isLoading}>
                   <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} /> Обновить
                 </PixelButton>
@@ -210,21 +214,46 @@ export const NowView = ({
             </PixelSurface>
           ) : null}
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <PixelStatCard label="Ослабевает" value={weakeningItems.length} tone="inset" />
-            <PixelStatCard
-              label="Почти завершено"
-              value={nearCompletionReady ? `${progressPercent}%` : '—'}
-              tone="inset"
-            />
-            <PixelStatCard label="Еще можно сделать" value={extraOptionsCount} tone="inset" />
+          {primaryCandidate ? (
+            <PixelSurface frame="accent" padding="lg">
+              <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                <PixelStack gap="sm" className="min-w-0">
+                  <PixelText as="p" size="xs" color="accentGlow" uppercase>
+                    Фокус дня
+                  </PixelText>
+                  <PixelText as="h2" readable size="xl" style={{ margin: 0, fontWeight: 800 }}>
+                    {primaryCandidate.actionTitle}
+                  </PixelText>
+                  <PixelText as="p" readable color="textMuted" size="sm">
+                    {primaryCandidate.whatDegrades || primaryCandidate.nodeTitle}
+                  </PixelText>
+                  <div className="flex flex-wrap gap-2">{renderReasons(primaryCandidate.whyNow)}</div>
+                  <PixelText as="p" readable color="textMuted" size="sm">
+                    {candidatePath(primaryCandidate)} / {primaryCandidate.nodeTitle}
+                  </PixelText>
+                </PixelStack>
+
+                <div className="flex flex-wrap gap-2 lg:justify-end">
+                  <PixelButton tone="ghost" onClick={() => onSelectRecommendation(primaryCandidate)}>
+                    <Compass size={16} /> Выбрать
+                  </PixelButton>
+                  <PixelButton tone="accent" onClick={() => onOpenMap(primaryCandidate)}>
+                    <MapIcon size={16} /> Открыть карту
+                  </PixelButton>
+                </div>
+              </div>
+            </PixelSurface>
+          ) : null}
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <PixelStatCard label="Ослабевает" value={weakeningItems.length} tone="inset" compact />
+            <PixelStatCard label="Почти готово" value={nearCompletionReady ? `${progressPercent}%` : '—'} tone="inset" compact />
+            <PixelStatCard label="В очереди" value={extraOptionsCount} tone="inset" compact />
           </div>
 
-          <PixelSurface frame="inset" padding="md">
-            <PixelText as="p" readable color="textMuted" size="sm">
-              {digestSummary}
-            </PixelText>
-          </PixelSurface>
+          <PixelText as="p" readable color="textMuted" size="sm">
+            {digestSummary}
+          </PixelText>
         </PixelStack>
       </PixelSurface>
 

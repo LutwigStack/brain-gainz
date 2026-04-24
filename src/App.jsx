@@ -12,7 +12,8 @@ import {
 import * as db from './db';
 import {
   PixelButton,
-  PixelMeter,
+  PixelInput,
+  PixelSelect,
   PixelStack,
   PixelSurface,
   PixelText,
@@ -685,64 +686,63 @@ export default function App() {
         }}
       >
         <div className="flex w-full flex-col gap-2">
-          <PixelSurface frame="panel" padding="sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <PixelSurface frame="panel" padding="xs">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <div className="flex items-center gap-2">
-                  <PixelSurface frame="accent" padding="sm" fullWidth={false}>
-                    <Brain size={24} className="text-[var(--pixel-accent-glow)]" />
+                  <PixelSurface frame="accent" padding="xs" fullWidth={false}>
+                    <Brain size={20} className="text-[var(--pixel-accent-glow)]" />
                   </PixelSurface>
-                  <div className="flex min-w-0 items-baseline gap-2">
-                    <PixelText as="h1" size="lg" style={{ margin: 0, lineHeight: 1 }}>
+                  <div className="min-w-0">
+                    <PixelText as="h1" readable size="lg" style={{ margin: 0, lineHeight: 1.1, fontWeight: 800 }}>
                       BrainGainz
                     </PixelText>
-                    <PixelText as="span" size="xs" color="textDim" uppercase>
-                      {runtime.shellLabel} {runtime.storageLabel}
+                    <PixelText as="p" readable size="xs" color="textDim" style={{ marginTop: 2 }}>
+                      {runtime.isLocalFirst ? 'Локальная база' : 'Браузерное хранилище'}
                     </PixelText>
                   </div>
                 </div>
 
                 <div
-                  className="hide-scrollbar flex items-center gap-2 overflow-x-auto"
+                  className="hide-scrollbar ml-0 flex min-w-0 items-center gap-1 overflow-x-auto sm:ml-3"
                   role="navigation"
                   aria-label="Основные разделы BrainGainz"
                 >
                   <PixelButton
-                    tone={normalizedActiveTab === 'now' ? 'accent' : 'panel'}
+                    tone={normalizedActiveTab === 'now' ? 'accent' : 'ghost'}
                     onClick={() => setActiveTab('now')}
                     aria-pressed={normalizedActiveTab === 'now'}
                     aria-current={normalizedActiveTab === 'now' ? 'page' : undefined}
-                    style={{ minHeight: 32, padding: '6px 12px', gap: 6 }}
+                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                   >
                     <Compass size={14} /> Сейчас
                   </PixelButton>
                   <PixelButton
-                    tone={normalizedActiveTab === 'map' ? 'accent' : 'panel'}
+                    tone={normalizedActiveTab === 'map' ? 'accent' : 'ghost'}
                     onClick={() => setActiveTab('map')}
                     aria-pressed={normalizedActiveTab === 'map'}
                     aria-current={normalizedActiveTab === 'map' ? 'page' : undefined}
-                    style={{ minHeight: 32, padding: '6px 12px', gap: 6 }}
+                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                   >
                     <Map size={14} /> Карта
                   </PixelButton>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className="min-w-[180px]">
-                  <PixelMeter
-                    value={runtime.isLocalFirst ? 72 : 48}
-                    max={100}
-                    label={runtime.isLocalFirst ? 'Локальная синхронизация' : 'Веб-оболочка'}
-                    tone={runtime.isLocalFirst ? 'success' : 'info'}
-                  />
-                </div>
+              <div className="flex min-w-0 items-center gap-2">
+                <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="hidden sm:block">
+                  <PixelText as="span" readable size="xs" color={runtime.isLocalFirst ? 'success' : 'info'}>
+                    {runtime.shellLabel} / {runtime.storageLabel}
+                  </PixelText>
+                </PixelSurface>
                 <PixelButton
                   tone={showSettings ? 'accent' : 'ghost'}
                   onClick={() => setShowSettings(!showSettings)}
-                  style={{ minHeight: 32, padding: '6px 12px', gap: 6 }}
+                  aria-label="Настройки"
+                  style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                 >
-                  <Settings size={14} /> Настройки
+                  <Settings size={14} />
+                  <span className="hidden sm:inline">Настройки</span>
                 </PixelButton>
               </div>
             </div>
@@ -751,46 +751,58 @@ export default function App() {
       </header>
 
       {showSettings && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl border border-gray-100 bg-white p-8 shadow-2xl">
-            <div className="mb-8 flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-2xl font-black text-gray-800">
-                <Settings size={24} className="text-gray-400" /> Настройки
-              </h2>
-              <button onClick={() => setShowSettings(false)} className="rounded-full bg-gray-100 p-2 transition-colors hover:bg-gray-200">
-                <X size={20} />
-              </button>
-            </div>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
+          <PixelSurface frame="panel" padding="xl" className="max-h-[calc(100dvh-1.5rem)] w-full max-w-[520px] overflow-auto">
+            <PixelStack gap="lg">
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <PixelText as="p" size="xs" color="textMuted" uppercase>
+                    Профиль
+                  </PixelText>
+                  <PixelText as="h2" readable size="xl" style={{ marginTop: 4, fontWeight: 800 }}>
+                    Настройки
+                  </PixelText>
+                </div>
+                <PixelButton
+                  tone="ghost"
+                  onClick={() => setShowSettings(false)}
+                  aria-label="Закрыть настройки"
+                  style={{ minHeight: 30, padding: '6px 8px' }}
+                >
+                  <X size={16} />
+                </PixelButton>
+              </div>
 
-            <div className="space-y-6">
-              <div>
-                <label className="mb-2 block text-xs font-black uppercase tracking-widest text-gray-400">Ключ Groq</label>
-                <input
-                  type="password"
-                  value={groqApiKey}
-                  onChange={(event) => setGroqApiKey(event.target.value)}
-                  placeholder="Bearer xxxxxxxxxxxxxxxxx..."
-                  className="w-full rounded-2xl border-2 border-transparent bg-gray-50 p-4 font-mono text-sm transition-all outline-none focus:border-indigo-500 focus:bg-white"
-                />
-                <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50 p-3">
-                  <Sparkles size={16} className="mt-0.5 flex-shrink-0 text-amber-500" />
-                  <p className="text-[10px] font-medium leading-relaxed text-amber-700">
-                    AI помогает с переводом и примерами. Ключ:{' '}
-                    <a href="https://console.groq.com" target="_blank" rel="noreferrer" className="font-bold underline">
+              <PixelInput
+                id="groq-api-key"
+                label="Ключ Groq"
+                type="password"
+                value={groqApiKey}
+                onChange={(event) => setGroqApiKey(event.target.value)}
+                placeholder="Bearer xxxxxxxxxxxxxxxxx..."
+                hint="Хранится локально в браузере."
+              />
+
+              <PixelSurface frame="ghost" padding="sm">
+                <div className="flex items-start gap-2">
+                  <Sparkles size={16} className="mt-0.5 flex-shrink-0 text-[var(--pixel-accent)]" />
+                  <PixelText as="p" readable size="sm" color="textMuted">
+                    AI помогает с переводом и примерами. Ключ можно взять на{' '}
+                    <a href="https://console.groq.com" target="_blank" rel="noreferrer" className="text-[var(--pixel-accent)] underline">
                       console.groq.com
                     </a>
                     .
-                  </p>
+                  </PixelText>
                 </div>
-              </div>
+              </PixelSurface>
 
-              <div>
-                <label className="mb-2 block text-xs font-black uppercase tracking-widest text-gray-400">Я изучаю</label>
-                <select
-                  value={sourceLanguage}
-                  onChange={(event) => setSourceLanguage(event.target.value)}
-                  className="w-full cursor-pointer appearance-none rounded-2xl border-2 border-transparent bg-gray-50 p-4 font-bold text-gray-700 transition-all outline-none focus:border-indigo-500 focus:bg-white"
-                >
+              <PixelSelect
+                id="source-language"
+                label="Я изучаю"
+                value={sourceLanguage}
+                onChange={(event) => setSourceLanguage(event.target.value)}
+                hint="Язык карточек."
+              >
                   <option value="English">Английский</option>
                   <option value="Russian">Русский</option>
                   <option value="Spanish">Испанский</option>
@@ -803,17 +815,15 @@ export default function App() {
                   <option value="Portuguese">Португальский</option>
                   <option value="Turkish">Турецкий</option>
                   <option value="Ukrainian">Украинский</option>
-                </select>
-                <p className="mt-1 text-[10px] text-gray-400">Язык карточек.</p>
-              </div>
+              </PixelSelect>
 
-              <div>
-                <label className="mb-2 block text-xs font-black uppercase tracking-widest text-gray-400">Язык перевода</label>
-                <select
-                  value={targetLanguage}
-                  onChange={(event) => setTargetLanguage(event.target.value)}
-                  className="w-full cursor-pointer appearance-none rounded-2xl border-2 border-transparent bg-gray-50 p-4 font-bold text-gray-700 transition-all outline-none focus:border-indigo-500 focus:bg-white"
-                >
+              <PixelSelect
+                id="target-language"
+                label="Язык перевода"
+                value={targetLanguage}
+                onChange={(event) => setTargetLanguage(event.target.value)}
+                hint="Куда переводить."
+              >
                   <option value="Russian">Русский</option>
                   <option value="Spanish">Испанский</option>
                   <option value="German">Немецкий</option>
@@ -825,13 +835,13 @@ export default function App() {
                   <option value="Portuguese">Португальский</option>
                   <option value="Turkish">Турецкий</option>
                   <option value="Ukrainian">Украинский</option>
-                </select>
-                <p className="mt-1 text-[10px] text-gray-400">Куда переводить.</p>
-              </div>
+              </PixelSelect>
 
-              <div>
-                <label className="mb-2 block text-xs font-black uppercase tracking-widest text-gray-400">Данные</label>
-                <button
+              <PixelStack gap="xs">
+                <PixelText as="p" size="xs" color="textMuted" uppercase>
+                  Данные
+                </PixelText>
+                <PixelButton
                   onClick={() => {
                     const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(words))}`;
                     const link = document.createElement('a');
@@ -839,24 +849,21 @@ export default function App() {
                     link.download = `backup_${activeSubject?.name || 'db'}.json`;
                     link.click();
                   }}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-transparent bg-gray-50 py-4 font-bold text-gray-600 transition-all hover:bg-gray-100"
+                  fullWidth
                 >
-                  <Download size={20} /> Экспорт {activeSubject?.name || 'данных'} в JSON
-                </button>
-              </div>
-            </div>
+                  <Download size={16} /> Экспорт {activeSubject?.name || 'данных'} в JSON
+                </PixelButton>
+              </PixelStack>
 
-            <button
-              onClick={() => setShowSettings(false)}
-              className="mt-10 w-full rounded-2xl bg-indigo-600 py-4 font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-100 transition-all active:scale-[0.98] hover:bg-indigo-700"
-            >
-              Сохранить
-            </button>
-          </div>
+              <PixelButton tone="accent" onClick={() => setShowSettings(false)} fullWidth>
+                Сохранить
+              </PixelButton>
+            </PixelStack>
+          </PixelSurface>
         </div>
       )}
 
-      <main className="flex-grow w-full px-4 pb-4 pt-1 sm:px-6 sm:pb-6 sm:pt-1">
+      <main className="w-full min-w-0 flex-grow px-3 pb-4 pt-1 sm:px-4 sm:pb-6 sm:pt-1">
         <Suspense fallback={screenFallback}>
         {normalizedActiveTab === 'now' && (
           <NowView
@@ -868,6 +875,10 @@ export default function App() {
             isCreatingStarter={nowCreatingStarter}
             onCreateStarterWorkspace={handleCreateStarterWorkspace}
             onSelectRecommendation={handleSelectNowRecommendation}
+            onOpenMap={async (recommendation) => {
+              await handleSelectNowRecommendation(recommendation);
+              setActiveTab('map');
+            }}
             onRefresh={loadNowDashboard}
           />
         )}

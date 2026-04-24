@@ -403,7 +403,7 @@ export const GameMapCanvas = ({
   return (
     <div
       ref={rootRef}
-      className={`relative outline-none ${className}`}
+      className={`relative min-w-0 max-w-full outline-none ${className}`}
       tabIndex={0}
       role="application"
       aria-label="Карта узлов BrainGainz"
@@ -434,7 +434,7 @@ export const GameMapCanvas = ({
         </div>
       ) : null}
 
-      <div className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-2">
+      <div className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-2 sm:left-3 sm:top-3 sm:max-w-[calc(100%-1.5rem)]">
         <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="pointer-events-auto">
           <div className="flex flex-wrap items-center gap-2">
             <PixelButton
@@ -470,7 +470,7 @@ export const GameMapCanvas = ({
             >
               Сетка {snapToGrid ? 'вкл' : 'выкл'}
             </PixelButton>
-            <PixelText as="span" size="xs" color="textMuted" uppercase>
+            <PixelText as="span" size="xs" color="textMuted" uppercase className="hidden sm:inline">
               {formatZoomPercent(viewportCamera)}
             </PixelText>
             {createMode ? (
@@ -491,7 +491,7 @@ export const GameMapCanvas = ({
       </div>
 
       {minimap && !isEmptyMap ? (
-        <div className="pointer-events-none absolute bottom-3 right-3 z-10">
+        <div className="pointer-events-none absolute bottom-3 right-3 z-10 hidden sm:block">
           <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="pointer-events-auto">
             <div className="flex items-center justify-between gap-3 pb-2">
               <PixelText as="span" size="xs" color="textMuted" uppercase>
