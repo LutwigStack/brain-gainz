@@ -8,21 +8,61 @@ const buildDuplicateSlugCandidate = (baseSlug, attempt) => {
   return `${baseSlug}-copy-${attempt + 1}`;
 };
 
-const findAvailableDuplicateSlug = async (database, skillId, baseSlug) => {
-  let attempt = 0;
+const isNodeSlugConflict = (error) =>
+  /UNIQUE constraint failed:\s*nodes\.skill_id,\s*nodes\.slug/i.test(error?.message ?? '');
 
-  while (attempt < 1000) {
-    const slug = buildDuplicateSlugCandidate(baseSlug, attempt);
-    const rows = await database.select('SELECT id FROM nodes WHERE skill_id = ? AND slug = ?', [skillId, slug]);
+const isAssociativeDependencyType = (dependencyType) => dependencyType === 'relates_to';
 
-    if (rows.length === 0) {
-      return slug;
-    }
+const normalizeNodeDependencyInput = (input) => {
+  const dependencyType = input.dependency_type ?? 'requires';
 
-    attempt += 1;
+  if (
+    !isAssociativeDependencyType(dependencyType) ||
+    input.blocked_node_id <= input.blocking_node_id
+  ) {
+    return {
+      ...input,
+      dependency_type: dependencyType,
+    };
   }
 
-  throw new Error(`Unable to allocate duplicate slug for "${baseSlug}"`);
+  return {
+    ...input,
+    blocked_node_id: input.blocking_node_id,
+    blocking_node_id: input.blocked_node_id,
+    dependency_type: dependencyType,
+  };
+};
+
+const findAssociativeNodeDependency = async (
+  database,
+  input,
+  options = {},
+) => {
+  const rows = await database.select(
+    `
+      SELECT *
+      FROM node_dependencies
+      WHERE dependency_type = 'relates_to'
+        AND (
+          (blocked_node_id = ? AND blocking_node_id = ?)
+          OR
+          (blocked_node_id = ? AND blocking_node_id = ?)
+        )
+        AND (? IS NULL OR id != ?)
+      LIMIT 1
+    `,
+    [
+      input.blocked_node_id,
+      input.blocking_node_id,
+      input.blocking_node_id,
+      input.blocked_node_id,
+      options.excludeId ?? null,
+      options.excludeId ?? null,
+    ],
+  );
+
+  return rows[0] ?? null;
 };
 
 const normalizeNodeArchiveState = (current, patch) => {
@@ -137,6 +177,11 @@ export const createHierarchyStore = (database) => ({
           title,
           slug,
           summary,
+          completion_criteria,
+          links,
+          reward,
+          x,
+          y,
           importance,
           target_date,
           last_touched_at,
@@ -144,7 +189,7 @@ export const createHierarchyStore = (database) => ({
           created_at,
           updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         input.skill_id,
@@ -153,6 +198,11 @@ export const createHierarchyStore = (database) => ({
         input.title,
         input.slug,
         input.summary ?? null,
+        input.completion_criteria ?? null,
+        input.links ?? null,
+        input.reward ?? null,
+        input.x ?? null,
+        input.y ?? null,
         input.importance ?? 'medium',
         input.target_date ?? null,
         input.last_touched_at ?? null,
@@ -205,7 +255,17 @@ export const createHierarchyStore = (database) => ({
     );
   },
 
-  addNodeDependency(input) {
+  async addNodeDependency(input) {
+    const next = normalizeNodeDependencyInput(input);
+
+    if (isAssociativeDependencyType(next.dependency_type)) {
+      const existing = await findAssociativeNodeDependency(database, next);
+
+      if (existing) {
+        return existing;
+      }
+    }
+
     return insertAndFetch(
       database,
       `
@@ -218,13 +278,61 @@ export const createHierarchyStore = (database) => ({
         VALUES (?, ?, ?, ?)
       `,
       [
-        input.blocked_node_id,
-        input.blocking_node_id,
-        input.dependency_type ?? 'requires',
-        input.created_at ?? createUtcTimestamp(),
+        next.blocked_node_id,
+        next.blocking_node_id,
+        next.dependency_type,
+        next.created_at ?? createUtcTimestamp(),
       ],
       'node_dependencies',
     );
+  },
+
+  getNodeDependencyById(id) {
+    return database.select('SELECT * FROM node_dependencies WHERE id = ?', [id]).then((rows) => rows[0] ?? null);
+  },
+
+  async updateNodeDependency(id, patch) {
+    const current = await this.getNodeDependencyById(id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = normalizeNodeDependencyInput({
+      ...current,
+      ...patch,
+    });
+
+    if (isAssociativeDependencyType(next.dependency_type)) {
+      const existing = await findAssociativeNodeDependency(database, next, { excludeId: id });
+
+      if (existing) {
+        throw new Error('Associative relation already exists between these nodes.');
+      }
+    }
+
+    return updateAndFetchById(
+      database,
+      `
+        UPDATE node_dependencies
+        SET blocked_node_id = ?, blocking_node_id = ?, dependency_type = ?
+        WHERE id = ?
+      `,
+      [next.blocked_node_id, next.blocking_node_id, next.dependency_type, id],
+      'node_dependencies',
+      id,
+    );
+  },
+
+  async deleteNodeDependency(id) {
+    const current = await this.getNodeDependencyById(id);
+
+    if (!current) {
+      return null;
+    }
+
+    await database.execute('DELETE FROM node_dependencies WHERE id = ?', [id]);
+    return current;
   },
 
   getNodeById(id) {
@@ -257,6 +365,11 @@ export const createHierarchyStore = (database) => ({
           title = ?,
           slug = ?,
           summary = ?,
+          completion_criteria = ?,
+          links = ?,
+          reward = ?,
+          x = ?,
+          y = ?,
           importance = ?,
           target_date = ?,
           last_touched_at = ?,
@@ -270,6 +383,11 @@ export const createHierarchyStore = (database) => ({
         next.title,
         next.slug,
         next.summary,
+        next.completion_criteria,
+        next.links,
+        next.reward,
+        next.x,
+        next.y,
         next.importance,
         next.target_date,
         next.last_touched_at,
@@ -279,6 +397,69 @@ export const createHierarchyStore = (database) => ({
       ],
       'nodes',
       id,
+    );
+  },
+
+  async updateNodePositionsBatch(positions) {
+    const entries = (positions ?? []).filter(
+      (entry) =>
+        entry &&
+        Number.isInteger(entry.nodeId) &&
+        Number.isFinite(entry.x) &&
+        Number.isFinite(entry.y),
+    );
+
+    if (entries.length === 0) {
+      return [];
+    }
+
+    const nodeIds = [...new Set(entries.map((entry) => entry.nodeId))];
+    const placeholders = nodeIds.map(() => '?').join(', ');
+    const currentRows = await database.select(
+      `SELECT * FROM nodes WHERE id IN (${placeholders})`,
+      nodeIds,
+    );
+
+    if (currentRows.length !== nodeIds.length) {
+      throw new Error('Cannot apply layout: one or more target nodes are missing.');
+    }
+
+    const currentById = new Map(currentRows.map((row) => [row.id, row]));
+    const updatedAt = createUtcTimestamp();
+
+    await database.execute('BEGIN');
+
+    try {
+      for (const entry of entries) {
+        const current = currentById.get(entry.nodeId);
+
+        if (!current) {
+          throw new Error(`Cannot apply layout: node ${entry.nodeId} is missing.`);
+        }
+
+        const result = await database.execute(
+          `
+            UPDATE nodes
+            SET x = ?, y = ?, updated_at = ?
+            WHERE id = ?
+          `,
+          [entry.x, entry.y, updatedAt, entry.nodeId],
+        );
+
+        if (result.rowsAffected !== 1) {
+          throw new Error(`Cannot apply layout: failed to update node ${entry.nodeId}.`);
+        }
+      }
+
+      await database.execute('COMMIT');
+    } catch (error) {
+      await database.execute('ROLLBACK');
+      throw error;
+    }
+
+    return database.select(
+      `SELECT * FROM nodes WHERE id IN (${placeholders})`,
+      nodeIds,
     );
   },
 
@@ -300,15 +481,19 @@ export const createHierarchyStore = (database) => ({
 
     const createdAt = patch.created_at ?? createUtcTimestamp();
     const nextSkillId = patch.skill_id ?? current.skill_id;
-    const nextSlug = patch.slug ?? (await findAvailableDuplicateSlug(database, nextSkillId, current.slug));
 
-    return this.createNode({
+    const buildDuplicatePayload = (slug) => ({
       skill_id: nextSkillId,
       type: current.type,
       status: current.status === 'archived' ? 'active' : current.status,
       title: patch.title ?? `${current.title} (copy)`,
-      slug: nextSlug,
+      slug,
       summary: patch.summary ?? current.summary,
+      completion_criteria: patch.completion_criteria ?? current.completion_criteria,
+      links: patch.links ?? current.links,
+      reward: patch.reward ?? current.reward,
+      x: patch.x ?? current.x,
+      y: patch.y ?? current.y,
       importance: current.importance,
       target_date: current.target_date,
       last_touched_at: null,
@@ -316,6 +501,24 @@ export const createHierarchyStore = (database) => ({
       created_at: createdAt,
       updated_at: patch.updated_at ?? createdAt,
     });
+
+    if (patch.slug) {
+      return this.createNode(buildDuplicatePayload(patch.slug));
+    }
+
+    for (let attempt = 0; attempt < 1000; attempt += 1) {
+      const nextSlug = buildDuplicateSlugCandidate(current.slug, attempt);
+
+      try {
+        return await this.createNode(buildDuplicatePayload(nextSlug));
+      } catch (error) {
+        if (!isNodeSlugConflict(error)) {
+          throw error;
+        }
+      }
+    }
+
+    throw new Error(`Unable to allocate duplicate slug for "${current.slug}"`);
   },
 
   async updateNodeAction(id, patch) {

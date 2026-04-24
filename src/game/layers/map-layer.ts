@@ -1,6 +1,8 @@
-import { Container, Graphics, Text } from 'pixi.js';
+import { Container, FederatedPointerEvent, Graphics, Text } from 'pixi.js';
 
-import type { GameBiome, GameNode, GameSceneModel } from '../types';
+import { getGraphEdgeSemantics } from '../../application/graph-edge-semantics';
+import type { GameBiome, GameNode, GamePoint, GameSceneModel } from '../types';
+import type { ViewportCamera } from '../viewport';
 
 const statePalette = {
   locked: { fill: 0x111827, stroke: 0x475569, text: 0xcbd5e1, alpha: 0.55 },
@@ -10,10 +12,132 @@ const statePalette = {
   paused: { fill: 0x7c2d12, stroke: 0xfdba74, text: 0xffedd5, alpha: 0.84 },
 } as const;
 
+interface MapLayerHandlers {
+  onNodePointerDown?: (nodeId: number, event: FederatedPointerEvent) => void;
+  onEdgePointerDown?: (edgeId: number) => void;
+  selectedEdgeId?: number | null;
+  connectSourceNodeId?: number | null;
+  connectPreviewTarget?: GamePoint | null;
+  connectEdgeType?: 'requires' | 'supports' | 'relates_to' | null;
+}
+
+const createQuadraticRoute = (
+  from: GamePoint,
+  to: GamePoint,
+  bendDirection: number,
+  bendStrength: number,
+) => {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const distance = Math.hypot(dx, dy) || 1;
+  const midpoint = { x: from.x + dx / 2, y: from.y + dy / 2 };
+  const perpendicular = { x: -dy / distance, y: dx / distance };
+  const clampedBend = Math.min(42, Math.max(12, distance * bendStrength)) * bendDirection;
+  const control = {
+    x: midpoint.x + perpendicular.x * clampedBend,
+    y: midpoint.y + perpendicular.y * clampedBend,
+  };
+
+  return Array.from({ length: 15 }, (_, index) => {
+    const t = index / 14;
+    const inverse = 1 - t;
+    return {
+      x: inverse * inverse * from.x + 2 * inverse * t * control.x + t * t * to.x,
+      y: inverse * inverse * from.y + 2 * inverse * t * control.y + t * t * to.y,
+    };
+  });
+};
+
+const drawPolyline = (graphic: Graphics, points: GamePoint[]) => {
+  if (points.length === 0) {
+    return;
+  }
+
+  graphic.moveTo(points[0].x, points[0].y);
+  points.slice(1).forEach((point) => {
+    graphic.lineTo(point.x, point.y);
+  });
+};
+
+const drawDottedPolyline = (
+  graphic: Graphics,
+  points: GamePoint[],
+  color: number,
+  alpha: number,
+  dotRadius: number,
+  spacing: number,
+) => {
+  if (points.length === 0) {
+    return;
+  }
+
+  let previous = points[0];
+  let carry = 0;
+
+  graphic.circle(previous.x, previous.y, dotRadius);
+  graphic.fill({ color, alpha });
+
+  for (let index = 1; index < points.length; index += 1) {
+    const current = points[index];
+    const dx = current.x - previous.x;
+    const dy = current.y - previous.y;
+    const segmentLength = Math.hypot(dx, dy);
+
+    if (segmentLength === 0) {
+      previous = current;
+      continue;
+    }
+
+    let distance = carry === 0 ? spacing : spacing - carry;
+
+    while (distance <= segmentLength) {
+      const ratio = distance / segmentLength;
+      graphic.circle(previous.x + dx * ratio, previous.y + dy * ratio, dotRadius);
+      graphic.fill({ color, alpha });
+      distance += spacing;
+    }
+
+    carry = (segmentLength + carry) % spacing;
+    previous = current;
+  }
+};
+
+const drawArrowHead = (
+  graphic: Graphics,
+  from: GamePoint,
+  to: GamePoint,
+  color: number,
+  alpha: number,
+  size: number,
+) => {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const distance = Math.hypot(dx, dy) || 1;
+  const unit = { x: dx / distance, y: dy / distance };
+  const perpendicular = { x: -unit.y, y: unit.x };
+  const base = {
+    x: to.x - unit.x * size,
+    y: to.y - unit.y * size,
+  };
+
+  graphic.poly([
+    to.x,
+    to.y,
+    base.x + perpendicular.x * (size * 0.45),
+    base.y + perpendicular.y * (size * 0.45),
+    base.x - perpendicular.x * (size * 0.45),
+    base.y - perpendicular.y * (size * 0.45),
+  ]);
+  graphic.fill({ color, alpha });
+};
+
 export class MapLayer extends Container {
+  private readonly world = new Container();
   private readonly biomeGraphics = new Graphics();
   private readonly linkGraphics = new Graphics();
   private readonly edgeGraphics = new Graphics();
+  private readonly edgeHitContainer = new Container();
+  private readonly edgePreviewGraphics = new Graphics();
   private readonly hubGraphics = new Graphics();
   private readonly legendGraphics = new Graphics();
   private readonly legendLabels = new Container();
@@ -22,30 +146,46 @@ export class MapLayer extends Container {
   private readonly pulses = new Map<number, Graphics>();
   private readonly nodeShells = new Map<number, Graphics>();
   private readonly nodeLabels = new Map<number, Text>();
+  private readonly edgeHits = new Map<number, Graphics>();
   private readonly biomeTexts = new Map<number, Text>();
   private readonly legendTexts = new Map<string, Text>();
+  private readonly previewNodePositions = new Map<number, GamePoint>();
+  private currentModel: GameSceneModel | null = null;
+  private currentZoom = 1;
   private highlightedNodeId: number | null = null;
+  private connectSourceNodeId: number | null = null;
+  private connectPreviewTarget: GamePoint | null = null;
+  private connectEdgeType: 'requires' | 'supports' | 'relates_to' | null = null;
+  private lastHandlers: MapLayerHandlers = {};
   private pulseTime = 0;
 
   constructor() {
     super();
-    this.addChild(
+    this.world.addChild(
       this.biomeGraphics,
       this.linkGraphics,
       this.edgeGraphics,
+      this.edgeHitContainer,
+      this.edgePreviewGraphics,
       this.hubGraphics,
       this.biomeLabels,
       this.nodeContainer,
-      this.legendGraphics,
-      this.legendLabels,
     );
+    this.addChild(this.world, this.legendGraphics, this.legendLabels);
   }
 
-  render(model: GameSceneModel, onNodeSelect: (nodeId: number) => void) {
+  render(model: GameSceneModel, handlers: MapLayerHandlers = {}) {
+    this.previewNodePositions.clear();
+    this.currentModel = model;
+    this.lastHandlers = handlers;
     this.highlightedNodeId = model.highlightedNodeId;
+    this.connectSourceNodeId = handlers.connectSourceNodeId ?? null;
+    this.connectPreviewTarget = handlers.connectPreviewTarget ?? null;
+    this.connectEdgeType = handlers.connectEdgeType ?? null;
     this.drawBiomes(model.biomes);
     this.drawHub(model);
-    this.drawEdges(model);
+    this.drawEdges(model, handlers);
+    this.drawConnectPreview();
     this.drawLegend(model);
 
     const activeIds = new Set(model.nodes.map((node) => node.id));
@@ -66,14 +206,19 @@ export class MapLayer extends Container {
         });
 
       if (!this.nodeShells.has(node.id)) {
-        shell.eventMode = 'static';
-        shell.cursor = 'pointer';
-        shell.on('pointertap', () => onNodeSelect(node.id));
         this.nodeShells.set(node.id, shell);
         this.pulses.set(node.id, pulse);
         this.nodeLabels.set(node.id, label);
         this.nodeContainer.addChild(pulse, shell, label);
       }
+
+      shell.eventMode = 'static';
+      shell.cursor = 'pointer';
+      shell.removeAllListeners();
+      shell.on('pointerdown', (event) => {
+        event.stopPropagation();
+        handlers.onNodePointerDown?.(node.id, event);
+      });
 
       this.drawNode(node, shell, pulse, label, model);
     });
@@ -90,6 +235,34 @@ export class MapLayer extends Container {
       this.pulses.delete(nodeId);
       this.nodeLabels.delete(nodeId);
     });
+
+    this.refreshLabelVisibility();
+  }
+
+  previewNodePosition(nodeId: number, position: GamePoint, model: GameSceneModel) {
+    const node = model.nodes.find((item) => item.id === nodeId);
+    const shell = this.nodeShells.get(nodeId);
+    const pulse = this.pulses.get(nodeId);
+    const label = this.nodeLabels.get(nodeId);
+
+    if (!node || !shell || !pulse || !label) {
+      return;
+    }
+
+    this.previewNodePositions.set(nodeId, position);
+    this.drawEdges(model, this.lastHandlers);
+    this.drawConnectPreview();
+
+    this.drawNode(
+      {
+        ...node,
+        position,
+      },
+      shell,
+      pulse,
+      label,
+      model,
+    );
   }
 
   tick(deltaTime: number) {
@@ -105,6 +278,50 @@ export class MapLayer extends Container {
       pulse.scale.set(scale);
       pulse.alpha = 0.24 + (Math.sin(this.pulseTime) + 1) * 0.08;
     });
+  }
+
+  setViewport(camera: ViewportCamera) {
+    this.currentZoom = camera.zoom;
+    this.world.position.set(camera.x, camera.y);
+    this.world.scale.set(camera.zoom);
+    this.refreshLabelVisibility();
+  }
+
+  setConnectPreview(
+    sourceNodeId: number | null,
+    target: GamePoint | null,
+    edgeType: 'requires' | 'supports' | 'relates_to' | null,
+  ) {
+    this.connectSourceNodeId = sourceNodeId;
+    this.connectPreviewTarget = target;
+    this.connectEdgeType = edgeType;
+    this.drawConnectPreview();
+  }
+
+  clearNodePreview(nodeId: number) {
+    if (!this.previewNodePositions.delete(nodeId) || !this.currentModel) {
+      return;
+    }
+
+    this.drawEdges(this.currentModel, this.lastHandlers);
+    this.drawConnectPreview();
+  }
+
+  restoreNodeFromModel(nodeId: number) {
+    if (!this.currentModel) {
+      return;
+    }
+
+    const node = this.currentModel.nodes.find((item) => item.id === nodeId);
+    const shell = this.nodeShells.get(nodeId);
+    const pulse = this.pulses.get(nodeId);
+    const label = this.nodeLabels.get(nodeId);
+
+    if (!node || !shell || !pulse || !label) {
+      return;
+    }
+
+    this.drawNode(node, shell, pulse, label, this.currentModel);
   }
 
   private drawBiomes(biomes: GameBiome[]) {
@@ -166,21 +383,146 @@ export class MapLayer extends Container {
     this.hubGraphics.stroke({ color: 0xfef3c7, alpha: 0.9, width: 3 });
   }
 
-  private drawEdges(model: GameSceneModel) {
+  private drawEdges(model: GameSceneModel, handlers: MapLayerHandlers) {
     this.edgeGraphics.clear();
-    this.edgeGraphics.setStrokeStyle({ width: 2, color: 0x94a3b8, alpha: 0.25 });
+    const nodePositions = new Map(
+      model.nodes.map((node) => [node.id, this.previewNodePositions.get(node.id) ?? node.position]),
+    );
+    const activeEdgeIds = new Set<number>();
 
     model.edges.forEach((edge) => {
-      const fromNode = model.nodes.find((node) => node.id === edge.fromNodeId);
-      const toNode = model.nodes.find((node) => node.id === edge.toNodeId);
+      const fromNode = nodePositions.get(edge.fromNodeId);
+      const toNode = nodePositions.get(edge.toNodeId);
 
       if (!fromNode || !toNode) {
         return;
       }
 
-      this.edgeGraphics.moveTo(fromNode.position.x, fromNode.position.y);
-      this.edgeGraphics.lineTo(toNode.position.x, toNode.position.y);
+      activeEdgeIds.add(edge.id);
+      const isSelected = edge.id === handlers.selectedEdgeId;
+      const semantics = getGraphEdgeSemantics(edge.type);
+      const color = semantics.canvas.color;
+      const alpha = isSelected ? semantics.canvas.selectedAlpha : semantics.canvas.alpha;
+      const route = createQuadraticRoute(
+        fromNode,
+        toNode,
+        edge.fromNodeId <= edge.toNodeId ? 1 : -1,
+        semantics.canvas.bendStrength,
+      );
+
+      if (semantics.canvas.pattern === 'glow') {
+        this.edgeGraphics.setStrokeStyle({
+          width: (isSelected ? semantics.canvas.selectedWidth : semantics.canvas.width) + 4,
+          color,
+          alpha: alpha * 0.18,
+        });
+        drawPolyline(this.edgeGraphics, route);
+      }
+
+      if (semantics.canvas.pattern === 'dotted') {
+        drawDottedPolyline(
+          this.edgeGraphics,
+          route,
+          color,
+          alpha,
+          isSelected ? 2.8 : 2.2,
+          isSelected ? 12 : 14,
+        );
+      } else {
+        this.edgeGraphics.setStrokeStyle({
+          width: isSelected ? semantics.canvas.selectedWidth : semantics.canvas.width,
+          color,
+          alpha,
+        });
+        drawPolyline(this.edgeGraphics, route);
+      }
+
+      drawArrowHead(
+        this.edgeGraphics,
+        route[route.length - 2] ?? fromNode,
+        route[route.length - 1] ?? toNode,
+        color,
+        isSelected ? 0.92 : 0.72,
+        isSelected ? 14 : 12,
+      );
+
+      const hit =
+        this.edgeHits.get(edge.id) ??
+        (() => {
+          const graphic = new Graphics();
+          graphic.eventMode = 'static';
+          graphic.cursor = 'pointer';
+          this.edgeHits.set(edge.id, graphic);
+          this.edgeHitContainer.addChild(graphic);
+          return graphic;
+        })();
+
+      hit.removeAllListeners();
+      hit.on('pointerdown', (event) => {
+        event.stopPropagation();
+        handlers.onEdgePointerDown?.(edge.id);
+      });
+      hit.clear();
+      drawPolyline(hit, route);
+      hit.stroke({ width: 14, color, alpha: 0.001 });
     });
+
+    [...this.edgeHits.keys()].forEach((edgeId) => {
+      if (activeEdgeIds.has(edgeId)) {
+        return;
+      }
+
+      this.edgeHits.get(edgeId)?.destroy();
+      this.edgeHits.delete(edgeId);
+    });
+  }
+
+  private drawConnectPreview() {
+    this.edgePreviewGraphics.clear();
+
+    if (
+      !this.currentModel ||
+      this.connectSourceNodeId == null ||
+      this.connectPreviewTarget == null ||
+      this.connectEdgeType == null
+    ) {
+      return;
+    }
+
+    const source = this.currentModel.nodes.find((node) => node.id === this.connectSourceNodeId);
+    if (!source) {
+      return;
+    }
+
+    const semantics = getGraphEdgeSemantics(this.connectEdgeType);
+    const color = semantics.canvas.color;
+    const sourcePosition = this.previewNodePositions.get(source.id) ?? source.position;
+    const route = createQuadraticRoute(
+      sourcePosition,
+      this.connectPreviewTarget,
+      1,
+      semantics.canvas.bendStrength,
+    );
+
+    if (semantics.canvas.pattern === 'glow') {
+      this.edgePreviewGraphics.setStrokeStyle({ width: 7, color, alpha: 0.12 });
+      drawPolyline(this.edgePreviewGraphics, route);
+    }
+
+    if (semantics.canvas.pattern === 'dotted') {
+      drawDottedPolyline(this.edgePreviewGraphics, route, color, 0.72, 2.2, 12);
+    } else {
+      this.edgePreviewGraphics.setStrokeStyle({ width: 3, color, alpha: 0.68 });
+      drawPolyline(this.edgePreviewGraphics, route);
+    }
+    drawArrowHead(
+      this.edgePreviewGraphics,
+      route[route.length - 2] ?? sourcePosition,
+      route[route.length - 1] ?? this.connectPreviewTarget,
+      color,
+      0.9,
+      14,
+    );
   }
 
   private drawLegend(model: GameSceneModel) {
@@ -235,6 +577,7 @@ export class MapLayer extends Container {
     const palette = statePalette[node.state];
     const biome = model.biomes.find((item) => item.id === node.biomeId);
     const radius = node.id === this.highlightedNodeId ? 22 : 18;
+    const isConnectSource = node.id === this.connectSourceNodeId;
 
     pulse.clear();
     pulse.circle(0, 0, radius + 12);
@@ -242,12 +585,19 @@ export class MapLayer extends Container {
     pulse.position.set(node.position.x, node.position.y);
 
     shell.clear();
+    shell.circle(0, 0, radius + 14);
+    shell.fill({ color: palette.fill, alpha: 0.001 });
     shell.circle(0, 0, radius);
     shell.fill({ color: palette.fill, alpha: palette.alpha });
     shell.circle(0, 0, radius + 3);
     shell.stroke({
-      color: node.id === this.highlightedNodeId ? biome?.accent ?? palette.stroke : palette.stroke,
-      width: node.id === this.highlightedNodeId ? 4 : 2,
+      color:
+        node.id === this.highlightedNodeId
+          ? biome?.accent ?? palette.stroke
+          : isConnectSource
+            ? 0xfbbf24
+            : palette.stroke,
+      width: node.id === this.highlightedNodeId ? 4 : isConnectSource ? 3 : 2,
       alpha: 0.96,
     });
     shell.position.set(node.position.x, node.position.y);
@@ -265,5 +615,25 @@ export class MapLayer extends Container {
     label.anchor.set(0.5, 0);
     label.position.set(node.position.x, node.position.y + radius + 10);
     label.alpha = node.state === 'locked' ? 0.72 : 1;
+    label.visible = this.shouldShowNodeLabel(node.id);
+  }
+
+  private refreshLabelVisibility() {
+    if (!this.currentModel) {
+      return;
+    }
+
+    this.currentModel.nodes.forEach((node) => {
+      const label = this.nodeLabels.get(node.id);
+      if (!label) {
+        return;
+      }
+
+      label.visible = this.shouldShowNodeLabel(node.id);
+    });
+  }
+
+  private shouldShowNodeLabel(nodeId: number) {
+    return this.currentZoom >= 0.62 || nodeId === this.highlightedNodeId || nodeId === this.connectSourceNodeId;
   }
 }

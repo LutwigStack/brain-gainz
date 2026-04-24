@@ -9,7 +9,7 @@ test('runtime profile resolves Tauri as desktop local-first shell', () => {
   assert.equal(runtime.kind, 'tauri-desktop');
   assert.equal(runtime.isLocalFirst, true);
   assert.equal(runtime.usesNativeSql, true);
-  assert.equal(runtime.storageLabel, 'Local SQLite');
+  assert.equal(runtime.storageLabel, 'Локальная SQLite');
 });
 
 test('runtime profile resolves Capacitor as mobile shell ahead of Tauri-like globals', () => {
@@ -24,6 +24,6 @@ test('runtime profile resolves plain browser as web-first shell', () => {
   const runtime = resolveRuntimeProfile({ capacitorNative: false, tauriInvoke: false });
 
   assert.equal(runtime.kind, 'web');
-  assert.equal(runtime.shellLabel, 'Web-first');
+  assert.equal(runtime.shellLabel, 'Веб');
   assert.equal(runtime.isLocalFirst, false);
 });

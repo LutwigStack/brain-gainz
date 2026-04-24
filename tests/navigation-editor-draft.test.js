@@ -6,6 +6,9 @@ import {
   buildNodeEditorUpdatePayload,
   canDuplicateNodeEditorDraft,
   createNodeEditorDraft,
+  getNodeEditorCompletionCriteriaPreview,
+  getNodeEditorLinksPreview,
+  getNodeEditorRewardPreview,
   hasNodeEditorPersistedChanges,
 } from '../src/components/navigation-editor-draft.ts';
 
@@ -16,6 +19,9 @@ const focusSnapshot = {
     type: 'theory',
     status: 'doing',
     summary: 'Vector and matrix foundations.',
+    completion_criteria: null,
+    links: null,
+    reward: null,
     sphere_id: 1,
     sphere_name: 'Mathematics',
     direction_id: 2,
@@ -61,31 +67,56 @@ const focusSnapshot = {
   errorNotes: [],
 };
 
-test('createNodeEditorDraft derives editor fields from node focus', () => {
+test('createNodeEditorDraft keeps persisted fields separate from derived previews', () => {
   const draft = createNodeEditorDraft(focusSnapshot);
 
   assert.equal(draft.nodeId, 7);
   assert.equal(draft.theme, 'Mathematics / Base / Matrices');
   assert.equal(draft.status, 'active');
   assert.equal(draft.nextStep, 'Complete lesson: matrices and their properties');
-  assert.match(draft.completionCriteria, /Solve 15 matrix problems/);
-  assert.match(draft.links, /Unlocks: Eigenvalues/);
-  assert.match(draft.links, /Depends on: Algebra Fundamentals/);
+  assert.equal(draft.completionCriteria, '');
+  assert.equal(draft.links, '');
+  assert.equal(draft.reward, '');
+  assert.match(getNodeEditorCompletionCriteriaPreview(focusSnapshot, draft), /Solve 15 matrix problems/);
+  assert.match(getNodeEditorLinksPreview(focusSnapshot, draft), /Unlocks: Eigenvalues/);
+  assert.match(getNodeEditorLinksPreview(focusSnapshot, draft), /Depends on: Algebra Fundamentals/);
+  assert.match(getNodeEditorRewardPreview(focusSnapshot, draft), /Unlocks next: Eigenvalues/);
 });
 
-test('persisted change detection stays quiet for untouched derived drafts', () => {
+test('createNodeEditorDraft prefers persisted authored fields when they exist', () => {
+  const authoredFocus = {
+    ...focusSnapshot,
+    node: {
+      ...focusSnapshot.node,
+      completion_criteria: 'Finish when the theorem summary and problem set are complete.',
+      links: 'Depends on: matrix basics\nUnlocks: spectral theorem',
+      reward: 'Unlocks advanced linear algebra.',
+    },
+  };
+  const draft = createNodeEditorDraft(authoredFocus);
+
+  assert.equal(draft.completionCriteria, 'Finish when the theorem summary and problem set are complete.');
+  assert.equal(draft.links, 'Depends on: matrix basics\nUnlocks: spectral theorem');
+  assert.equal(draft.reward, 'Unlocks advanced linear algebra.');
+  assert.equal(getNodeEditorCompletionCriteriaPreview(authoredFocus, draft), draft.completionCriteria);
+  assert.equal(getNodeEditorLinksPreview(authoredFocus, draft), draft.links);
+  assert.equal(getNodeEditorRewardPreview(authoredFocus, draft), draft.reward);
+});
+
+test('persisted change detection stays quiet for untouched drafts', () => {
   const draft = createNodeEditorDraft(focusSnapshot);
 
   assert.equal(hasNodeEditorPersistedChanges(focusSnapshot, draft), false);
 });
 
-test('buildNodeEditorUpdatePayload keeps only persisted fields', () => {
+test('buildNodeEditorUpdatePayload keeps and writes expanded persisted fields', () => {
   const draft = {
     ...createNodeEditorDraft(focusSnapshot),
     title: 'Linear Algebra Core',
     summary: '  Refined matrix summary.  ',
     status: 'paused',
-    completionCriteria: 'Manual note that should not persist',
+    completionCriteria: 'Manual completion criteria',
+    links: 'Depends on: Algebra Fundamentals',
     reward: 'Another manual note',
   };
 
@@ -93,21 +124,49 @@ test('buildNodeEditorUpdatePayload keeps only persisted fields', () => {
   assert.deepEqual(buildNodeEditorUpdatePayload(focusSnapshot, draft), {
     title: 'Linear Algebra Core',
     summary: 'Refined matrix summary.',
+    completion_criteria: 'Manual completion criteria',
+    links: 'Depends on: Algebra Fundamentals',
+    reward: 'Another manual note',
     type: 'theory',
     status: 'paused',
   });
 });
 
-test('buildNodeEditorDuplicatePayload uses the current editor title and summary', () => {
+test('buildNodeEditorUpdatePayload does not persist derived fallback values by default', () => {
+  const draft = {
+    ...createNodeEditorDraft(focusSnapshot),
+    title: 'Linear Algebra Core',
+    summary: '  Refined matrix summary.  ',
+    status: 'paused',
+  };
+
+  assert.deepEqual(buildNodeEditorUpdatePayload(focusSnapshot, draft), {
+    title: 'Linear Algebra Core',
+    summary: 'Refined matrix summary.',
+    completion_criteria: null,
+    links: null,
+    reward: null,
+    type: 'theory',
+    status: 'paused',
+  });
+});
+
+test('buildNodeEditorDuplicatePayload uses the current authored fields', () => {
   const draft = {
     ...createNodeEditorDraft(focusSnapshot),
     title: '  Linear Algebra Core  ',
     summary: '  Refined matrix summary.  ',
+    completionCriteria: '  Finish the theorem summary and all open problems.  ',
+    links: '  Depends on: Algebra Fundamentals\nUnlocks: Eigenvalues  ',
+    reward: '  Unlocks the next theory block.  ',
   };
 
   assert.deepEqual(buildNodeEditorDuplicatePayload(draft), {
     title: 'Linear Algebra Core (copy)',
     summary: 'Refined matrix summary.',
+    completion_criteria: 'Finish the theorem summary and all open problems.',
+    links: 'Depends on: Algebra Fundamentals\nUnlocks: Eigenvalues',
+    reward: 'Unlocks the next theory block.',
   });
 });
 

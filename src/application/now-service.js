@@ -394,6 +394,8 @@ const loadDependencies = (database, nodeId) =>
       FROM node_dependencies dependencies
       JOIN nodes blocking_nodes ON blocking_nodes.id = dependencies.blocking_node_id
       WHERE dependencies.blocked_node_id = ?
+        AND dependencies.dependency_type = 'requires'
+        AND blocking_nodes.is_archived = 0
       ORDER BY blocking_nodes.id ASC
     `,
     [nodeId],
@@ -410,6 +412,8 @@ const loadDependents = (database, nodeId) =>
       FROM node_dependencies dependencies
       JOIN nodes blocked_nodes ON blocked_nodes.id = dependencies.blocked_node_id
       WHERE dependencies.blocking_node_id = ?
+        AND dependencies.dependency_type = 'requires'
+        AND blocked_nodes.is_archived = 0
       ORDER BY blocked_nodes.id ASC
     `,
     [nodeId],
@@ -567,8 +571,29 @@ const loadHierarchyTree = async (database) => {
   }));
 };
 
+const loadActiveGraphEdges = (database) =>
+  database.select(
+    `
+      SELECT
+        dependencies.id,
+        dependencies.blocked_node_id AS source_node_id,
+        dependencies.blocking_node_id AS target_node_id,
+        dependencies.dependency_type AS edge_type
+      FROM node_dependencies dependencies
+      JOIN nodes source_nodes ON source_nodes.id = dependencies.blocked_node_id
+      JOIN nodes target_nodes ON target_nodes.id = dependencies.blocking_node_id
+      WHERE source_nodes.is_archived = 0
+        AND target_nodes.is_archived = 0
+      ORDER BY dependencies.id ASC
+    `,
+  );
+
 const buildNavigationSnapshot = async (database) => {
-  const [tree, dashboard] = await Promise.all([loadHierarchyTree(database), createNowServiceContext(database).getDashboard()]);
+  const [tree, dashboard, edges] = await Promise.all([
+    loadHierarchyTree(database),
+    createNowServiceContext(database).getDashboard(),
+    loadActiveGraphEdges(database),
+  ]);
   const firstNode =
     dashboard.primaryRecommendation != null
       ? { nodeId: dashboard.primaryRecommendation.nodeId, actionId: dashboard.primaryRecommendation.actionId }
@@ -581,6 +606,7 @@ const buildNavigationSnapshot = async (database) => {
 
   return {
     spheres: tree,
+    edges,
     defaultSelection: firstNode,
   };
 };
@@ -634,7 +660,7 @@ const navigationContainsNode = (navigation, nodeId) =>
 
 const refreshEditorMutationResult = async (service, nodeId, actionId = null) => {
   const [node, dashboard, navigation] = await Promise.all([
-    service.hierarchyStore.getNodeById(nodeId),
+    service.getNodeEditorRecord(nodeId),
     service.getDashboard(),
     service.getNavigationSnapshot(),
   ]);
@@ -656,6 +682,23 @@ const refreshEditorMutationResult = async (service, nodeId, actionId = null) => 
     dashboard,
     navigation,
     selection: selection != null ? { nodeId: selection.nodeId, actionId: focus?.selectedAction?.id ?? selection.actionId ?? null } : null,
+  };
+};
+
+const refreshGraphMutationResult = async (service, edge, preferredNodeId = null) => {
+  const navigation = await service.getNavigationSnapshot();
+  const selection =
+    preferredNodeId != null && navigationContainsNode(navigation, preferredNodeId)
+      ? { nodeId: preferredNodeId, actionId: null }
+      : navigation.defaultSelection;
+  const focus =
+    selection != null ? await service.getNodeFocus(selection.nodeId, selection.actionId ?? null) : null;
+
+  return {
+    edge,
+    navigation,
+    focus,
+    selection,
   };
 };
 
@@ -923,6 +966,36 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     return refreshEditorMutationResult(this, node.id);
   },
 
+  async createGraphEdge(payload) {
+    const edge = await hierarchyStore.addNodeDependency(payload);
+
+    if (!edge) {
+      return null;
+    }
+
+    return refreshGraphMutationResult(this, edge, payload?.blocked_node_id ?? edge.blocked_node_id);
+  },
+
+  async updateGraphEdge(edgeId, payload) {
+    const edge = await hierarchyStore.updateNodeDependency(edgeId, payload);
+
+    if (!edge) {
+      return null;
+    }
+
+    return refreshGraphMutationResult(this, edge, edge.blocked_node_id);
+  },
+
+  async deleteGraphEdge(edgeId) {
+    const edge = await hierarchyStore.deleteNodeDependency(edgeId);
+
+    if (!edge) {
+      return null;
+    }
+
+    return refreshGraphMutationResult(this, edge, edge.blocked_node_id);
+  },
+
   async getJournalSnapshot() {
     return buildJournalSnapshotFromNotes(database, nodeNoteStore);
   },
@@ -999,6 +1072,8 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       title: 'Собрать первый экран «Сейчас»',
       slug: STARTER_SLUGS.primaryNode,
       summary: 'Показать один понятный следующий шаг без поломки старого режима.',
+      x: 0,
+      y: -220,
       importance: 'high',
     });
     await hierarchyStore.createNodeAction({
@@ -1022,6 +1097,8 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       title: 'Сделать короткие причины выбора',
       slug: STARTER_SLUGS.blockedNode,
       summary: 'Сократить и прояснить объяснение выбора.',
+      x: 220,
+      y: 80,
       importance: 'medium',
     });
     await hierarchyStore.createNodeAction({
@@ -1043,6 +1120,8 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       title: 'Не сломать старый режим карточек',
       slug: STARTER_SLUGS.maintenanceNode,
       summary: 'Словарь и повторение должны остаться рабочими.',
+      x: -220,
+      y: 80,
       importance: 'high',
     });
     await hierarchyStore.createNodeAction({

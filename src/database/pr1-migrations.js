@@ -14,6 +14,23 @@ export const REQUIRED_PR1_TABLES = [
   'legacy_card_mappings',
 ];
 
+const NODE_EDITOR_OWNED_COLUMNS = [
+  ['completion_criteria', 'TEXT'],
+  ['links', 'TEXT'],
+  ['reward', 'TEXT'],
+];
+
+const NODE_GRAPH_COLUMNS = [
+  ['x', 'REAL'],
+  ['y', 'REAL'],
+];
+
+const HUB_POSITION = { x: 0, y: 0 };
+const BIOME_RING_RADIUS = 360;
+const BIOME_RADIUS = 164;
+const DIRECTION_RING_STEP = 48;
+const NODE_STEP = 72;
+
 const REQUIRED_PR1_COLUMNS = {
   spheres: [
     'id',
@@ -55,6 +72,11 @@ const REQUIRED_PR1_COLUMNS = {
     'title',
     'slug',
     'summary',
+    'completion_criteria',
+    'links',
+    'reward',
+    'x',
+    'y',
     'importance',
     'target_date',
     'last_touched_at',
@@ -291,6 +313,7 @@ const REQUIRED_INDEXES = [
   'idx_node_actions_node_id',
   'idx_node_dependencies_blocked',
   'idx_node_dependencies_blocking',
+  'idx_node_dependencies_type',
   'idx_daily_sessions_primary_node',
   'idx_daily_sessions_primary_action',
   'idx_daily_session_events_session_id',
@@ -321,7 +344,7 @@ const REQUIRED_TABLE_SQL_FRAGMENTS = {
     'check (is_repeatable in (0, 1))',
   ],
   node_dependencies: [
-    "check (dependency_type in ('requires', 'supports'))",
+    "check (dependency_type in ('requires', 'supports', 'relates_to'))",
     'check (blocked_node_id != blocking_node_id)',
     'unique (blocked_node_id, blocking_node_id, dependency_type)',
   ],
@@ -358,7 +381,6 @@ const REQUIRED_TABLE_SQL_FRAGMENTS = {
 };
 
 const normalizeSql = (sql) => sql.toLowerCase().replace(/\s+/g, ' ').trim();
-
 const PR1_STATEMENTS = [
   `
     CREATE TABLE IF NOT EXISTS spheres (
@@ -411,6 +433,11 @@ const PR1_STATEMENTS = [
       title TEXT NOT NULL,
       slug TEXT NOT NULL,
       summary TEXT,
+      completion_criteria TEXT,
+      links TEXT,
+      reward TEXT,
+      x REAL,
+      y REAL,
       importance TEXT NOT NULL CHECK (importance IN ('low', 'medium', 'high')),
       target_date TEXT,
       last_touched_at TEXT,
@@ -444,7 +471,7 @@ const PR1_STATEMENTS = [
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       blocked_node_id INTEGER NOT NULL,
       blocking_node_id INTEGER NOT NULL,
-      dependency_type TEXT NOT NULL DEFAULT 'requires' CHECK (dependency_type IN ('requires', 'supports')),
+      dependency_type TEXT NOT NULL DEFAULT 'requires' CHECK (dependency_type IN ('requires', 'supports', 'relates_to')),
       created_at TEXT NOT NULL,
       FOREIGN KEY (blocked_node_id) REFERENCES nodes (id),
       FOREIGN KEY (blocking_node_id) REFERENCES nodes (id),
@@ -564,6 +591,7 @@ const PR1_STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS idx_node_actions_node_id ON node_actions (node_id)',
   'CREATE INDEX IF NOT EXISTS idx_node_dependencies_blocked ON node_dependencies (blocked_node_id)',
   'CREATE INDEX IF NOT EXISTS idx_node_dependencies_blocking ON node_dependencies (blocking_node_id)',
+  'CREATE INDEX IF NOT EXISTS idx_node_dependencies_type ON node_dependencies (dependency_type)',
   'CREATE INDEX IF NOT EXISTS idx_daily_sessions_primary_node ON daily_sessions (primary_node_id)',
   'CREATE INDEX IF NOT EXISTS idx_daily_sessions_primary_action ON daily_sessions (primary_action_id)',
   'CREATE INDEX IF NOT EXISTS idx_daily_session_events_session_id ON daily_session_events (session_id)',
@@ -579,11 +607,199 @@ const PR1_STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS idx_legacy_card_mappings_node_id ON legacy_card_mappings (node_id)',
 ];
 
+const ensureTableColumns = async (database, tableName, requiredColumns) => {
+  const columnRows = await database.select(`PRAGMA table_info(${tableName})`);
+  const existingColumns = new Set(columnRows.map((row) => row.name));
+
+  for (const [columnName, columnDefinition] of requiredColumns) {
+    if (!existingColumns.has(columnName)) {
+      await database.execute(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`);
+    }
+  }
+};
+
+const createBackfillBiome = (index, total, nodeCount) => {
+  const angle = -Math.PI / 2 + (index / Math.max(total, 1)) * Math.PI * 2;
+
+  return {
+    center: {
+      x: HUB_POSITION.x + Math.cos(angle) * BIOME_RING_RADIUS,
+      y: HUB_POSITION.y + Math.sin(angle) * BIOME_RING_RADIUS,
+    },
+    radius: BIOME_RADIUS + nodeCount * 4,
+  };
+};
+
+const createFallbackNodePosition = (biome, directionIndex, totalDirections, skillIndex, nodeIndex) => {
+  const directionAngle = -Math.PI / 2 + (directionIndex / Math.max(totalDirections, 1)) * Math.PI * 2;
+  const skillRadius = 56 + directionIndex * DIRECTION_RING_STEP + skillIndex * 28;
+  const nodeRadius = skillRadius + 38 + nodeIndex * NODE_STEP;
+
+  if (nodeIndex === 0) {
+    return {
+      x: biome.center.x + Math.cos(directionAngle) * skillRadius,
+      y: biome.center.y + Math.sin(directionAngle) * skillRadius,
+    };
+  }
+
+  return {
+    x: biome.center.x + Math.cos(directionAngle) * nodeRadius,
+    y: biome.center.y + Math.sin(directionAngle) * nodeRadius,
+  };
+};
+
+const backfillNodeCoordinates = async (database) => {
+  const nodesNeedingBackfill = await database.select(
+    `
+      SELECT COUNT(*) AS count
+      FROM nodes
+      WHERE is_archived = 0
+        AND (x IS NULL OR y IS NULL)
+    `,
+  );
+
+  if (Number(nodesNeedingBackfill[0]?.count ?? 0) === 0) {
+    return;
+  }
+
+  const [spheres, directions, skills, nodes] = await Promise.all([
+    database.select(
+      `
+        SELECT id, sort_order
+        FROM spheres
+        WHERE is_archived = 0
+        ORDER BY sort_order ASC, id ASC
+      `,
+    ),
+    database.select(
+      `
+        SELECT id, sphere_id, sort_order
+        FROM directions
+        WHERE is_archived = 0
+        ORDER BY sort_order ASC, id ASC
+      `,
+    ),
+    database.select(
+      `
+        SELECT id, direction_id, sort_order
+        FROM skills
+        WHERE is_archived = 0
+        ORDER BY sort_order ASC, id ASC
+      `,
+    ),
+    database.select(
+      `
+        SELECT id, skill_id, x, y, updated_at
+        FROM nodes
+        WHERE is_archived = 0
+        ORDER BY updated_at DESC, id ASC
+      `,
+    ),
+  ]);
+
+  for (let sphereIndex = 0; sphereIndex < spheres.length; sphereIndex += 1) {
+    const sphere = spheres[sphereIndex];
+    const sphereDirections = directions.filter((direction) => direction.sphere_id === sphere.id);
+    const sphereNodeCount = sphereDirections.reduce((sum, direction) => {
+      const directionSkills = skills.filter((skill) => skill.direction_id === direction.id);
+      return sum + directionSkills.reduce((skillSum, skill) => skillSum + nodes.filter((node) => node.skill_id === skill.id).length, 0);
+    }, 0);
+    const biome = createBackfillBiome(sphereIndex, spheres.length, sphereNodeCount);
+
+    for (let directionIndex = 0; directionIndex < sphereDirections.length; directionIndex += 1) {
+      const direction = sphereDirections[directionIndex];
+      const directionSkills = skills.filter((skill) => skill.direction_id === direction.id);
+
+      for (let skillIndex = 0; skillIndex < directionSkills.length; skillIndex += 1) {
+        const skill = directionSkills[skillIndex];
+        const skillNodes = nodes.filter((node) => node.skill_id === skill.id);
+
+        for (let nodeIndex = 0; nodeIndex < skillNodes.length; nodeIndex += 1) {
+          const node = skillNodes[nodeIndex];
+          if (node.x != null && node.y != null) {
+            continue;
+          }
+
+          const position = createFallbackNodePosition(
+            biome,
+            directionIndex,
+            sphereDirections.length,
+            skillIndex,
+            nodeIndex,
+          );
+
+          await database.execute(
+            'UPDATE nodes SET x = ?, y = ? WHERE id = ?',
+            [position.x, position.y, node.id],
+          );
+        }
+      }
+    }
+  }
+};
+
+const recreateNodeDependenciesTable = async (database) => {
+  await database.execute('BEGIN');
+
+  try {
+    await database.execute('DROP INDEX IF EXISTS idx_node_dependencies_blocked');
+    await database.execute('DROP INDEX IF EXISTS idx_node_dependencies_blocking');
+    await database.execute('DROP INDEX IF EXISTS idx_node_dependencies_type');
+    await database.execute('ALTER TABLE node_dependencies RENAME TO node_dependencies_old');
+    await database.execute(`
+      CREATE TABLE node_dependencies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        blocked_node_id INTEGER NOT NULL,
+        blocking_node_id INTEGER NOT NULL,
+        dependency_type TEXT NOT NULL DEFAULT 'requires' CHECK (dependency_type IN ('requires', 'supports', 'relates_to')),
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (blocked_node_id) REFERENCES nodes (id),
+        FOREIGN KEY (blocking_node_id) REFERENCES nodes (id),
+        UNIQUE (blocked_node_id, blocking_node_id, dependency_type),
+        CHECK (blocked_node_id != blocking_node_id)
+      )
+    `);
+    await database.execute(`
+      INSERT INTO node_dependencies (id, blocked_node_id, blocking_node_id, dependency_type, created_at)
+      SELECT id, blocked_node_id, blocking_node_id, dependency_type, created_at
+      FROM node_dependencies_old
+    `);
+    await database.execute('DROP TABLE node_dependencies_old');
+    await database.execute('CREATE INDEX IF NOT EXISTS idx_node_dependencies_blocked ON node_dependencies (blocked_node_id)');
+    await database.execute('CREATE INDEX IF NOT EXISTS idx_node_dependencies_blocking ON node_dependencies (blocking_node_id)');
+    await database.execute('CREATE INDEX IF NOT EXISTS idx_node_dependencies_type ON node_dependencies (dependency_type)');
+    await database.execute('COMMIT');
+  } catch (error) {
+    await database.execute('ROLLBACK');
+    throw error;
+  }
+};
+
+const ensureNodeDependenciesSchema = async (database) => {
+  const rows = await database.select(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'node_dependencies'",
+  );
+
+  if (rows.length === 0) {
+    return;
+  }
+
+  const normalizedTableSql = normalizeSql(rows[0].sql ?? '');
+
+  if (!normalizedTableSql.includes("check (dependency_type in ('requires', 'supports', 'relates_to'))")) {
+    await recreateNodeDependenciesTable(database);
+  }
+};
+
 export const runPr1Migrations = async (database) => {
   for (const statement of PR1_STATEMENTS) {
     await database.execute(statement);
   }
 
+  await ensureTableColumns(database, 'nodes', NODE_EDITOR_OWNED_COLUMNS);
+  await ensureTableColumns(database, 'nodes', NODE_GRAPH_COLUMNS);
+  await ensureNodeDependenciesSchema(database);
+  await backfillNodeCoordinates(database);
   await verifyPr1Schema(database);
 };
 

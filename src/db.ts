@@ -8,11 +8,15 @@ import { createNodeNoteStore } from './stores/node-note-store.js';
 import { createReviewStateStore } from './stores/review-state-store.js';
 import type {
   DatabaseMutationResult,
+  GraphEdgeCreatePayload,
+  GraphEdgeMutationResult,
+  GraphEdgeUpdatePayload,
   JournalFollowUpPayload,
   JournalSnapshot,
   LegacyCard,
   LegacyCardDraft,
   NodeArchivePayload,
+  NodeLayoutPositionInput,
   NavigationSnapshot,
   NodeCreatePayload,
   NodeDuplicatePayload,
@@ -21,6 +25,7 @@ import type {
   NodeUpdatePayload,
   NowDashboardSnapshot,
   PersistedNodeRecord,
+  PersistedGraphEdgeRecord,
   Subject,
 } from './types/app-shell';
 
@@ -31,8 +36,13 @@ type StoresRegistry = {
     getNodeById: (id: number) => Promise<PersistedNodeRecord | null>;
     createNode: (payload: NodeCreatePayload) => Promise<PersistedNodeRecord | null>;
     updateNode: (id: number, patch: NodeUpdatePayload) => Promise<PersistedNodeRecord | null>;
-    archiveNode: (id: number) => Promise<PersistedNodeRecord | null>;
+    updateNodePositionsBatch: (positions: NodeLayoutPositionInput[]) => Promise<PersistedNodeRecord[]>;
+    archiveNode: (id: number, payload?: NodeArchivePayload) => Promise<PersistedNodeRecord | null>;
     duplicateNode: (id: number, payload?: NodeDuplicatePayload) => Promise<PersistedNodeRecord | null>;
+    getNodeDependencyById: (id: number) => Promise<PersistedGraphEdgeRecord | null>;
+    addNodeDependency: (payload: GraphEdgeCreatePayload) => Promise<PersistedGraphEdgeRecord | null>;
+    updateNodeDependency: (id: number, patch: GraphEdgeUpdatePayload) => Promise<PersistedGraphEdgeRecord | null>;
+    deleteNodeDependency: (id: number) => Promise<PersistedGraphEdgeRecord | null>;
   };
   legacyCardStore: {
     getSubjects: () => Promise<Subject[]>;
@@ -58,6 +68,9 @@ type StoresRegistry = {
     updateNodeEditor: (nodeId: number, payload: NodeUpdatePayload) => Promise<NodeEditorMutationResult | null>;
     archiveNodeEditor: (nodeId: number, payload?: NodeArchivePayload) => Promise<NodeEditorMutationResult | null>;
     duplicateNodeEditor: (nodeId: number, payload?: NodeDuplicatePayload) => Promise<NodeEditorMutationResult | null>;
+    createGraphEdge: (payload: GraphEdgeCreatePayload) => Promise<GraphEdgeMutationResult | null>;
+    updateGraphEdge: (edgeId: number, payload: GraphEdgeUpdatePayload) => Promise<GraphEdgeMutationResult | null>;
+    deleteGraphEdge: (edgeId: number) => Promise<GraphEdgeMutationResult | null>;
     getJournalSnapshot: () => Promise<JournalSnapshot>;
     createJournalFollowUpStep: (payload: JournalFollowUpPayload) => Promise<unknown>;
     completeActionInTodaySession: (actionId: number) => Promise<unknown>;
@@ -169,6 +182,13 @@ export const updateNodeRecord = async (
   return nowService.updateNodeEditor(id, payload);
 };
 
+export const applyNodeLayout = async (
+  positions: NodeLayoutPositionInput[],
+): Promise<PersistedNodeRecord[]> => {
+  const { hierarchyStore } = await getStores();
+  return hierarchyStore.updateNodePositionsBatch(positions);
+};
+
 export const archiveNodeRecord = async (
   id: number,
   payload: NodeArchivePayload = {},
@@ -183,6 +203,26 @@ export const duplicateNodeRecord = async (
 ): Promise<NodeEditorMutationResult | null> => {
   const { nowService } = await getStores();
   return nowService.duplicateNodeEditor(id, payload);
+};
+
+export const createGraphEdge = async (
+  payload: GraphEdgeCreatePayload,
+): Promise<GraphEdgeMutationResult | null> => {
+  const { nowService } = await getStores();
+  return nowService.createGraphEdge(payload);
+};
+
+export const updateGraphEdge = async (
+  id: number,
+  payload: GraphEdgeUpdatePayload,
+): Promise<GraphEdgeMutationResult | null> => {
+  const { nowService } = await getStores();
+  return nowService.updateGraphEdge(id, payload);
+};
+
+export const deleteGraphEdge = async (id: number): Promise<GraphEdgeMutationResult | null> => {
+  const { nowService } = await getStores();
+  return nowService.deleteGraphEdge(id);
 };
 
 export const getReviewStateStore = async () => {

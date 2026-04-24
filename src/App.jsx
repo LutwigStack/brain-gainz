@@ -22,7 +22,9 @@ import {
   buildNodeEditorDuplicatePayload,
   buildNodeEditorUpdatePayload,
 } from './components/navigation-editor-draft.ts';
+import { buildGraphEdgeCreatePayload } from './application/map-edge-payloads.ts';
 import { createNavigationFollowUpPayload } from './application/navigation-follow-up.ts';
+import { buildMapNodeCreatePayload } from './application/map-node-payloads.ts';
 import { getRuntimeProfile } from './platform/runtime.js';
 
 const NowView = lazy(() =>
@@ -63,6 +65,7 @@ export default function App() {
   const [mapShrinkTitle, setMapShrinkTitle] = useState('');
   const [nodeEditorPendingAction, setNodeEditorPendingAction] = useState(null);
   const [nodeEditorNotice, setNodeEditorNotice] = useState(null);
+  const [mapMutationPendingAction, setMapMutationPendingAction] = useState(null);
 
   useEffect(() => {
     const init = async () => {
@@ -348,7 +351,7 @@ export default function App() {
     }
 
     if (!canDuplicateNodeEditorDraft(navigationFocus, draft)) {
-      setNavigationError('Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚Ðµ type/status ÑƒÐ·Ð»Ð°, Ð·Ð°Ñ‚ÐµÐ¼ Ð´ÑƒÐ±Ð»Ð¸Ñ€ÑƒÐ¹Ñ‚Ðµ.');
+      setNavigationError('??????? ????????? type/status ????, ????? ??????????.');
       return;
     }
 
@@ -404,6 +407,156 @@ export default function App() {
       setNavigationError(error.message || 'Не удалось архивировать узел.');
     } finally {
       setNodeEditorPendingAction(null);
+    }
+  };
+
+  const handleCreateMapNode = async ({ skillId, existingNodeCount, x, y }) => {
+    if (mapMutationPendingAction) {
+      return false;
+    }
+
+    setMapMutationPendingAction('create-node');
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      const result = await db.createNodeRecord(
+        buildMapNodeCreatePayload({
+          skillId,
+          existingNodeCount,
+          position: { x, y },
+        }),
+      );
+      await applyNodeEditorMutationResult(result, 'Новый узел добавлен на карту.');
+      setActiveTab('map');
+      return true;
+    } catch (error) {
+      console.error('Failed to create node from map', error);
+      setNavigationError(error.message || 'Не удалось создать узел на карте.');
+      await loadNavigationSnapshot(navigationSelection);
+      return false;
+    } finally {
+      setMapMutationPendingAction(null);
+    }
+  };
+
+  const handleMoveMapNode = async ({ nodeId, x, y }) => {
+    if (mapMutationPendingAction) {
+      return;
+    }
+
+    setMapMutationPendingAction('move-node');
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      const result = await db.updateNodeRecord(nodeId, { x, y });
+      await applyNodeEditorMutationResult(result);
+    } catch (error) {
+      console.error('Failed to move node on map', error);
+      setNavigationError(error.message || 'Не удалось сохранить новую позицию узла.');
+      await loadNavigationSnapshot(navigationSelection);
+    } finally {
+      setMapMutationPendingAction(null);
+    }
+  };
+
+  const handleApplyMapLayout = async (positions) => {
+    if (mapMutationPendingAction) {
+      return false;
+    }
+
+    const entries = Object.entries(positions ?? {});
+    if (entries.length === 0) {
+      return false;
+    }
+
+    setMapMutationPendingAction('layout');
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      await db.applyNodeLayout(
+        entries.map(([nodeId, point]) => ({
+          nodeId: Number(nodeId),
+          x: point.x,
+          y: point.y,
+        })),
+      );
+
+      await loadNavigationSnapshot(navigationSelection);
+      setNodeEditorNotice(`Размещение применено для ${entries.length} узл.`);
+      setActiveTab('map');
+      return true;
+    } catch (error) {
+      console.error('Failed to apply bulk map layout', error);
+      setNavigationError(error.message || 'Не удалось применить размещение.');
+      await loadNavigationSnapshot(navigationSelection);
+      return false;
+    } finally {
+      setMapMutationPendingAction(null);
+    }
+  };
+
+  const handleCreateMapEdge = async ({ sourceNodeId, targetNodeId, edgeType }) => {
+    if (mapMutationPendingAction) {
+      return false;
+    }
+
+    setMapMutationPendingAction('create-edge');
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      const result = await db.createGraphEdge(
+        buildGraphEdgeCreatePayload({
+          sourceNodeId,
+          targetNodeId,
+          edgeType,
+        }),
+      );
+      await loadNowDashboard(nowSelection);
+      setNavigationSnapshot(result?.navigation ?? null);
+      setNavigationSelection(result?.selection ?? null);
+      setNavigationFocus(result?.focus ?? null);
+      setNodeEditorNotice('Связь добавлена на карту.');
+      setActiveTab('map');
+      return true;
+    } catch (error) {
+      console.error('Failed to create edge from map', error);
+      setNavigationError(error.message || 'Не удалось создать связь на карте.');
+      await loadNavigationSnapshot(navigationSelection);
+      return false;
+    } finally {
+      setMapMutationPendingAction(null);
+    }
+  };
+
+  const handleDeleteMapEdge = async (edgeId) => {
+    if (mapMutationPendingAction) {
+      return false;
+    }
+
+    setMapMutationPendingAction('delete-edge');
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      const result = await db.deleteGraphEdge(edgeId);
+      await loadNowDashboard(nowSelection);
+      setNavigationSnapshot(result?.navigation ?? null);
+      setNavigationSelection(result?.selection ?? null);
+      setNavigationFocus(result?.focus ?? null);
+      setNodeEditorNotice('Связь удалена.');
+      setActiveTab('map');
+      return true;
+    } catch (error) {
+      console.error('Failed to delete edge from map', error);
+      setNavigationError(error.message || 'Не удалось удалить связь.');
+      await loadNavigationSnapshot(navigationSelection);
+      return false;
+    } finally {
+      setMapMutationPendingAction(null);
     }
   };
 
@@ -746,8 +899,14 @@ export default function App() {
             onSaveEditor={handleSaveNodeEditor}
             onDuplicateEditor={handleDuplicateNodeEditor}
             onArchiveEditor={handleArchiveNodeEditor}
+            onCreateNodeAt={handleCreateMapNode}
+            onMoveNode={handleMoveMapNode}
+            onApplyBulkLayout={handleApplyMapLayout}
+            onCreateEdge={handleCreateMapEdge}
+            onDeleteEdge={handleDeleteMapEdge}
             editorPendingAction={nodeEditorPendingAction}
             editorNotice={nodeEditorNotice}
+            mapMutationPendingAction={mapMutationPendingAction}
             onCreateFollowUp={() =>
               handleCreateJournalFollowUp({
                 nodeId: navigationFocus?.node?.id,

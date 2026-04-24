@@ -6,6 +6,7 @@ export type BarrierType =
   | 'wrong time / wrong context';
 
 export type OutcomeAction = 'defer' | 'block' | 'shrink';
+export type GraphEdgeType = 'requires' | 'supports' | 'relates_to';
 
 export interface DatabaseMutationResult {
   lastInsertId?: number;
@@ -99,6 +100,12 @@ export interface NodeSummary {
   type: string;
   status: string;
   summary?: string | null;
+  completion_criteria?: string | null;
+  links?: string | null;
+  reward?: string | null;
+  x?: number | null;
+  y?: number | null;
+  updated_at?: string;
   sphere_id: number;
   sphere_name: string;
   direction_id: number;
@@ -115,6 +122,11 @@ export interface PersistedNodeRecord {
   title: string;
   slug: string;
   summary?: string | null;
+  completion_criteria?: string | null;
+  links?: string | null;
+  reward?: string | null;
+  x?: number | null;
+  y?: number | null;
   importance: string;
   target_date?: string | null;
   last_touched_at?: string | null;
@@ -129,6 +141,11 @@ export interface NodeCreatePayload {
   title: string;
   slug: string;
   summary?: string;
+  completion_criteria?: string | null;
+  links?: string | null;
+  reward?: string | null;
+  x?: number | null;
+  y?: number | null;
   importance?: string;
   status?: string;
   target_date?: string | null;
@@ -141,6 +158,11 @@ export interface NodeUpdatePayload {
   title?: string;
   slug?: string;
   summary?: string | null;
+  completion_criteria?: string | null;
+  links?: string | null;
+  reward?: string | null;
+  x?: number | null;
+  y?: number | null;
   importance?: string;
   target_date?: string | null;
   last_touched_at?: string | null;
@@ -152,13 +174,49 @@ export interface NodeDuplicatePayload {
   title?: string;
   slug?: string;
   summary?: string | null;
+  completion_criteria?: string | null;
+  links?: string | null;
+  reward?: string | null;
+  x?: number | null;
+  y?: number | null;
 }
 
 export interface NodeArchivePayload {
   title?: string;
   summary?: string | null;
+  completion_criteria?: string | null;
+  links?: string | null;
+  reward?: string | null;
+  x?: number | null;
+  y?: number | null;
   type?: string;
-  status?: string;
+}
+
+export interface NodeLayoutPositionInput {
+  nodeId: number;
+  x: number;
+  y: number;
+}
+
+export interface PersistedGraphEdgeRecord {
+  id: number;
+  blocked_node_id: number;
+  blocking_node_id: number;
+  dependency_type: GraphEdgeType;
+  created_at: string;
+}
+
+export interface GraphEdgeCreatePayload {
+  blocked_node_id: number;
+  blocking_node_id: number;
+  dependency_type?: GraphEdgeType;
+  created_at?: string;
+}
+
+export interface GraphEdgeUpdatePayload {
+  blocked_node_id?: number;
+  blocking_node_id?: number;
+  dependency_type?: GraphEdgeType;
 }
 
 export interface NodeEditorMutationResult {
@@ -173,6 +231,7 @@ export interface NodeDependencySummary {
   id: number;
   title: string;
   status: string;
+  dependency_type?: GraphEdgeType;
 }
 
 export interface ReviewState {
@@ -219,9 +278,18 @@ export interface NavigationNodeSummary {
   title: string;
   type: string;
   status: string;
+  x?: number | null;
+  y?: number | null;
   open_action_count: number;
   next_action_id?: number | null;
   next_action_title?: string | null;
+}
+
+export interface NavigationGraphEdge {
+  id: number;
+  source_node_id: number;
+  target_node_id: number;
+  edge_type: GraphEdgeType;
 }
 
 export interface NavigationSkill {
@@ -252,7 +320,15 @@ export interface NavigationSphere {
 
 export interface NavigationSnapshot {
   spheres: NavigationSphere[];
+  edges: NavigationGraphEdge[];
   defaultSelection: RecommendationSelection | null;
+}
+
+export interface GraphEdgeMutationResult {
+  edge: PersistedGraphEdgeRecord | null;
+  navigation: NavigationSnapshot;
+  focus: NodeFocusSnapshot | null;
+  selection: RecommendationSelection | null;
 }
 
 export interface JournalBarrierSummaryEntry {

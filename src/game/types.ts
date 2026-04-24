@@ -16,8 +16,10 @@ export interface GameNode {
 }
 
 export interface GameEdge {
+  id: number;
   fromNodeId: number;
   toNodeId: number;
+  type: 'requires' | 'supports' | 'relates_to';
 }
 
 export interface GameHero {
@@ -47,6 +49,16 @@ export interface GameLegendItem {
   color: number;
 }
 
+export interface GameBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  width: number;
+  height: number;
+  center: GamePoint;
+}
+
 export interface GameSceneModel {
   biomes: GameBiome[];
   nodes: GameNode[];
@@ -55,4 +67,5 @@ export interface GameSceneModel {
   legend: GameLegendItem[];
   hero: GameHero;
   highlightedNodeId: number | null;
+  bounds: GameBounds;
 }

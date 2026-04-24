@@ -1,6 +1,7 @@
 import { Container, Graphics } from 'pixi.js';
 
 import type { GameSceneModel } from '../types';
+import type { ViewportCamera } from '../viewport';
 
 export class HeroLayer extends Container {
   private readonly body = new Graphics();
@@ -12,6 +13,7 @@ export class HeroLayer extends Container {
 
   constructor() {
     super();
+    this.eventMode = 'none';
     this.addChild(this.glow, this.body);
   }
 
@@ -54,5 +56,13 @@ export class HeroLayer extends Container {
     this.bobTime += deltaTime * 0.06;
     this.position.set(this.baseX, this.baseY + Math.sin(this.bobTime) * 4);
     this.glow.alpha = 0.16 + (Math.sin(this.bobTime) + 1) * 0.05;
+  }
+
+  setViewport(camera: ViewportCamera) {
+    this.scale.set(camera.zoom);
+    this.position.set(
+      this.baseX * camera.zoom + camera.x,
+      (this.baseY + Math.sin(this.bobTime) * 4) * camera.zoom + camera.y,
+    );
   }
 }
