@@ -3,7 +3,7 @@ import { Application, Container, FederatedPointerEvent, Graphics } from 'pixi.js
 import { snapPointToGrid } from './layout-helpers';
 import { EffectsLayer } from './layers/effects-layer';
 import { HeroLayer } from './layers/hero-layer';
-import { MapLayer } from './layers/map-layer';
+import { getNodeGateAnchor, MapLayer, type NodeGate } from './layers/map-layer';
 import type { GamePoint, GameSceneModel } from './types';
 import {
   centerCameraOnPoint,
@@ -18,7 +18,7 @@ import {
 const PAN_CURSOR = 'grab';
 const PANNING_CURSOR = 'grabbing';
 const CREATE_CURSOR = 'crosshair';
-const CONNECT_NODE_HIT_RADIUS = 46;
+const CONNECT_GATE_HIT_RADIUS = 28;
 const POINTER_THRESHOLD = 8;
 
 interface SceneInteractionState {
@@ -34,11 +34,22 @@ interface NodeDragState extends SceneInteractionState {
   nodeStartPosition: GamePoint;
 }
 
+interface GateDragState extends SceneInteractionState {
+  nodeId: number;
+  gate: NodeGate;
+}
+
 interface SceneCallbacks {
   onNodeSelect: (nodeId: number) => void;
   onEdgeSelect?: (edgeId: number) => void;
   onNodeMove?: (nodeId: number, position: GamePoint) => void | Promise<void>;
   onCreateNodeAt?: (position: GamePoint) => void | Promise<boolean>;
+  onCreateEdge?: (input: {
+    sourceNodeId: number;
+    targetNodeId: number;
+    edgeType: 'requires' | 'supports' | 'relates_to';
+  }) => void | Promise<boolean>;
+  onEdgeContextMenu?: (input: { edgeId: number; screenX: number; screenY: number }) => void;
   canDragNodes?: boolean;
   createMode?: boolean;
   snapToGrid?: boolean;
@@ -59,6 +70,7 @@ export class BrainGainzScene {
   private currentCamera: ViewportCamera | null = null;
   private backgroundInteraction: SceneInteractionState | null = null;
   private nodeDragInteraction: NodeDragState | null = null;
+  private gateDragInteraction: GateDragState | null = null;
   private connectPreviewTarget: GamePoint | null = null;
   private onViewportChange: ((camera: ViewportCamera) => void) | null = null;
 
@@ -99,16 +111,18 @@ export class BrainGainzScene {
 
     if (!options?.preserveViewport || !this.currentCamera) {
       this.currentCamera = fitCameraToBounds(
-        model.isLargeGraph && model.overviewBounds ? model.overviewBounds : model.bounds,
+        callbacks.overviewMode && model.overviewBounds ? model.overviewBounds : model.bounds,
         { width, height },
       );
     }
 
     this.mapLayer.render(model, {
       onNodePointerDown: this.handleNodePointerDown,
+      onNodeGatePointerDown: this.handleNodeGatePointerDown,
       onEdgePointerDown: this.handleEdgePointerDown,
       selectedEdgeId: callbacks.selectedEdgeId ?? null,
       connectSourceNodeId: callbacks.connectSourceNodeId ?? null,
+      connectSourceGate: 'output',
       connectPreviewTarget: this.connectPreviewTarget,
       connectEdgeType: callbacks.connectEdgeType ?? null,
       overviewMode: callbacks.overviewMode ?? false,
@@ -133,12 +147,7 @@ export class BrainGainzScene {
       return null;
     }
 
-    const bounds =
-      this.currentModel.isLargeGraph && this.currentModel.overviewBounds
-        ? this.currentModel.overviewBounds
-        : this.currentModel.bounds;
-
-    this.currentCamera = fitCameraToBounds(bounds, {
+    this.currentCamera = fitCameraToBounds(this.currentModel.bounds, {
       width: this.app.renderer.width,
       height: this.app.renderer.height,
     });
@@ -242,7 +251,7 @@ export class BrainGainzScene {
   }
 
   private updateBackdropCursor() {
-    if (this.nodeDragInteraction || this.backgroundInteraction?.moved) {
+    if (this.nodeDragInteraction || this.backgroundInteraction?.moved || this.gateDragInteraction) {
       this.backdrop.cursor = PANNING_CURSOR;
       return;
     }
@@ -268,7 +277,7 @@ export class BrainGainzScene {
   };
 
   private handleBackdropPointerDown = (event: FederatedPointerEvent) => {
-    if (event.button !== 0 || this.nodeDragInteraction) {
+    if (event.button !== 0 || this.nodeDragInteraction || this.gateDragInteraction) {
       return;
     }
 
@@ -315,12 +324,45 @@ export class BrainGainzScene {
     this.updateBackdropCursor();
   };
 
-  private handleEdgePointerDown = (edgeId: number) => {
+  private handleNodeGatePointerDown = (nodeId: number, gate: NodeGate, event: FederatedPointerEvent) => {
+    if (event.button !== 0 || !this.currentCamera || !this.currentModel) {
+      return;
+    }
+
+    const point = { x: event.global.x, y: event.global.y };
+    this.gateDragInteraction = {
+      nodeId,
+      gate,
+      pointerId: event.pointerId,
+      startScreen: point,
+      lastScreen: point,
+      moved: false,
+    };
+    this.connectPreviewTarget = screenToWorld(point, this.currentCamera);
+    this.mapLayer.setConnectPreview(nodeId, gate, this.connectPreviewTarget, 'supports');
+    this.updateBackdropCursor();
+  };
+
+  private handleEdgePointerDown = (edgeId: number, event: FederatedPointerEvent) => {
+    if (event.button === 2) {
+      this.currentCallbacks?.onEdgeContextMenu?.({
+        edgeId,
+        screenX: event.global.x,
+        screenY: event.global.y,
+      });
+      return;
+    }
+
     this.currentCallbacks?.onEdgeSelect?.(edgeId);
   };
 
   private handlePointerMove = (event: FederatedPointerEvent) => {
-    this.updateConnectPreview({ x: event.global.x, y: event.global.y });
+    this.updateConnectPreview({ x: event.global.x, y: event.global.y }, event.pointerId);
+
+    if (this.gateDragInteraction && event.pointerId === this.gateDragInteraction.pointerId) {
+      this.handleGateDragMove(event);
+      return;
+    }
 
     if (this.nodeDragInteraction && event.pointerId === this.nodeDragInteraction.pointerId) {
       this.handleNodeDragMove(event);
@@ -366,6 +408,25 @@ export class BrainGainzScene {
     this.updateBackdropCursor();
   }
 
+  private handleGateDragMove(event: FederatedPointerEvent) {
+    if (!this.gateDragInteraction) {
+      return;
+    }
+
+    const nextPoint = { x: event.global.x, y: event.global.y };
+    const distance = Math.hypot(
+      nextPoint.x - this.gateDragInteraction.startScreen.x,
+      nextPoint.y - this.gateDragInteraction.startScreen.y,
+    );
+
+    if (!this.gateDragInteraction.moved && distance >= POINTER_THRESHOLD) {
+      this.gateDragInteraction.moved = true;
+    }
+
+    this.gateDragInteraction.lastScreen = nextPoint;
+    this.updateBackdropCursor();
+  }
+
   private handleBackgroundMove(event: FederatedPointerEvent) {
     if (!this.backgroundInteraction) {
       return;
@@ -394,6 +455,11 @@ export class BrainGainzScene {
   }
 
   private handlePointerUp = (event: FederatedPointerEvent) => {
+    if (this.gateDragInteraction && event.pointerId === this.gateDragInteraction.pointerId) {
+      this.finishGateInteraction(event);
+      return;
+    }
+
     if (this.nodeDragInteraction && event.pointerId === this.nodeDragInteraction.pointerId) {
       this.finishNodeInteraction(event);
       return;
@@ -411,14 +477,55 @@ export class BrainGainzScene {
 
     this.backgroundInteraction = null;
     this.nodeDragInteraction = null;
+    this.gateDragInteraction = null;
     this.connectPreviewTarget = null;
     this.updateBackdropCursor();
     this.mapLayer.setConnectPreview(
       this.currentCallbacks?.connectSourceNodeId ?? null,
+      'output',
       null,
       this.currentCallbacks?.connectEdgeType ?? null,
     );
   };
+
+  private async finishGateInteraction(event: FederatedPointerEvent) {
+    if (!this.gateDragInteraction || !this.currentCallbacks || !this.currentModel || !this.currentCamera) {
+      this.gateDragInteraction = null;
+      this.clearConnectPreview();
+      this.updateBackdropCursor();
+      return;
+    }
+
+    const interaction = this.gateDragInteraction;
+    this.gateDragInteraction = null;
+
+    if (!interaction.moved) {
+      this.currentCallbacks.onNodeSelect(interaction.nodeId);
+      this.clearConnectPreview();
+      this.updateBackdropCursor();
+      return;
+    }
+
+    const target = this.findNearestCompatibleGate(
+      screenToWorld({ x: event.global.x, y: event.global.y }, this.currentCamera),
+      interaction,
+    );
+
+    if (target && this.currentCallbacks.onCreateEdge) {
+      const sourceNodeId = interaction.gate === 'output' ? interaction.nodeId : target.nodeId;
+      const targetNodeId = interaction.gate === 'output' ? target.nodeId : interaction.nodeId;
+      if (sourceNodeId !== targetNodeId) {
+        await this.currentCallbacks.onCreateEdge({
+          sourceNodeId,
+          targetNodeId,
+          edgeType: 'supports',
+        });
+      }
+    }
+
+    this.clearConnectPreview();
+    this.updateBackdropCursor();
+  }
 
   private finishNodeInteraction(event: FederatedPointerEvent) {
     if (!this.nodeDragInteraction || !this.currentCallbacks) {
@@ -497,30 +604,53 @@ export class BrainGainzScene {
     this.updateBackdropCursor();
   }
 
-  private updateConnectPreview(screenPoint: GamePoint) {
+  private updateConnectPreview(screenPoint: GamePoint, pointerId?: number) {
     if (
       !this.currentCamera ||
-      !this.currentCallbacks?.connectSourceNodeId ||
-      !this.currentCallbacks.connectEdgeType ||
+      !this.gateDragInteraction ||
+      (pointerId != null && pointerId !== this.gateDragInteraction.pointerId) ||
       this.backgroundInteraction?.moved ||
       this.nodeDragInteraction
     ) {
       if (this.connectPreviewTarget != null) {
-        this.connectPreviewTarget = null;
-        this.mapLayer.setConnectPreview(
-          this.currentCallbacks?.connectSourceNodeId ?? null,
-          null,
-          this.currentCallbacks?.connectEdgeType ?? null,
-        );
+        this.clearConnectPreview();
       }
       return;
     }
 
     this.connectPreviewTarget = screenToWorld(screenPoint, this.currentCamera);
     this.mapLayer.setConnectPreview(
-      this.currentCallbacks.connectSourceNodeId ?? null,
+      this.gateDragInteraction.nodeId,
+      this.gateDragInteraction.gate,
       this.connectPreviewTarget,
-      this.currentCallbacks.connectEdgeType ?? null,
+      'supports',
     );
+  }
+
+  private clearConnectPreview() {
+    this.connectPreviewTarget = null;
+    this.mapLayer.setConnectPreview(null, 'output', null, null);
+  }
+
+  private findNearestCompatibleGate(worldPoint: GamePoint, interaction: GateDragState) {
+    if (!this.currentModel) {
+      return null;
+    }
+
+    const targetGate: NodeGate = interaction.gate === 'output' ? 'input' : 'output';
+    const hitRadius = CONNECT_GATE_HIT_RADIUS / Math.max(this.currentCamera?.zoom ?? 1, 0.2);
+    const nearest = this.currentModel.nodes
+      .filter((node) => node.id !== interaction.nodeId)
+      .map((node) => {
+        const anchor = getNodeGateAnchor(node, targetGate, this.currentCallbacks?.overviewMode ?? false);
+        return {
+          nodeId: node.id,
+          gate: targetGate,
+          distance: Math.hypot(anchor.x - worldPoint.x, anchor.y - worldPoint.y),
+        };
+      })
+      .sort((left, right) => left.distance - right.distance)[0];
+
+    return nearest && nearest.distance <= hitRadius ? nearest : null;
   }
 }

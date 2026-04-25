@@ -329,6 +329,16 @@ const isPastDue = (value) => {
 
 const unique = (values) => [...new Set(values.filter(Boolean))];
 
+const slugify = (value) => {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9а-яё]+/gi, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return normalized || 'structure';
+};
+
 const STARTER_LOCALIZATION = {
   sphere: {
     name: 'Работа',
@@ -1401,6 +1411,71 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       details: 'Проверить импорт, редактирование и повторение после изменений UI.',
       status: 'todo',
       size_hint: 'small',
+      is_minimum_step: 1,
+    });
+
+    return this.getDashboard();
+  },
+
+  async createStructureWorkspace({ name }) {
+    const title = String(name ?? '').trim();
+    if (!title) {
+      throw new Error('Название структуры обязательно.');
+    }
+
+    const timestamp = currentTimestamp();
+    const baseSlug = slugify(title);
+    const suffix = Date.now().toString(36);
+    const sphereSlug = `${baseSlug}-${suffix}`;
+    const directionSlug = `${sphereSlug}-map`;
+    const skillSlug = `${sphereSlug}-graph`;
+    const rootSlug = `${sphereSlug}-root`;
+
+    const sphere = await hierarchyStore.createSphere({
+      name: title,
+      slug: sphereSlug,
+      description: 'Пользовательская учебная структура.',
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    const direction = await hierarchyStore.createDirection({
+      sphere_id: sphere.id,
+      name: 'Карта обучения',
+      slug: directionSlug,
+      description: 'Ручная сборка учебного графа.',
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    const skill = await hierarchyStore.createSkill({
+      direction_id: direction.id,
+      name: 'Граф курса',
+      slug: skillSlug,
+      description: 'Узлы и связи, созданные через карту.',
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    const rootNode = await hierarchyStore.createNode({
+      skill_id: skill.id,
+      type: 'project',
+      status: 'active',
+      title,
+      slug: rootSlug,
+      summary: 'Корень учебной структуры.',
+      completion_criteria: null,
+      x: -260,
+      y: 0,
+      importance: 'high',
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+
+    await hierarchyStore.createNodeAction({
+      node_id: rootNode.id,
+      title: `Уточнить структуру: ${title}`,
+      details: 'Добавить разделы, темы и атомарные учебные шаги через карту.',
+      status: 'ready',
+      size_hint: 'small',
+      sort_order: 0,
       is_minimum_step: 1,
     });
 

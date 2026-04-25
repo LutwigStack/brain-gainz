@@ -28,15 +28,26 @@ const OVERVIEW_NODE_BOX = {
   radius: 8,
 };
 
+const NODE_GATE = {
+  radius: 5.5,
+  overviewRadius: 7,
+  rim: 2,
+  inset: 1,
+};
+
 interface MapLayerHandlers {
   onNodePointerDown?: (nodeId: number, event: FederatedPointerEvent) => void;
-  onEdgePointerDown?: (edgeId: number) => void;
+  onNodeGatePointerDown?: (nodeId: number, gate: NodeGate, event: FederatedPointerEvent) => void;
+  onEdgePointerDown?: (edgeId: number, event: FederatedPointerEvent) => void;
   selectedEdgeId?: number | null;
   connectSourceNodeId?: number | null;
+  connectSourceGate?: NodeGate;
   connectPreviewTarget?: GamePoint | null;
   connectEdgeType?: 'requires' | 'supports' | 'relates_to' | null;
   overviewMode?: boolean;
 }
+
+export type NodeGate = 'input' | 'output';
 
 const createQuadraticRoute = (
   from: GamePoint,
@@ -163,21 +174,18 @@ const resolveNodeBox = (node: GameNode, overviewMode = false) => {
   return { width, height };
 };
 
-const getNodeAnchor = (node: GameNode, toward: GamePoint, overviewMode = false): GamePoint => {
+export const getNodeGateAnchor = (
+  node: GameNode,
+  gate: NodeGate,
+  overviewMode = false,
+): GamePoint => {
   const box = resolveNodeBox(node, overviewMode);
-  const dx = toward.x - node.position.x;
-  const dy = toward.y - node.position.y;
-
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return {
-      x: node.position.x + Math.sign(dx || 1) * (box.width / 2),
-      y: node.position.y + Math.max(-box.height / 3, Math.min(box.height / 3, dy * 0.18)),
-    };
-  }
+  const radius = overviewMode ? NODE_GATE.overviewRadius : NODE_GATE.radius;
+  const offset = box.width / 2 + radius - NODE_GATE.inset;
 
   return {
-    x: node.position.x + Math.max(-box.width / 3, Math.min(box.width / 3, dx * 0.18)),
-    y: node.position.y + Math.sign(dy || 1) * (box.height / 2),
+    x: node.position.x + (gate === 'output' ? offset : -offset),
+    y: node.position.y,
   };
 };
 
@@ -199,6 +207,7 @@ export class MapLayer extends Container {
   private currentZoom = 1;
   private highlightedNodeId: number | null = null;
   private connectSourceNodeId: number | null = null;
+  private connectSourceGate: NodeGate = 'output';
   private connectPreviewTarget: GamePoint | null = null;
   private connectEdgeType: 'requires' | 'supports' | 'relates_to' | null = null;
   private overviewMode = false;
@@ -222,6 +231,7 @@ export class MapLayer extends Container {
     this.lastHandlers = handlers;
     this.highlightedNodeId = model.highlightedNodeId;
     this.connectSourceNodeId = handlers.connectSourceNodeId ?? null;
+    this.connectSourceGate = handlers.connectSourceGate ?? 'output';
     this.connectPreviewTarget = handlers.connectPreviewTarget ?? null;
     this.connectEdgeType = handlers.connectEdgeType ?? null;
     this.overviewMode = handlers.overviewMode ?? false;
@@ -261,6 +271,13 @@ export class MapLayer extends Container {
       shell.cursor = 'pointer';
       shell.removeAllListeners();
       shell.on('pointerdown', (event) => {
+        const gate = this.resolvePointerGate(this.withRenderPosition(node), event);
+        if (gate) {
+          event.stopPropagation();
+          handlers.onNodeGatePointerDown?.(node.id, gate, event);
+          return;
+        }
+
         event.stopPropagation();
         handlers.onNodePointerDown?.(node.id, event);
       });
@@ -334,10 +351,12 @@ export class MapLayer extends Container {
 
   setConnectPreview(
     sourceNodeId: number | null,
+    sourceGate: NodeGate,
     target: GamePoint | null,
     edgeType: 'requires' | 'supports' | 'relates_to' | null,
   ) {
     this.connectSourceNodeId = sourceNodeId;
+    this.connectSourceGate = sourceGate;
     this.connectPreviewTarget = target;
     this.connectEdgeType = edgeType;
     this.drawConnectPreview();
@@ -417,8 +436,8 @@ export class MapLayer extends Container {
         : isFocusEdge
           ? semantics.canvas.selectedAlpha
           : baseEdgeAlpha;
-      const fromAnchor = getNodeAnchor(fromNode, toNode.position, this.overviewMode);
-      const toAnchor = getNodeAnchor(toNode, fromNode.position, this.overviewMode);
+      const fromAnchor = getNodeGateAnchor(fromNode, 'output', this.overviewMode);
+      const toAnchor = getNodeGateAnchor(toNode, 'input', this.overviewMode);
       const route = createQuadraticRoute(
         fromAnchor,
         toAnchor,
@@ -485,7 +504,7 @@ export class MapLayer extends Container {
       hit.removeAllListeners();
       hit.on('pointerdown', (event) => {
         event.stopPropagation();
-        handlers.onEdgePointerDown?.(edge.id);
+        handlers.onEdgePointerDown?.(edge.id, event);
       });
       hit.clear();
       drawPolyline(hit, route);
@@ -523,7 +542,7 @@ export class MapLayer extends Container {
     const color = semantics.canvas.color;
     const sourcePosition = this.getRenderPosition(source);
     const sourceNode = { ...source, position: sourcePosition };
-    const sourceAnchor = getNodeAnchor(sourceNode, this.connectPreviewTarget, this.overviewMode);
+    const sourceAnchor = getNodeGateAnchor(sourceNode, this.connectSourceGate, this.overviewMode);
     const route = createQuadraticRoute(
       sourceAnchor,
       this.connectPreviewTarget,
@@ -610,6 +629,18 @@ export class MapLayer extends Container {
       width: isHighlighted ? 3.5 : isConnectSource ? 3 : 2,
       alpha: 0.96,
     });
+    this.drawNodeGate(shell, box, 'input', {
+      fill: 0x0b1220,
+      stroke: 0x94a3b8,
+      alpha: node.state === 'locked' ? 0.56 : 0.9,
+      overviewMode: this.overviewMode,
+    });
+    this.drawNodeGate(shell, box, 'output', {
+      fill: borderColor,
+      stroke: biome?.accent ?? palette.stroke,
+      alpha: node.state === 'locked' ? 0.62 : 1,
+      overviewMode: this.overviewMode,
+    });
     shell.position.set(node.position.x, node.position.y);
 
     label.text =
@@ -645,6 +676,40 @@ export class MapLayer extends Container {
 
       label.visible = this.shouldShowNodeLabel(node.id);
     });
+  }
+
+  private drawNodeGate(
+    shell: Graphics,
+    box: { width: number; height: number },
+    gate: NodeGate,
+    options: { fill: number; stroke: number; alpha: number; overviewMode: boolean },
+  ) {
+    const radius = options.overviewMode ? NODE_GATE.overviewRadius : NODE_GATE.radius;
+    const x = (gate === 'output' ? 1 : -1) * (box.width / 2 + radius - NODE_GATE.inset);
+    const y = 0;
+
+    shell.circle(x, y, radius + NODE_GATE.rim);
+    shell.fill({ color: 0x020617, alpha: Math.min(0.92, options.alpha + 0.08) });
+    shell.circle(x, y, radius);
+    shell.fill({ color: options.fill, alpha: options.alpha });
+    shell.circle(x, y, radius);
+    shell.stroke({
+      color: options.stroke,
+      width: options.overviewMode ? 2.5 : 2,
+      alpha: options.alpha,
+    });
+  }
+
+  private resolvePointerGate(node: GameNode, event: FederatedPointerEvent): NodeGate | null {
+    const worldPoint = this.world.toLocal(event.global);
+    const hitRadius = Math.max(12, 15 / Math.max(this.currentZoom, 0.2));
+    const input = getNodeGateAnchor(node, 'input', this.overviewMode);
+    const output = getNodeGateAnchor(node, 'output', this.overviewMode);
+    const inputDistance = Math.hypot(worldPoint.x - input.x, worldPoint.y - input.y);
+    const outputDistance = Math.hypot(worldPoint.x - output.x, worldPoint.y - output.y);
+    const nearest = inputDistance <= outputDistance ? { gate: 'input' as const, distance: inputDistance } : { gate: 'output' as const, distance: outputDistance };
+
+    return nearest.distance <= hitRadius ? nearest.gate : null;
   }
 
   private shouldShowNodeLabel(nodeId: number) {

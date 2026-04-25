@@ -1,18 +1,16 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Archive,
   CheckCircle2,
   Compass,
   Copy,
   GitBranch,
-  Grid2X2,
   Map as MapIcon,
   PauseCircle,
   PencilLine,
-  Play,
   Plus,
+  Play,
   RefreshCw,
-  RotateCcw,
   Save,
   Scissors,
   Target,
@@ -41,12 +39,6 @@ import {
   type GraphEdgeDirection,
 } from '../application/graph-edge-semantics';
 import { resolveMapShortcutIntent } from '../application/map-shortcuts';
-import {
-  buildBulkLayoutPreview,
-  type BulkLayoutPreview,
-  type BulkLayoutScope,
-  type BulkLayoutStrategy,
-} from '../application/map-layout';
 import { buildGraphHierarchyIndex } from '../application/graph-hierarchy';
 import {
   canDuplicateNodeEditorDraft,
@@ -124,25 +116,17 @@ const statusLabel = (value: string) => statusLabels[value] ?? value;
 const typeLabel = (value: string) => typeLabels[value] ?? value;
 const riskLabel = (value: string) => riskLabels[value] ?? value;
 
-const edgeTypeOptions = [
-  { value: 'requires', label: '\u0422\u0440\u0435\u0431\u0443\u0435\u0442' },
-  { value: 'supports', label: '\u041f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442' },
-  { value: 'relates_to', label: '\u0421\u0432\u044f\u0437\u0430\u043d\u043e' },
-] as const;
-
-const bulkLayoutScopeOptions = [
-  { value: 'region', label: 'Вся структура' },
-  { value: 'focus-neighborhood', label: '\u0412\u043e\u043a\u0440\u0443\u0433 \u0444\u043e\u043a\u0443\u0441\u0430' },
-] as const;
-
-const bulkLayoutStrategyOptions = [
-  { value: 'hierarchy', label: '\u0418\u0435\u0440\u0430\u0440\u0445\u0438\u044f' },
-  { value: 'tidy', label: '\u0423\u043f\u043e\u0440\u044f\u0434\u043e\u0447\u0438\u0442\u044c' },
-  { value: 'spread', label: '\u0420\u0430\u0437\u0434\u0432\u0438\u043d\u0443\u0442\u044c' },
-  { value: 'radial', label: '\u0420\u0430\u0434\u0438\u0430\u043b\u044c\u043d\u043e' },
-] as const;
-
 const linearAlgebraTemplateValue = 'template:linear-algebra';
+type MapCanvasMode = 'free' | 'layers';
+
+interface CanvasContextMenuState {
+  screenX: number;
+  screenY: number;
+  worldX: number;
+  worldY: number;
+  nodeId: number | null;
+  edgeId: number | null;
+}
 
 interface GraphRailEdgeEntry {
   edge: NavigationGraphEdge;
@@ -168,6 +152,7 @@ interface NavigationViewProps {
   barrierType: BarrierType;
   shrinkTitle: string;
   onRefresh: () => void;
+  onCreateStructure: (name: string) => Promise<void> | void;
   onCreateLinearAlgebraGraph: () => Promise<void> | void;
   onSelectNode: (node: NavigationNodeSummary) => void;
   onSelectAction: (action: NodeAction) => void;
@@ -188,9 +173,17 @@ interface NavigationViewProps {
     existingNodeCount: number;
     x: number;
     y: number;
+    title?: string;
+  }) => Promise<boolean> | boolean;
+  onCreateChildNodeAt: (input: {
+    parentNodeId: number;
+    skillId: number;
+    existingNodeCount: number;
+    x: number;
+    y: number;
+    title?: string;
   }) => Promise<boolean> | boolean;
   onMoveNode: (input: { nodeId: number; x: number; y: number }) => Promise<void> | void;
-  onApplyBulkLayout: (positions: Record<number, { x: number; y: number }>) => Promise<boolean> | boolean;
   onCreateEdge: (input: {
     sourceNodeId: number;
     targetNodeId: number;
@@ -215,6 +208,7 @@ export const NavigationView = ({
   barrierType,
   shrinkTitle,
   onRefresh,
+  onCreateStructure,
   onCreateLinearAlgebraGraph,
   onSelectNode,
   onSelectAction,
@@ -231,8 +225,8 @@ export const NavigationView = ({
   onDuplicateEditor,
   onArchiveEditor,
   onCreateNodeAt,
+  onCreateChildNodeAt,
   onMoveNode,
-  onApplyBulkLayout,
   onCreateEdge,
   onDeleteEdge,
   editorPendingAction,
@@ -243,19 +237,17 @@ export const NavigationView = ({
   const [editorOverrideNodeId, setEditorOverrideNodeId] = useState<number | null>(null);
   const [isEditorExpanded, setIsEditorExpanded] = useState(false);
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
-  const [isMapCreateMode, setIsMapCreateMode] = useState(false);
-  const [isSnapToGrid, setIsSnapToGrid] = useState(true);
-  const [isEdgeConnectMode, setIsEdgeConnectMode] = useState(false);
-  const [layoutScope, setLayoutScope] = useState<BulkLayoutScope>('region');
-  const [layoutStrategy, setLayoutStrategy] = useState<BulkLayoutStrategy>('hierarchy');
-  const [layoutPreview, setLayoutPreview] = useState<BulkLayoutPreview | null>(null);
-  const [pendingEdgeSourceNodeId, setPendingEdgeSourceNodeId] = useState<number | null>(null);
-  const [pendingEdgeType, setPendingEdgeType] = useState<GraphEdgeType>('requires');
+  const [mapCanvasMode, setMapCanvasMode] = useState<MapCanvasMode>('free');
+  const [layerParentNodeId, setLayerParentNodeId] = useState<number | null>(null);
+  const [canvasContextMenu, setCanvasContextMenu] = useState<CanvasContextMenuState | null>(null);
+  const [newStructureName, setNewStructureName] = useState('');
+  const [nodeCreateTitle, setNodeCreateTitle] = useState('');
+  const [isCreatingStructure, setIsCreatingStructure] = useState(false);
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
   const [isMapFocused, setIsMapFocused] = useState(false);
   const [mapCommand, setMapCommand] = useState<{
     id: number;
-    type: 'overview-graph' | 'focus-node' | 'fit-graph' | 'reset-camera';
+    type: 'focus-node' | 'fit-graph' | 'reset-camera';
   } | null>(null);
 
   const updateDraft = (patch: Partial<NodeEditorDraft>) => {
@@ -284,6 +276,16 @@ export const NavigationView = ({
     selectedDirection?.skills.find((skill) => skill.id === selectedSkillId) ??
     selectedDirection?.skills[0] ??
     null;
+
+  useEffect(() => {
+    if (selectedSphereId == null) {
+      return;
+    }
+
+    setLayerParentNodeId(null);
+    setMapCanvasMode('free');
+  }, [selectedSphereId]);
+
   const selectedAction = focus?.selectedAction ?? null;
   const totalDirections = selectedSphere?.directions.length ?? 0;
   const totalSkills =
@@ -337,7 +339,6 @@ export const NavigationView = ({
   }
   const graphEdges = snapshot?.edges ?? [];
   const mapModel = createGameViewModel(snapshot, focus, { visibleSphereId: selectedSphereId });
-  const mapPositionIndex = new globalThis.Map(mapModel.nodes.map((node) => [node.id, node.position]));
   const structureHierarchy = buildGraphHierarchyIndex(snapshot, selectedSphereId, focus?.node?.id ?? null);
   const resolvedSelectedEdgeId =
     selectedEdgeId != null && graphEdges.some((edge) => edge.id === selectedEdgeId) ? selectedEdgeId : null;
@@ -363,12 +364,6 @@ export const NavigationView = ({
         const node = navigationNodeIndex.get(edge.target_node_id);
         return node ? [{ edge, node, direction: 'outgoing' as const }] : [];
       });
-  const resolvedPendingEdgeSourceNodeId =
-    pendingEdgeSourceNodeId != null && navigationNodeIndex.has(pendingEdgeSourceNodeId)
-      ? pendingEdgeSourceNodeId
-      : null;
-  const pendingEdgeSourceNode =
-    resolvedPendingEdgeSourceNodeId != null ? navigationNodeIndex.get(resolvedPendingEdgeSourceNodeId) ?? null : null;
   const selectedEdgeSourceNode =
     selectedEdge != null ? navigationNodeIndex.get(selectedEdge.source_node_id) ?? null : null;
   const selectedEdgeTargetNode =
@@ -393,17 +388,6 @@ export const NavigationView = ({
       : selectedEdge.target_node_id === focus.node.id
         ? 'incoming'
         : null;
-  const resolvedLayoutPreview =
-    layoutPreview &&
-    layoutPreview.nodeIds.every((nodeId) => navigationNodeIndex.has(nodeId))
-      ? layoutPreview
-      : null;
-  const isLayoutPreviewActive = resolvedLayoutPreview != null;
-  const layoutTargetLabel =
-    layoutScope === 'region'
-      ? selectedSphere?.name ?? 'регион'
-      : focus?.node?.title ?? 'фокусный узел';
-
   const findSphereEntryNode = (sphereId: number): NavigationNodeSummary | null => {
     const sphere = spheres.find((item) => item.id === sphereId);
     const nodes = sphere?.directions.flatMap((direction) => direction.skills.flatMap((skill) => skill.nodes)) ?? [];
@@ -414,6 +398,24 @@ export const NavigationView = ({
       nodes[0] ??
       null
     );
+  };
+
+  const handleCreateStructure = async () => {
+    const title = newStructureName.trim();
+    if (!title || isCreatingStructure || isLoading || isMapMutating) {
+      return;
+    }
+
+    setIsCreatingStructure(true);
+    clearMapTransientState();
+
+    try {
+      await onCreateStructure(title);
+      setNewStructureName('');
+      setMapCanvasMode('free');
+    } finally {
+      setIsCreatingStructure(false);
+    }
   };
 
   const handleSelectStructure = async (value: string) => {
@@ -434,7 +436,7 @@ export const NavigationView = ({
     onSelectNode(entryNode);
   };
 
-  const runMapCommand = (type: 'overview-graph' | 'focus-node' | 'fit-graph' | 'reset-camera') => {
+  const runMapCommand = (type: 'focus-node' | 'fit-graph' | 'reset-camera') => {
     setMapCommand({
       id: Date.now(),
       type,
@@ -442,48 +444,9 @@ export const NavigationView = ({
   };
 
   const clearMapTransientState = () => {
-    setIsMapCreateMode(false);
-    setIsEdgeConnectMode(false);
-    setPendingEdgeSourceNodeId(null);
     setSelectedEdgeId(null);
-    setLayoutPreview(null);
+    setCanvasContextMenu(null);
   };
-
-  const toggleCreateNodeMode = useCallback(() => {
-    if (isMapMutating) {
-      return;
-    }
-
-    setIsMapCreateMode((current) => {
-      const next = !current;
-      if (next) {
-        setIsEdgeConnectMode(false);
-        setPendingEdgeSourceNodeId(null);
-        setSelectedEdgeId(null);
-      }
-      return next;
-    });
-  }, [isMapMutating]);
-
-  const focusNodeId = focus?.node?.id ?? null;
-
-  const toggleConnectEdgeMode = useCallback(() => {
-    if (isMapMutating || focusNodeId == null) {
-      return;
-    }
-
-    setIsEdgeConnectMode((current) => {
-      const next = !current;
-      if (next) {
-        setIsMapCreateMode(false);
-        setSelectedEdgeId(null);
-        setPendingEdgeSourceNodeId(focusNodeId);
-      } else {
-        setPendingEdgeSourceNodeId(null);
-      }
-      return next;
-    });
-  }, [focusNodeId, isMapMutating]);
 
   const isInteractiveTextElement = (target: EventTarget | null) => {
     if (!(target instanceof Element)) {
@@ -522,24 +485,10 @@ export const NavigationView = ({
       event.preventDefault();
 
       switch (intent) {
-        case 'toggle-create-node':
-          toggleCreateNodeMode();
-          break;
-        case 'toggle-connect-edge':
-          toggleConnectEdgeMode();
-          break;
-        case 'toggle-snap-grid':
-          if (!isMapMutating) {
-            setIsSnapToGrid((current) => !current);
-          }
-          break;
         case 'focus-node':
           if (focus?.node) {
             runMapCommand('focus-node');
           }
-          break;
-        case 'overview-graph':
-          runMapCommand('overview-graph');
           break;
         case 'fit-graph':
           runMapCommand('fit-graph');
@@ -585,77 +534,11 @@ export const NavigationView = ({
     onDeleteEdge,
     onRefresh,
     resolvedSelectedEdgeId,
-    toggleConnectEdgeMode,
-    toggleCreateNodeMode,
   ]);
   const handleCanvasNodeSelect = async (node: NavigationNodeSummary) => {
-    if (!isEdgeConnectMode) {
-      setSelectedEdgeId(null);
-      onSelectNode(node);
-      return;
-    }
-
     setSelectedEdgeId(null);
-
-    if (resolvedPendingEdgeSourceNodeId == null) {
-      setPendingEdgeSourceNodeId(node.id);
-      onSelectNode(node);
-      return;
-    }
-
-    if (resolvedPendingEdgeSourceNodeId === node.id || isMapMutating) {
-      return;
-    }
-
-    const created = await onCreateEdge({
-      sourceNodeId: resolvedPendingEdgeSourceNodeId,
-      targetNodeId: node.id,
-      edgeType: pendingEdgeType,
-    });
-
-    if (created) {
-      setPendingEdgeSourceNodeId(null);
-      setIsEdgeConnectMode(false);
-    }
-  };
-
-  const handlePreviewBulkLayout = () => {
-    const preview = buildBulkLayoutPreview({
-      snapshot,
-      focus,
-      scope: layoutScope,
-      strategy: layoutStrategy,
-      selectedSphereId,
-      positionIndex: mapPositionIndex,
-    });
-
-    setLayoutPreview(preview);
-  };
-
-  const handlePreviewHierarchyLayout = () => {
-    setLayoutScope('region');
-    setLayoutStrategy('hierarchy');
-    const preview = buildBulkLayoutPreview({
-      snapshot,
-      focus,
-      scope: 'region',
-      strategy: 'hierarchy',
-      selectedSphereId,
-      positionIndex: mapPositionIndex,
-    });
-
-    setLayoutPreview(preview);
-  };
-
-  const handleApplyBulkLayout = async () => {
-    if (!resolvedLayoutPreview || isMapMutating) {
-      return;
-    }
-
-    const applied = await onApplyBulkLayout(resolvedLayoutPreview.positions);
-    if (applied) {
-      setLayoutPreview(null);
-    }
+    setCanvasContextMenu(null);
+    onSelectNode(node);
   };
 
   const hasMapNodes = mapModel.nodes.length > 0;
@@ -667,23 +550,121 @@ export const NavigationView = ({
       : 'Создайте стартовый набор, чтобы карта стала рабочей.';
   const modeLabel = !hasMapNodes
     ? 'Карта пуста: начните со стартового набора или нового узла'
-    : isMapCreateMode
-      ? 'Клик по карте создаст узел'
-      : isEdgeConnectMode
-        ? pendingEdgeSourceNode
-          ? `Связь: ${pendingEdgeSourceNode.title} -> выберите цель`
-          : 'Выберите источник связи'
-        : isLayoutPreviewActive
-          ? `Предпросмотр: ${resolvedLayoutPreview.nodeIds.length} узл.`
-          : isMapFocused
-            ? 'Клавиши карты активны'
-            : 'Кликните по карте для клавиш';
+    : mapCanvasMode === 'layers'
+      ? 'Слои: показан один родитель и его прямые дочерние узлы'
+      : isMapFocused
+        ? 'Свободный канвас: перетаскивайте поле мышью, колесо меняет масштаб'
+        : 'Свободный канвас: правый клик открывает меню действий';
   const mapStats = [
     { label: 'Узлы', value: workspaceNodes },
     { label: 'Шаги', value: workspaceActions },
     { label: 'Ветки', value: `${workspaceDirections}/${workspaceSkills}` },
     { label: 'Фокус', value: selectedAction?.title ?? focus?.node?.title ?? 'не выбран' },
   ];
+  const fallbackLayerParentId =
+    focus?.node && structureHierarchy.entries.get(focus.node.id)?.childIds.length
+      ? focus.node.id
+      : focus?.node
+        ? structureHierarchy.entries.get(focus.node.id)?.parentId ?? null
+        : structureHierarchy.roots[0] ?? null;
+  const effectiveLayerParentId =
+    layerParentNodeId != null && structureHierarchy.entries.has(layerParentNodeId)
+      ? layerParentNodeId
+      : fallbackLayerParentId;
+  const layerParentEntry =
+    effectiveLayerParentId != null ? structureHierarchy.entries.get(effectiveLayerParentId) ?? null : null;
+  const layerChildIds = layerParentEntry?.childIds ?? structureHierarchy.roots;
+  const layerNodeIds =
+    mapCanvasMode === 'layers'
+      ? [...(layerParentEntry ? [layerParentEntry.node.id] : []), ...layerChildIds]
+      : null;
+  const layerPreviewPositions =
+    mapCanvasMode === 'layers' && layerNodeIds
+      ? Object.fromEntries(
+          layerNodeIds.map((nodeId, index) => {
+            if (layerParentEntry && nodeId === layerParentEntry.node.id) {
+              return [nodeId, { x: -240, y: 0 }];
+            }
+
+            const childIndex = layerParentEntry ? index - 1 : index;
+            const childCount = Math.max(1, layerChildIds.length);
+            return [
+              nodeId,
+              {
+                x: layerParentEntry ? 260 : 0,
+                y: (childIndex - (childCount - 1) / 2) * 118,
+              },
+            ];
+          }),
+        )
+      : null;
+  const layerParentParentId = layerParentEntry?.parentId ?? null;
+  const contextNode =
+    canvasContextMenu?.nodeId != null ? navigationNodeIndex.get(canvasContextMenu.nodeId) ?? null : null;
+  const contextEdge =
+    canvasContextMenu?.edgeId != null
+      ? graphEdges.find((edge) => edge.id === canvasContextMenu.edgeId) ?? null
+      : null;
+  const contextEdgeSemantics = contextEdge ? getGraphEdgeSemantics(contextEdge.edge_type) : null;
+  const contextEdgeSourceNode =
+    contextEdge != null ? navigationNodeIndex.get(contextEdge.source_node_id) ?? null : null;
+  const contextEdgeTargetNode =
+    contextEdge != null ? navigationNodeIndex.get(contextEdge.target_node_id) ?? null : null;
+  const contextNodeHierarchy =
+    contextNode != null ? structureHierarchy.entries.get(contextNode.id) ?? null : null;
+  const contextSkill =
+    contextNode != null
+      ? spheres
+          .flatMap((sphere) => sphere.directions)
+          .flatMap((direction) => direction.skills)
+          .find((skill) => skill.id === contextNode.skill_id) ?? selectedSkill
+      : selectedSkill;
+  const handleCreateNodeFromContext = async () => {
+    if (!canvasContextMenu || !contextSkill || isMapMutating) {
+      return;
+    }
+
+    const created = await onCreateNodeAt({
+      skillId: contextSkill.id,
+      existingNodeCount: contextSkill.nodes.length,
+      x: canvasContextMenu.worldX,
+      y: canvasContextMenu.worldY,
+      title: nodeCreateTitle.trim() || undefined,
+    });
+
+    if (created) {
+      setCanvasContextMenu(null);
+      setNodeCreateTitle('');
+      setMapCanvasMode('free');
+    }
+  };
+  const handleCreateChildNodeFromContext = async () => {
+    if (!canvasContextMenu || !contextNode || !contextSkill || isMapMutating) {
+      return;
+    }
+
+    const parentX = contextNode.x ?? canvasContextMenu.worldX;
+    const parentY = contextNode.y ?? canvasContextMenu.worldY;
+    const created = await onCreateChildNodeAt({
+      parentNodeId: contextNode.id,
+      skillId: contextSkill.id,
+      existingNodeCount: contextSkill.nodes.length,
+      x: parentX + 320,
+      y: parentY + Math.max(0, contextNodeHierarchy?.childIds.length ?? 0) * 120,
+      title: nodeCreateTitle.trim() || undefined,
+    });
+
+    if (created) {
+      setNodeCreateTitle('');
+      setMapCanvasMode('free');
+    }
+  };
+  const openLayerAtNode = (nodeId: number) => {
+    setMapCanvasMode('layers');
+    setLayerParentNodeId(nodeId);
+    setCanvasContextMenu(null);
+    runMapCommand('fit-graph');
+  };
   const renderStructureTreeNode = (nodeId: number): ReactNode => {
     const entry = structureHierarchy.entries.get(nodeId);
     if (!entry) {
@@ -693,9 +674,6 @@ export const NavigationView = ({
     const isSelected = focus?.node?.id === nodeId;
     const hasChildren = entry.childIds.length > 0;
     const selectTreeNode = () => {
-      if (entry.depth <= 1) {
-        runMapCommand('overview-graph');
-      }
       void handleCanvasNodeSelect(entry.node);
     };
     const rowClassName = `w-full min-w-0 rounded border px-2 py-1.5 text-left transition ${
@@ -769,22 +747,6 @@ export const NavigationView = ({
               aside={
                 <div className="flex flex-wrap items-center gap-2">
                   <PixelButton
-                    tone={isMapCreateMode ? 'accent' : 'ghost'}
-                    onClick={toggleCreateNodeMode}
-                    disabled={!selectedSkill || isMapMutating}
-                    style={{ minHeight: 32, padding: '6px 12px', gap: 6 }}
-                  >
-                      <Plus size={16} /> {isMapCreateMode ? 'Отмена' : 'Новый узел'}
-                    </PixelButton>
-                  <PixelButton
-                    tone={isEdgeConnectMode ? 'accent' : 'ghost'}
-                    onClick={toggleConnectEdgeMode}
-                    disabled={isMapMutating || !focus?.node}
-                    style={{ minHeight: 32, padding: '6px 12px', gap: 6 }}
-                  >
-                      <GitBranch size={16} /> {isEdgeConnectMode ? 'Отмена связи' : 'Новая связь'}
-                    </PixelButton>
-                  <PixelButton
                     onClick={onRefresh}
                     disabled={isLoading || isMapMutating}
                     style={{ minHeight: 32, padding: '6px 12px', gap: 6 }}
@@ -816,7 +778,34 @@ export const NavigationView = ({
                       </option>
                     ))}
                   </PixelSelect>
-                  <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+                  <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(180px,1fr)_auto] sm:items-end">
+                    <PixelInput
+                      id="new-structure-name"
+                      label="Новая структура"
+                      type="text"
+                      value={newStructureName}
+                      onChange={(event) => setNewStructureName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          void handleCreateStructure();
+                        }
+                      }}
+                      disabled={isLoading || isMapMutating || isCreatingStructure}
+                      placeholder="English Foundations"
+                    />
+                    <PixelButton
+                      tone="accent"
+                      onClick={() => {
+                        void handleCreateStructure();
+                      }}
+                      disabled={!newStructureName.trim() || isLoading || isMapMutating || isCreatingStructure}
+                      style={{ minHeight: 34, padding: '7px 10px', gap: 6 }}
+                    >
+                      <Plus size={14} /> {isCreatingStructure ? 'Создаю...' : 'Создать'}
+                    </PixelButton>
+                  </div>
+                  <PixelText as="p" readable size="xs" color="textMuted" className="md:col-span-2" style={{ margin: 0 }}>
                     Выбор переключает карту на записанную структуру; базовый шаблон создается при первом выборе.
                   </PixelText>
                 </div>
@@ -843,177 +832,96 @@ export const NavigationView = ({
               </PixelSurface>
 
               <PixelSurface frame="ghost" padding="sm">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                      Вид карты
+                    </PixelText>
+                    <PixelButton
+                      tone={mapCanvasMode === 'free' ? 'accent' : 'ghost'}
+                      onClick={() => {
+                        setMapCanvasMode('free');
+                        setCanvasContextMenu(null);
+                      }}
+                      disabled={!hasMapNodes}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <MapIcon size={14} /> Свободный канвас
+                    </PixelButton>
+                    <PixelButton
+                      tone={mapCanvasMode === 'layers' ? 'accent' : 'ghost'}
+                      onClick={() => {
+                        setMapCanvasMode('layers');
+                        setLayerParentNodeId(fallbackLayerParentId);
+                        setCanvasContextMenu(null);
+                        runMapCommand('fit-graph');
+                      }}
+                      disabled={!hasMapNodes}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <GitBranch size={14} /> Слои
+                    </PixelButton>
+                  </div>
                   <PixelText as="span" size="xs" color="textMuted" uppercase>
-                    Управление картой
+                    {modeLabel}
                   </PixelText>
-                  <PixelButton
-                    tone="ghost"
-                    onClick={() => runMapCommand('overview-graph')}
-                    disabled={!hasMapNodes || !mapModel.isLargeGraph}
-                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                  >
-                    <MapIcon size={14} /> Обзор
-                  </PixelButton>
-                  <PixelButton
-                    tone="ghost"
-                    onClick={() => runMapCommand('focus-node')}
-                    disabled={!focus?.node}
-                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                  >
-                    <Target size={14} /> К фокусу
-                  </PixelButton>
-                  <PixelButton
-                    tone="ghost"
-                    onClick={() => runMapCommand('fit-graph')}
-                    disabled={!hasMapNodes}
-                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                  >
-                    <Compass size={14} /> Вписать
-                  </PixelButton>
-                  <PixelButton
-                    tone="ghost"
-                    onClick={() => runMapCommand('reset-camera')}
-                    disabled={!hasMapNodes}
-                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                  >
-                    <RotateCcw size={14} /> Сброс
-                  </PixelButton>
-                  <PixelButton
-                    tone={isSnapToGrid ? 'accent' : 'ghost'}
-                    onClick={() => setIsSnapToGrid((current) => !current)}
-                    disabled={!hasMapNodes}
-                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                  >
-                    <Grid2X2 size={14} /> Сетка {isSnapToGrid ? 'вкл' : 'выкл'}
-                  </PixelButton>
-                  <PixelButton
-                    tone={isLayoutPreviewActive && resolvedLayoutPreview.strategy === 'hierarchy' ? 'accent' : 'ghost'}
-                    onClick={handlePreviewHierarchyLayout}
-                    disabled={isMapMutating || !selectedSphere}
-                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                  >
-                    <GitBranch size={14} /> Иерархия
-                  </PixelButton>
-                  <PixelButton
-                    tone="accent"
-                    onClick={handleApplyBulkLayout}
-                    disabled={!resolvedLayoutPreview || isMapMutating}
-                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                  >
-                    <Save size={14} /> Применить
-                  </PixelButton>
                 </div>
               </PixelSurface>
 
-              <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
-                <PixelSurface frame={isMapCreateMode || isEdgeConnectMode || isLayoutPreviewActive ? 'accent' : 'ghost'} padding="sm">
+              {mapCanvasMode === 'layers' ? (
+                <PixelSurface frame="inset" padding="sm">
                   <div className="flex flex-wrap items-center gap-2">
-                    <PixelText as="span" size="xs" color={isMapCreateMode || isEdgeConnectMode || isLayoutPreviewActive ? 'accent' : 'textMuted'} uppercase>
-                      {modeLabel}
-                    </PixelText>
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
-                      {selectedSkill ? `Контекст: ${selectedSkill.name}` : 'Сначала выберите навык'}
+                      Слой
                     </PixelText>
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
-                      {isSnapToGrid ? 'Сетка включена' : 'Сетка выключена'}
+                    <PixelText as="span" readable size="sm">
+                      {layerParentEntry?.node.title ?? selectedSphere?.name ?? 'Корень структуры'}
                     </PixelText>
+                    <PixelButton
+                      tone="ghost"
+                      onClick={() => setLayerParentNodeId(layerParentParentId)}
+                      disabled={!layerParentEntry || layerParentParentId == null}
+                      style={{ minHeight: 28, padding: '5px 8px', gap: 6 }}
+                    >
+                      <Target size={13} /> Уровень выше
+                    </PixelButton>
                   </div>
-                </PixelSurface>
+                  {layerChildIds.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {layerChildIds.map((childId) => {
+                        const child = structureHierarchy.entries.get(childId);
+                        if (!child) {
+                          return null;
+                        }
 
-                {isEdgeConnectMode ? (
-                  <PixelSurface frame="ghost" padding="sm">
-                    <div className="grid gap-2">
-                      <PixelText as="span" size="xs" color="textMuted" uppercase>
-                        Тип связи
-                      </PixelText>
-                      <PixelSelect
-                        aria-label="Тип связи"
-                        value={pendingEdgeType}
-                        onChange={(event) => setPendingEdgeType(event.target.value as GraphEdgeType)}
-                        disabled={isMapMutating}
-                      >
-                        {edgeTypeOptions.map((item) => (
-                          <option key={item.value} value={item.value}>
-                            {item.label}
-                          </option>
-                        ))}
-                      </PixelSelect>
+                        return (
+                          <span key={childId} className="inline-flex items-center gap-1">
+                            <PixelButton
+                              tone={child.childIds.length ? 'ghost' : 'panel'}
+                              onClick={() => {
+                                void handleCanvasNodeSelect(child.node);
+                              }}
+                              style={{ minHeight: 28, padding: '5px 8px', gap: 6 }}
+                            >
+                              {child.node.title}
+                            </PixelButton>
+                            {child.childIds.length ? (
+                              <PixelButton
+                                tone="ghost"
+                                onClick={() => openLayerAtNode(child.node.id)}
+                                title={`Открыть слой: ${child.node.title}`}
+                                style={{ minHeight: 28, padding: '5px 7px', gap: 4 }}
+                              >
+                                <GitBranch size={13} /> Слой
+                              </PixelButton>
+                            ) : null}
+                          </span>
+                        );
+                      })}
                     </div>
-                  </PixelSurface>
-                ) : (
-                  <details className="group">
-                    <summary className="cursor-pointer list-none">
-                      <PixelSurface frame="ghost" padding="sm">
-                        <div className="flex items-center justify-between gap-3">
-                          <PixelText as="span" size="xs" color="textMuted" uppercase>
-                            Размещение
-                          </PixelText>
-                          <PixelText as="span" size="xs" color="textMuted" uppercase>
-                            {resolvedLayoutPreview ? `${resolvedLayoutPreview.nodeIds.length} узл.` : layoutTargetLabel}
-                          </PixelText>
-                        </div>
-                      </PixelSurface>
-                    </summary>
-                    <PixelSurface frame="inset" padding="sm" className="mt-2">
-                      <div className="grid gap-2">
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <PixelSelect
-                            label="Область"
-                            value={layoutScope}
-                            onChange={(event) => setLayoutScope(event.target.value as BulkLayoutScope)}
-                            disabled={isMapMutating}
-                          >
-                            {bulkLayoutScopeOptions.map((item) => (
-                              <option key={item.value} value={item.value}>
-                                {item.label}
-                              </option>
-                            ))}
-                          </PixelSelect>
-                          <PixelSelect
-                            label="Режим"
-                            value={layoutStrategy}
-                            onChange={(event) => setLayoutStrategy(event.target.value as BulkLayoutStrategy)}
-                            disabled={isMapMutating}
-                          >
-                            {bulkLayoutStrategyOptions.map((item) => (
-                              <option key={item.value} value={item.value}>
-                                {item.label}
-                              </option>
-                            ))}
-                          </PixelSelect>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <PixelButton
-                            tone="ghost"
-                            onClick={handlePreviewBulkLayout}
-                            disabled={isMapMutating || (!selectedSphere && layoutScope === 'region') || (!focus?.node && layoutScope === 'focus-neighborhood')}
-                            style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                          >
-                            <Compass size={14} /> Показать
-                          </PixelButton>
-                          <PixelButton
-                            tone="ghost"
-                            onClick={() => setLayoutPreview(null)}
-                            disabled={!resolvedLayoutPreview || isMapMutating}
-                            style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                          >
-                            <X size={14} /> Отменить
-                          </PixelButton>
-                          <PixelButton
-                            tone="accent"
-                            onClick={handleApplyBulkLayout}
-                            disabled={!resolvedLayoutPreview || isMapMutating}
-                            style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                          >
-                            <Save size={14} /> Применить
-                          </PixelButton>
-                        </div>
-                      </div>
-                    </PixelSurface>
-                  </details>
-                )}
-              </div>
+                  ) : null}
+                </PixelSurface>
+              ) : null}
 
               <div className="flex flex-wrap items-center gap-2">
                 {mapMutationPendingAction === 'create-node' ? (
@@ -1058,42 +966,197 @@ export const NavigationView = ({
                     snapshot={snapshot}
                     focus={focus}
                     visibleSphereId={selectedSphereId}
+                    canvasMode={mapCanvasMode}
+                    visibleNodeIds={layerNodeIds}
                     onSelectNode={handleCanvasNodeSelect}
-                  onFocusChange={setIsMapFocused}
-                  onSelectEdge={(edgeId) => {
-                    setSelectedEdgeId(edgeId);
-                    setIsMapCreateMode(false);
-                  }}
-                  mapCommand={mapCommand}
-                  previewNodePositions={resolvedLayoutPreview?.positions ?? null}
-                  canDragNodes={!isLayoutPreviewActive}
-                  createMode={isMapCreateMode && !isMapMutating}
-                  snapToGrid={isSnapToGrid}
-                  selectedEdgeId={selectedEdgeId}
-                  connectSourceNodeId={pendingEdgeSourceNodeId}
-                  connectEdgeType={isEdgeConnectMode ? pendingEdgeType : null}
-                  onCreateNodeAt={async ({ x, y }) => {
-                    if (!selectedSkill || isMapMutating) {
-                      return false;
-                    }
+                    onFocusChange={setIsMapFocused}
+                    onSelectEdge={(edgeId) => {
+                      setSelectedEdgeId(edgeId);
+                      setCanvasContextMenu(null);
+                    }}
+                    onCreateEdge={async (input) => {
+                      if (isMapMutating) {
+                        return false;
+                      }
 
-                    const created = await onCreateNodeAt({
-                      skillId: selectedSkill.id,
-                      existingNodeCount: selectedSkill.nodes.length,
-                      x,
-                      y,
-                    });
-
-                    if (created) {
-                      setIsMapCreateMode(false);
-                    }
-
-                    return created;
-                  }}
-                  onMoveNode={isLayoutPreviewActive ? undefined : onMoveNode}
+                      const created = await onCreateEdge(input);
+                      if (created) {
+                        setCanvasContextMenu(null);
+                        setSelectedEdgeId(null);
+                      }
+                      return created;
+                    }}
+                    mapCommand={mapCommand}
+                    previewNodePositions={layerPreviewPositions}
+                    canDragNodes={mapCanvasMode === 'free'}
+                    createMode={false}
+                    snapToGrid={false}
+                    selectedEdgeId={selectedEdgeId}
+                    connectSourceNodeId={null}
+                    connectEdgeType={null}
+                    onCanvasContextMenu={(menu) => {
+                      setCanvasContextMenu(menu);
+                      setNodeCreateTitle('');
+                    }}
+                    onCanvasPointerDown={(hit) => {
+                      if (hit.button === 0 && hit.nodeId == null && hit.edgeId == null) {
+                        setCanvasContextMenu(null);
+                        setNodeCreateTitle('');
+                      }
+                    }}
+                    onMoveNode={mapCanvasMode === 'free' ? onMoveNode : undefined}
                   className="h-[480px] min-w-0 max-w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] sm:h-[clamp(680px,calc(100dvh-220px),1040px)]"
                 />
               </PixelSurface>
+
+              {canvasContextMenu ? (
+                <div
+                  className="fixed z-50 min-w-[210px]"
+                  style={{
+                    left: Math.min(canvasContextMenu.screenX, window.innerWidth - 230),
+                    top: Math.max(8, Math.min(canvasContextMenu.screenY, window.innerHeight - 380)),
+                    maxHeight: 'calc(100dvh - 16px)',
+                    overflowY: 'auto',
+                  }}
+                >
+                  <PixelSurface frame="panel" padding="xs">
+                    <div className="grid gap-1">
+                      {contextEdge && contextEdgeSemantics ? (
+                        <>
+                          <PixelText as="p" readable size="sm" style={{ margin: '2px 4px 6px' }}>
+                            {contextEdgeSemantics.label}: {contextEdgeSourceNode?.title ?? 'Источник'} →{' '}
+                            {contextEdgeTargetNode?.title ?? 'Цель'}
+                          </PixelText>
+                          <PixelButton
+                            tone="ghost"
+                            onClick={() => {
+                              setSelectedEdgeId(contextEdge.id);
+                              setCanvasContextMenu(null);
+                            }}
+                            style={{ justifyContent: 'flex-start', minHeight: 30, padding: '6px 8px' }}
+                          >
+                            Выбрать связь
+                          </PixelButton>
+                          <PixelButton
+                            tone="ghost"
+                            onClick={async () => {
+                              const deleted = await onDeleteEdge(contextEdge.id);
+                              if (deleted) {
+                                setSelectedEdgeId(null);
+                                setCanvasContextMenu(null);
+                              }
+                            }}
+                            disabled={isMapMutating}
+                            style={{
+                              justifyContent: 'flex-start',
+                              minHeight: 30,
+                              padding: '6px 8px',
+                              color: 'var(--pixel-danger)',
+                            }}
+                          >
+                            Разъединить
+                          </PixelButton>
+                        </>
+                      ) : null}
+                      {contextNode ? (
+                        <>
+                          <PixelText as="p" readable size="sm" style={{ margin: '2px 4px 6px' }}>
+                            {contextNode.title}
+                          </PixelText>
+                          <PixelButton
+                            tone="ghost"
+                            onClick={() => {
+                              void handleCanvasNodeSelect(contextNode);
+                            }}
+                            style={{ justifyContent: 'flex-start', minHeight: 30, padding: '6px 8px' }}
+                          >
+                            Выбрать
+                          </PixelButton>
+                          {contextNodeHierarchy?.childIds.length ? (
+                            <PixelButton
+                              tone="ghost"
+                              onClick={() => openLayerAtNode(contextNode.id)}
+                              style={{ justifyContent: 'flex-start', minHeight: 30, padding: '6px 8px' }}
+                            >
+                              Открыть слой
+                            </PixelButton>
+                          ) : null}
+                          <PixelButton
+                            tone="ghost"
+                            onClick={() => {
+                              onSelectNode(contextNode);
+                              setCanvasContextMenu(null);
+                              setIsEditorExpanded(true);
+                            }}
+                            style={{ justifyContent: 'flex-start', minHeight: 30, padding: '6px 8px' }}
+                          >
+                            Редактировать
+                          </PixelButton>
+                          <PixelButton
+                            tone="ghost"
+                            onClick={() => {
+                              onSelectNode(contextNode);
+                              setCanvasContextMenu(null);
+                              setIsSummaryExpanded(true);
+                            }}
+                            style={{ justifyContent: 'flex-start', minHeight: 30, padding: '6px 8px' }}
+                          >
+                            Сводка
+                          </PixelButton>
+                        </>
+                      ) : null}
+                      {!contextEdge ? (
+                        <>
+                          <PixelInput
+                            id="map-node-create-title"
+                            label="Название узла"
+                            type="text"
+                            value={nodeCreateTitle}
+                            onChange={(event) => setNodeCreateTitle(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                void handleCreateNodeFromContext();
+                              }
+                            }}
+                            disabled={!contextSkill || isMapMutating}
+                            placeholder="Sound System"
+                          />
+                          {contextNode ? (
+                            <PixelButton
+                              tone="accent"
+                              onClick={() => {
+                                void handleCreateChildNodeFromContext();
+                              }}
+                              disabled={!contextSkill || isMapMutating}
+                              style={{ justifyContent: 'flex-start', minHeight: 30, padding: '6px 8px' }}
+                            >
+                              Создать дочерний узел
+                            </PixelButton>
+                          ) : null}
+                          <PixelButton
+                            tone="accent"
+                          onClick={() => {
+                            void handleCreateNodeFromContext();
+                          }}
+                          disabled={!contextSkill || isMapMutating}
+                          style={{ justifyContent: 'flex-start', minHeight: 30, padding: '6px 8px' }}
+                        >
+                          Создать узел здесь
+                        </PixelButton>
+                        </>
+                      ) : null}
+                      <PixelButton
+                        tone="ghost"
+                        onClick={() => setCanvasContextMenu(null)}
+                        style={{ justifyContent: 'flex-start', minHeight: 30, padding: '6px 8px' }}
+                      >
+                        Закрыть
+                      </PixelButton>
+                    </div>
+                  </PixelSurface>
+                </div>
+              ) : null}
 
               <PixelSurface frame="ghost" padding="xs">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">

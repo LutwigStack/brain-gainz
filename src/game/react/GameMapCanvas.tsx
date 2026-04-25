@@ -1,12 +1,12 @@
 ﻿import { Application } from 'pixi.js';
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type MouseEvent } from 'react';
 
 import { PixelSurface, PixelText } from '../../components/pixel';
 import type { NavigationNodeSummary, NavigationSnapshot, NodeFocusSnapshot } from '../../types/app-shell';
 import { BrainGainzScene } from '../brain-gainz-scene';
 import { createGameViewModel } from '../create-game-view-model';
-import type { GamePoint, GameSceneModel } from '../types';
-import { getViewportWorldBounds, type ViewportCamera } from '../viewport';
+import type { GameBounds, GamePoint, GameSceneModel } from '../types';
+import { getViewportWorldBounds, screenToWorld, worldToScreen, type ViewportCamera } from '../viewport';
 
 interface GameMapCanvasProps {
   snapshot: NavigationSnapshot | null;
@@ -23,7 +23,31 @@ interface GameMapCanvasProps {
   connectSourceNodeId?: number | null;
   connectEdgeType?: 'requires' | 'supports' | 'relates_to' | null;
   visibleSphereId?: number | null;
-  mapCommand?: { id: number; type: 'overview-graph' | 'focus-node' | 'fit-graph' | 'reset-camera' } | null;
+  canvasMode?: 'free' | 'layers';
+  visibleNodeIds?: number[] | null;
+  mapCommand?: { id: number; type: 'focus-node' | 'fit-graph' | 'reset-camera' } | null;
+  onCreateEdge?: (input: {
+    sourceNodeId: number;
+    targetNodeId: number;
+    edgeType: 'requires' | 'supports' | 'relates_to';
+  }) => Promise<boolean> | boolean;
+  onCanvasContextMenu?: (input: {
+    screenX: number;
+    screenY: number;
+    worldX: number;
+    worldY: number;
+    nodeId: number | null;
+    edgeId: number | null;
+  }) => void;
+  onCanvasPointerDown?: (input: {
+    screenX: number;
+    screenY: number;
+    worldX: number;
+    worldY: number;
+    nodeId: number | null;
+    edgeId: number | null;
+    button: number;
+  }) => void;
   onFocusChange?: (focused: boolean) => void;
   className?: string;
 }
@@ -55,7 +79,76 @@ const MINIMAP_SIZE = {
   height: 156,
 };
 
-type OverviewPreference = 'auto' | 'overview' | 'detail';
+const createBounds = (points: GamePoint[]): GameBounds => {
+  const safePoints = points.length > 0 ? points : [{ x: 0, y: 0 }];
+  const minX = Math.min(...safePoints.map((point) => point.x));
+  const minY = Math.min(...safePoints.map((point) => point.y));
+  const maxX = Math.max(...safePoints.map((point) => point.x));
+  const maxY = Math.max(...safePoints.map((point) => point.y));
+  const width = Math.max(1, maxX - minX);
+  const height = Math.max(1, maxY - minY);
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width,
+    height,
+    center: {
+      x: minX + width / 2,
+      y: minY + height / 2,
+    },
+  };
+};
+
+const filterModelToVisibleNodes = (
+  model: GameSceneModel,
+  visibleNodeIds: number[] | null,
+): GameSceneModel => {
+  if (!visibleNodeIds || visibleNodeIds.length === 0) {
+    return model;
+  }
+
+  const visible = new Set(visibleNodeIds);
+  const nodes = model.nodes.filter((node) => visible.has(node.id));
+  const edges = model.edges.filter((edge) => visible.has(edge.fromNodeId) && visible.has(edge.toNodeId));
+  const bounds = createBounds(nodes.map((node) => node.position));
+
+  return {
+    ...model,
+    nodes,
+    edges,
+    bounds,
+    overviewBounds: bounds,
+    isLargeGraph: false,
+    highlightedNodeId:
+      model.highlightedNodeId != null && visible.has(model.highlightedNodeId)
+        ? model.highlightedNodeId
+        : nodes[0]?.id ?? null,
+    hub: {
+      ...model.hub,
+      position: bounds.center,
+    },
+    hero: {
+      ...model.hero,
+      nodeId: model.hero.nodeId != null && visible.has(model.hero.nodeId) ? model.hero.nodeId : null,
+    },
+  };
+};
+
+const getPointToSegmentDistance = (point: GamePoint, start: GamePoint, end: GamePoint) => {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+
+  if (lengthSquared === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y);
+  }
+
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+  return Math.hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy));
+};
 
 const applyPreviewToModel = (
   model: GameSceneModel,
@@ -82,26 +175,12 @@ const applyPreviewToModel = (
       { x: biome.center.x + biome.radius + 24, y: biome.center.y + biome.radius + 24 },
     ]),
   ];
-  const minX = Math.min(...anchorPoints.map((point) => point.x));
-  const minY = Math.min(...anchorPoints.map((point) => point.y));
-  const maxX = Math.max(...anchorPoints.map((point) => point.x));
-  const maxY = Math.max(...anchorPoints.map((point) => point.y));
+  const bounds = createBounds(anchorPoints);
 
   return {
     ...model,
     nodes,
-    bounds: {
-      minX,
-      minY,
-      maxX,
-      maxY,
-      width: Math.max(1, maxX - minX),
-      height: Math.max(1, maxY - minY),
-      center: {
-        x: minX + (maxX - minX) / 2,
-        y: minY + (maxY - minY) / 2,
-      },
-    },
+    bounds,
   };
 };
 
@@ -111,6 +190,7 @@ export const GameMapCanvas = ({
   onSelectNode,
   onSelectEdge,
   onCreateNodeAt,
+  onCreateEdge,
   onMoveNode,
   canDragNodes = true,
   previewNodePositions = null,
@@ -120,7 +200,11 @@ export const GameMapCanvas = ({
   connectSourceNodeId = null,
   connectEdgeType = null,
   visibleSphereId = null,
+  canvasMode = 'free',
+  visibleNodeIds = null,
   mapCommand = null,
+  onCanvasContextMenu,
+  onCanvasPointerDown,
   onFocusChange,
   className = 'h-[clamp(620px,calc(100dvh-180px),1080px)] w-full overflow-hidden rounded-[1rem] border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)]',
 }: GameMapCanvasProps) => {
@@ -129,8 +213,7 @@ export const GameMapCanvas = ({
   const appRef = useRef<Application | null>(null);
   const sceneRef = useRef<BrainGainzScene | null>(null);
   const modelRef = useRef(createGameViewModel(snapshot, focus, { visibleSphereId }));
-  const viewportSphereRef = useRef<number | null>(visibleSphereId);
-  const visibleSphereIdRef = useRef<number | null>(visibleSphereId);
+  const viewportModeKeyRef = useRef<string>('');
   const canDragNodesRef = useRef(canDragNodes);
   const createModeRef = useRef(createMode);
   const snapToGridRef = useRef(snapToGrid);
@@ -138,12 +221,9 @@ export const GameMapCanvas = ({
   const connectSourceNodeIdRef = useRef(connectSourceNodeId);
   const connectEdgeTypeRef = useRef(connectEdgeType);
   const viewportCameraRef = useRef<ViewportCamera | null>(null);
+  const suppressNextContextMenuRef = useRef(false);
   const [viewportCamera, setViewportCamera] = useState<ViewportCamera | null>(null);
   const [hostSize, setHostSize] = useState({ width: 0, height: 0 });
-  const [overviewPreference, setOverviewPreference] = useState<{
-    sphereId: number | null;
-    mode: OverviewPreference;
-  }>({ sphereId: visibleSphereId, mode: 'auto' });
   const handleViewportChange = useEffectEvent((camera: ViewportCamera) => {
     viewportCameraRef.current = camera;
     setViewportCamera((current) =>
@@ -163,26 +243,45 @@ export const GameMapCanvas = ({
   const onSelectEdgeEvent = useEffectEvent((edgeId: number) => {
     onSelectEdge?.(edgeId);
   });
+  const onCreateEdgeEvent = useEffectEvent((input: {
+    sourceNodeId: number;
+    targetNodeId: number;
+    edgeType: 'requires' | 'supports' | 'relates_to';
+  }) => onCreateEdge?.(input) ?? false);
+  const onEdgeContextMenuEvent = useEffectEvent((input: { edgeId: number; screenX: number; screenY: number }) => {
+    if (!hostRef.current || !viewportCameraRef.current) {
+      return;
+    }
+
+    const rect = hostRef.current.getBoundingClientRect();
+    const worldPoint = screenToWorld({ x: input.screenX, y: input.screenY }, viewportCameraRef.current);
+    suppressNextContextMenuRef.current = true;
+    window.setTimeout(() => {
+      suppressNextContextMenuRef.current = false;
+    }, 120);
+    onCanvasContextMenu?.({
+      screenX: rect.left + input.screenX,
+      screenY: rect.top + input.screenY,
+      worldX: worldPoint.x,
+      worldY: worldPoint.y,
+      nodeId: null,
+      edgeId: input.edgeId,
+    });
+  });
 
   const model = useMemo(
-    () => applyPreviewToModel(createGameViewModel(snapshot, focus, { visibleSphereId }), previewNodePositions),
-    [focus, previewNodePositions, snapshot, visibleSphereId],
+    () =>
+      filterModelToVisibleNodes(
+        applyPreviewToModel(createGameViewModel(snapshot, focus, { visibleSphereId }), previewNodePositions),
+        visibleNodeIds,
+      ),
+    [focus, previewNodePositions, snapshot, visibleNodeIds, visibleSphereId],
   );
-  const resolvedOverviewPreference: OverviewPreference =
-    overviewPreference.sphereId === visibleSphereId ? overviewPreference.mode : 'overview';
-  const shouldRenderOverview = Boolean(
-    model.isLargeGraph &&
-      (resolvedOverviewPreference === 'overview' ||
-        (resolvedOverviewPreference === 'auto' && ((viewportCamera?.zoom ?? 1) < 0.32))),
-  );
+  const viewportModeKey = `${visibleSphereId ?? 'all'}:${canvasMode}:${visibleNodeIds?.join(',') ?? 'all'}`;
+  const shouldRenderOverview = false;
   const onSelectNodeEvent = useEffectEvent((nodeId: number) => {
     const node = findNodeById(snapshot, nodeId);
     if (node) {
-      const gameNode = model.nodes.find((item) => item.id === nodeId);
-      setOverviewPreference({
-        sphereId: visibleSphereId,
-        mode: shouldRenderOverview && (gameNode?.hierarchyDepth ?? 99) <= 1 ? 'overview' : 'detail',
-      });
       onSelectNode(node);
     }
   });
@@ -210,10 +309,6 @@ export const GameMapCanvas = ({
   useEffect(() => {
     connectEdgeTypeRef.current = connectEdgeType;
   }, [connectEdgeType]);
-
-  useEffect(() => {
-    visibleSphereIdRef.current = visibleSphereId;
-  }, [visibleSphereId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -250,7 +345,9 @@ export const GameMapCanvas = ({
             onNodeSelect: onSelectNodeEvent,
             onNodeMove: onMoveNodeEvent,
             onCreateNodeAt: onCreateNodeAtEvent,
+            onCreateEdge: onCreateEdgeEvent,
             onEdgeSelect: onSelectEdgeEvent,
+            onEdgeContextMenu: onEdgeContextMenuEvent,
             canDragNodes: canDragNodesRef.current,
             createMode: createModeRef.current,
             snapToGrid: snapToGridRef.current,
@@ -291,12 +388,9 @@ export const GameMapCanvas = ({
           y: event.clientY - rect.top,
         };
 
-        if (event.ctrlKey || event.metaKey) {
+        if (!event.shiftKey && event.deltaY !== 0) {
           event.preventDefault();
           const scaleDelta = event.deltaY > 0 ? 0.92 : 1.08;
-          if (event.deltaY < 0) {
-            setOverviewPreference({ sphereId: visibleSphereIdRef.current, mode: 'detail' });
-          }
           sceneRef.current.zoomAtScreenPoint(screenPoint, scaleDelta);
           return;
         }
@@ -328,8 +422,8 @@ export const GameMapCanvas = ({
   }, []);
 
   useEffect(() => {
-    const shouldPreserveViewport = viewportSphereRef.current === visibleSphereId;
-    viewportSphereRef.current = visibleSphereId;
+    const shouldPreserveViewport = viewportModeKeyRef.current === viewportModeKey;
+    viewportModeKeyRef.current = viewportModeKey;
     modelRef.current = model;
     sceneRef.current?.render(
       model,
@@ -337,7 +431,9 @@ export const GameMapCanvas = ({
           onNodeSelect: onSelectNodeEvent,
           onNodeMove: onMoveNodeEvent,
           onCreateNodeAt: onCreateNodeAtEvent,
+          onCreateEdge: onCreateEdgeEvent,
           onEdgeSelect: onSelectEdgeEvent,
+          onEdgeContextMenu: onEdgeContextMenuEvent,
           canDragNodes,
           createMode,
           snapToGrid,
@@ -351,7 +447,7 @@ export const GameMapCanvas = ({
         onViewportChange: handleViewportChange,
       },
     );
-  }, [canDragNodes, connectEdgeType, connectSourceNodeId, createMode, model, selectedEdgeId, shouldRenderOverview, snapToGrid, visibleSphereId]);
+  }, [canDragNodes, connectEdgeType, connectSourceNodeId, createMode, model, selectedEdgeId, shouldRenderOverview, snapToGrid, viewportModeKey]);
 
   const minimap = useMemo(() => {
     if (!viewportCamera || hostSize.width <= 0 || hostSize.height <= 0) {
@@ -403,26 +499,93 @@ export const GameMapCanvas = ({
   const highlightedNode = model.nodes.find((node) => node.id === model.highlightedNodeId) ?? null;
   const isEmptyMap = model.nodes.length === 0;
 
+  const resolveCanvasHit = (clientX: number, clientY: number) => {
+    if (!hostRef.current || !viewportCameraRef.current) {
+      return null;
+    }
+
+    const rect = hostRef.current.getBoundingClientRect();
+    const screenPoint = {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    };
+    const worldPoint = screenToWorld(screenPoint, viewportCameraRef.current);
+    const nodeById = new Map(model.nodes.map((node) => [node.id, node]));
+    const nearestEdge = model.edges
+      .map((edge) => {
+        const source = nodeById.get(edge.fromNodeId);
+        const target = nodeById.get(edge.toNodeId);
+        if (!source || !target) {
+          return null;
+        }
+
+        return {
+          edge,
+          distance: getPointToSegmentDistance(
+            screenPoint,
+            worldToScreen(source.position, viewportCameraRef.current!),
+            worldToScreen(target.position, viewportCameraRef.current!),
+          ),
+        };
+      })
+      .filter((entry): entry is { edge: GameSceneModel['edges'][number]; distance: number } => entry != null)
+      .sort((left, right) => left.distance - right.distance)[0];
+    const nearestNode = model.nodes
+      .map((node) => {
+        const nodeScreen = worldToScreen(node.position, viewportCameraRef.current!);
+        return {
+          node,
+          distance: Math.hypot(nodeScreen.x - screenPoint.x, nodeScreen.y - screenPoint.y),
+        };
+      })
+      .sort((left, right) => left.distance - right.distance)[0];
+    const nodeHit = nearestNode && nearestNode.distance <= 96 ? nearestNode : null;
+    const edgeHit = !nodeHit && nearestEdge && nearestEdge.distance <= 24 ? nearestEdge : null;
+
+    return {
+      screenX: clientX,
+      screenY: clientY,
+      worldX: worldPoint.x,
+      worldY: worldPoint.y,
+      nodeId: nodeHit ? nodeHit.node.id : null,
+      edgeId: edgeHit ? edgeHit.edge.id : null,
+    };
+  };
+
+  const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (suppressNextContextMenuRef.current) {
+      return;
+    }
+    rootRef.current?.focus({ preventScroll: true });
+
+    const hit = resolveCanvasHit(event.clientX, event.clientY);
+    if (!hit) {
+      return;
+    }
+
+    onCanvasContextMenu?.({
+      screenX: hit.screenX,
+      screenY: hit.screenY,
+      worldX: hit.worldX,
+      worldY: hit.worldY,
+      nodeId: hit.nodeId,
+      edgeId: hit.edgeId,
+    });
+  };
+
   useEffect(() => {
     if (!sceneRef.current || !mapCommand) {
       return;
     }
 
     switch (mapCommand.type) {
-      case 'overview-graph':
-        setTimeout(() => setOverviewPreference({ sphereId: visibleSphereId, mode: 'overview' }), 0);
-        sceneRef.current.fitToOverview();
-        break;
       case 'focus-node':
-        setTimeout(() => setOverviewPreference({ sphereId: visibleSphereId, mode: 'detail' }), 0);
         if (highlightedNode) {
           sceneRef.current.centerOnPoint(highlightedNode.position, Math.max(viewportCameraRef.current?.zoom ?? 1, 0.9));
         }
         break;
       case 'fit-graph':
-        if (model.isLargeGraph) {
-          setTimeout(() => setOverviewPreference({ sphereId: visibleSphereId, mode: 'overview' }), 0);
-        }
         sceneRef.current.fitToGraph();
         break;
       case 'reset-camera':
@@ -453,7 +616,17 @@ export const GameMapCanvas = ({
       tabIndex={0}
       role="application"
       aria-label="Карта узлов BrainGainz"
-      onPointerDownCapture={() => rootRef.current?.focus({ preventScroll: true })}
+      onPointerDownCapture={(event) => {
+        rootRef.current?.focus({ preventScroll: true });
+        const hit = resolveCanvasHit(event.clientX, event.clientY);
+        if (hit) {
+          onCanvasPointerDown?.({
+            ...hit,
+            button: event.button,
+          });
+        }
+      }}
+      onContextMenu={handleContextMenu}
       onFocusCapture={() => onFocusChange?.(true)}
       onBlurCapture={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -473,8 +646,7 @@ export const GameMapCanvas = ({
               Нужен первый узел
             </PixelText>
             <PixelText as="p" readable size="sm" color="textMuted" style={{ marginTop: 10 }}>
-              Создайте стартовый набор на вкладке «Сейчас» или включите режим нового узла и поставьте
-              точку прямо на карте.
+              Создайте стартовый набор на вкладке «Сейчас» или откройте меню правой кнопкой мыши на карте.
             </PixelText>
           </PixelSurface>
         </div>
@@ -486,11 +658,6 @@ export const GameMapCanvas = ({
             <PixelText as="span" size="xs" color="textMuted" uppercase className="hidden sm:inline">
               {formatZoomPercent(viewportCamera)}
             </PixelText>
-            {shouldRenderOverview ? (
-              <PixelText as="span" size="xs" color="accent" uppercase>
-                Обзор структуры
-              </PixelText>
-            ) : null}
             {createMode ? (
               <PixelText as="span" size="xs" color="accent" uppercase>
                 {'\u0420\u0435\u0436\u0438\u043c: \u043d\u043e\u0432\u044b\u0439 \u0443\u0437\u0435\u043b'}
@@ -502,13 +669,13 @@ export const GameMapCanvas = ({
               </PixelText>
             ) : null}
             <PixelText as="span" size="xs" color="textMuted" uppercase className="hidden lg:inline">
-              N узел · L связь · G сетка · F фокус · Shift+F обзор · Esc отмена
+              Правый клик меню · F фокус · Esc отмена
             </PixelText>
           </div>
         </PixelSurface>
       </div>
 
-      {minimap && !isEmptyMap && !shouldRenderOverview ? (
+      {canvasMode === 'free' && minimap && !isEmptyMap && !shouldRenderOverview ? (
         <div className="pointer-events-none absolute bottom-3 right-3 z-10 hidden sm:block">
           <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="pointer-events-auto">
             <div className="flex items-center justify-between gap-3 pb-2">

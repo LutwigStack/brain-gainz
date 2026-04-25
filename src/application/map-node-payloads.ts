@@ -7,6 +7,7 @@ interface BuildMapNodeCreatePayloadInput {
     x: number;
     y: number;
   };
+  title?: string;
   createdAt?: string;
   nonce?: string;
 }
@@ -33,20 +34,27 @@ const roundWorldPosition = (value: number) => Math.round(value);
 export const buildDefaultMapNodeTitle = (existingNodeCount: number) =>
   `Новый узел ${Math.max(1, existingNodeCount + 1)}`;
 
+const normalizeNodeTitle = (title: string | undefined, existingNodeCount: number) => {
+  const trimmed = title?.trim();
+  return trimmed || buildDefaultMapNodeTitle(existingNodeCount);
+};
+
 export const buildMapNodeCreatePayload = ({
   skillId,
   existingNodeCount,
   position,
+  title,
   createdAt = new Date().toISOString(),
   nonce,
 }: BuildMapNodeCreatePayloadInput): NodeCreatePayload => {
   const ordinal = Math.max(1, existingNodeCount + 1);
+  const resolvedTitle = normalizeNodeTitle(title, existingNodeCount);
 
   return {
     skill_id: skillId,
     type: 'task',
     status: 'active',
-    title: buildDefaultMapNodeTitle(existingNodeCount),
+    title: resolvedTitle,
     slug: `node-${skillId}-${ordinal}-${buildTimestampSuffix(createdAt)}-${buildSlugNonce(nonce)}`,
     summary: undefined,
     completion_criteria: null,

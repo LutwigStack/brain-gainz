@@ -12,11 +12,8 @@ const baseContext = {
 };
 
 test('map shortcuts resolve common map intents when map owns focus', () => {
-  assert.equal(resolveMapShortcutIntent({ key: 'n' }, baseContext), 'toggle-create-node');
-  assert.equal(resolveMapShortcutIntent({ key: 'l' }, baseContext), 'toggle-connect-edge');
-  assert.equal(resolveMapShortcutIntent({ key: 'g' }, baseContext), 'toggle-snap-grid');
   assert.equal(resolveMapShortcutIntent({ key: 'f' }, baseContext), 'focus-node');
-  assert.equal(resolveMapShortcutIntent({ key: 'F', shiftKey: true }, baseContext), 'overview-graph');
+  assert.equal(resolveMapShortcutIntent({ key: 'F', shiftKey: true }, baseContext), null);
   assert.equal(resolveMapShortcutIntent({ key: '0' }, baseContext), 'reset-camera');
   assert.equal(resolveMapShortcutIntent({ key: 'r' }, baseContext), 'refresh-map');
   assert.equal(resolveMapShortcutIntent({ key: 'Escape' }, baseContext), 'cancel-transients');
@@ -50,4 +47,10 @@ test('map shortcuts ignore modified key chords reserved for browser or OS behavi
   assert.equal(resolveMapShortcutIntent({ key: 'r', ctrlKey: true }, baseContext), null);
   assert.equal(resolveMapShortcutIntent({ key: 'g', metaKey: true }, baseContext), null);
   assert.equal(resolveMapShortcutIntent({ key: 'l', altKey: true }, baseContext), null);
+});
+
+test('map shortcuts do not expose editing modes', () => {
+  assert.equal(resolveMapShortcutIntent({ key: 'n' }, baseContext), null);
+  assert.equal(resolveMapShortcutIntent({ key: 'l' }, baseContext), null);
+  assert.equal(resolveMapShortcutIntent({ key: 'g' }, baseContext), null);
 });

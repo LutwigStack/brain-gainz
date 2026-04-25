@@ -272,6 +272,40 @@ export default function App() {
     }
   };
 
+  const handleCreateStructure = async (name) => {
+    setNowCreatingStarter(true);
+    setNowError(null);
+    setNavigationError(null);
+
+    try {
+      const snapshot = await db.createStructureWorkspace({ name });
+      setNowSnapshot(snapshot);
+      const navigation = await db.getNavigationSnapshot();
+      const createdSphere = navigation.spheres.find((sphere) => sphere.name === name) ?? null;
+      const rootNode =
+        createdSphere?.directions
+          .flatMap((direction) => direction.skills)
+          .flatMap((skill) => skill.nodes)
+          .find((node) => node.type === 'project') ?? null;
+      const nextSelection = rootNode
+        ? { nodeId: rootNode.id, actionId: rootNode.next_action_id ?? null }
+        : chooseNowSelection(snapshot);
+      setNowSelection(nextSelection);
+      await loadNowFocus(nextSelection);
+      setNavigationSnapshot(navigation);
+      setNavigationSelection(nextSelection);
+      await loadNavigationFocus(nextSelection);
+      setActiveTab('map');
+    } catch (error) {
+      console.error('Failed to create structure', error);
+      const message = error.message || 'Не удалось создать структуру.';
+      setNowError(message);
+      setNavigationError(message);
+    } finally {
+      setNowCreatingStarter(false);
+    }
+  };
+
   const applyOutcomeResult = async (result) => {
     if (!result) {
       return;
@@ -444,7 +478,7 @@ export default function App() {
     }
   };
 
-  const handleCreateMapNode = async ({ skillId, existingNodeCount, x, y }) => {
+  const handleCreateMapNode = async ({ skillId, existingNodeCount, x, y, title }) => {
     if (mapMutationPendingAction) {
       return false;
     }
@@ -459,6 +493,7 @@ export default function App() {
           skillId,
           existingNodeCount,
           position: { x, y },
+          title,
         }),
       );
       await applyNodeEditorMutationResult(result, 'Новый узел добавлен на карту.');
@@ -467,6 +502,57 @@ export default function App() {
     } catch (error) {
       console.error('Failed to create node from map', error);
       setNavigationError(error.message || 'Не удалось создать узел на карте.');
+      await loadNavigationSnapshot(navigationSelection);
+      return false;
+    } finally {
+      setMapMutationPendingAction(null);
+    }
+  };
+
+  const handleCreateChildMapNode = async ({ parentNodeId, skillId, existingNodeCount, x, y, title }) => {
+    if (mapMutationPendingAction) {
+      return false;
+    }
+
+    setMapMutationPendingAction('create-node');
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      const nodeResult = await db.createNodeRecord(
+        buildMapNodeCreatePayload({
+          skillId,
+          existingNodeCount,
+          position: { x, y },
+          title,
+        }),
+      );
+      const createdNodeId = nodeResult?.focus?.node?.id;
+
+      if (!createdNodeId) {
+        await applyNodeEditorMutationResult(nodeResult, 'Новый узел добавлен на карту.');
+        setActiveTab('map');
+        return true;
+      }
+
+      const edgeResult = await db.createGraphEdge(
+        buildGraphEdgeCreatePayload({
+          sourceNodeId: parentNodeId,
+          targetNodeId: createdNodeId,
+          edgeType: 'supports',
+        }),
+      );
+
+      await loadNowDashboard(nowSelection);
+      setNavigationSnapshot(edgeResult?.navigation ?? nodeResult?.navigation ?? null);
+      setNavigationSelection(edgeResult?.selection ?? nodeResult?.selection ?? null);
+      setNavigationFocus(edgeResult?.focus ?? nodeResult?.focus ?? null);
+      setNodeEditorNotice('Дочерний узел добавлен и связан с родителем.');
+      setActiveTab('map');
+      return true;
+    } catch (error) {
+      console.error('Failed to create linked child node from map', error);
+      setNavigationError(error.message || 'Не удалось создать дочерний узел на карте.');
       await loadNavigationSnapshot(navigationSelection);
       return false;
     } finally {
@@ -490,43 +576,6 @@ export default function App() {
       console.error('Failed to move node on map', error);
       setNavigationError(error.message || 'Не удалось сохранить новую позицию узла.');
       await loadNavigationSnapshot(navigationSelection);
-    } finally {
-      setMapMutationPendingAction(null);
-    }
-  };
-
-  const handleApplyMapLayout = async (positions) => {
-    if (mapMutationPendingAction) {
-      return false;
-    }
-
-    const entries = Object.entries(positions ?? {});
-    if (entries.length === 0) {
-      return false;
-    }
-
-    setMapMutationPendingAction('layout');
-    setNavigationError(null);
-    setNodeEditorNotice(null);
-
-    try {
-      await db.applyNodeLayout(
-        entries.map(([nodeId, point]) => ({
-          nodeId: Number(nodeId),
-          x: point.x,
-          y: point.y,
-        })),
-      );
-
-      await loadNavigationSnapshot(navigationSelection);
-      setNodeEditorNotice(`Размещение применено для ${entries.length} узл.`);
-      setActiveTab('map');
-      return true;
-    } catch (error) {
-      console.error('Failed to apply bulk map layout', error);
-      setNavigationError(error.message || 'Не удалось применить размещение.');
-      await loadNavigationSnapshot(navigationSelection);
-      return false;
     } finally {
       setMapMutationPendingAction(null);
     }
@@ -943,6 +992,7 @@ export default function App() {
             barrierType={mapBarrierType}
             shrinkTitle={mapShrinkTitle}
             onRefresh={loadNavigationSnapshot}
+            onCreateStructure={handleCreateStructure}
             onCreateLinearAlgebraGraph={handleCreateLinearAlgebraGraph}
             onSelectNode={handleSelectNavigationNode}
             onSelectAction={handleSelectNavigationAction}
@@ -958,8 +1008,8 @@ export default function App() {
             onDuplicateEditor={handleDuplicateNodeEditor}
             onArchiveEditor={handleArchiveNodeEditor}
             onCreateNodeAt={handleCreateMapNode}
+            onCreateChildNodeAt={handleCreateChildMapNode}
             onMoveNode={handleMoveMapNode}
-            onApplyBulkLayout={handleApplyMapLayout}
             onCreateEdge={handleCreateMapEdge}
             onDeleteEdge={handleDeleteMapEdge}
             editorPendingAction={nodeEditorPendingAction}
