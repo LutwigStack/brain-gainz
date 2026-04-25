@@ -128,6 +128,25 @@ interface CanvasContextMenuState {
   edgeId: number | null;
 }
 
+interface InlineNodeEditorState {
+  mode: 'create' | 'rename';
+  screenX: number;
+  screenY: number;
+  worldX: number;
+  worldY: number;
+  value: string;
+  nodeId?: number;
+  skillId?: number;
+  existingNodeCount?: number;
+}
+
+interface FloatingMapPanelState {
+  screenX: number;
+  screenY: number;
+  nodeId?: number;
+  edgeId?: number;
+}
+
 interface GraphRailEdgeEntry {
   edge: NavigationGraphEdge;
   node: NavigationNodeSummary;
@@ -190,9 +209,23 @@ interface NavigationViewProps {
     edgeType: GraphEdgeType;
   }) => Promise<boolean> | boolean;
   onDeleteEdge: (edgeId: number) => Promise<boolean> | boolean;
+  onRenameNode: (input: { nodeId: number; title: string }) => Promise<boolean> | boolean;
+  onArchiveNode: (input: { nodeId: number }) => Promise<boolean> | boolean;
+  onDuplicateNode: (input: { nodeId: number; x: number; y: number }) => Promise<boolean> | boolean;
+  onUndoMapMutation: () => Promise<boolean> | boolean;
   editorPendingAction: 'save' | 'duplicate' | 'archive' | null;
   editorNotice: string | null;
-  mapMutationPendingAction: 'create-node' | 'move-node' | 'create-edge' | 'delete-edge' | 'layout' | null;
+  mapMutationPendingAction:
+    | 'create-node'
+    | 'move-node'
+    | 'create-edge'
+    | 'delete-edge'
+    | 'rename-node'
+    | 'archive-node'
+    | 'duplicate-node'
+    | 'undo'
+    | 'layout'
+    | null;
 }
 
 export const NavigationView = ({
@@ -229,6 +262,10 @@ export const NavigationView = ({
   onMoveNode,
   onCreateEdge,
   onDeleteEdge,
+  onRenameNode,
+  onArchiveNode,
+  onDuplicateNode,
+  onUndoMapMutation,
   editorPendingAction,
   editorNotice,
   mapMutationPendingAction,
@@ -242,6 +279,8 @@ export const NavigationView = ({
   const [canvasContextMenu, setCanvasContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [newStructureName, setNewStructureName] = useState('');
   const [nodeCreateTitle, setNodeCreateTitle] = useState('');
+  const [inlineNodeEditor, setInlineNodeEditor] = useState<InlineNodeEditorState | null>(null);
+  const [floatingMapPanel, setFloatingMapPanel] = useState<FloatingMapPanelState | null>(null);
   const [isCreatingStructure, setIsCreatingStructure] = useState(false);
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
   const [isMapFocused, setIsMapFocused] = useState(false);
@@ -446,6 +485,9 @@ export const NavigationView = ({
   const clearMapTransientState = () => {
     setSelectedEdgeId(null);
     setCanvasContextMenu(null);
+    setNodeCreateTitle('');
+    setInlineNodeEditor(null);
+    setFloatingMapPanel(null);
   };
 
   const isInteractiveTextElement = (target: EventTarget | null) => {
@@ -475,6 +517,8 @@ export const NavigationView = ({
           hasOverlayOpen: isEditorExpanded || isSummaryExpanded,
           hasFocusNode: Boolean(focus?.node),
           hasSelectedEdge: resolvedSelectedEdgeId != null,
+          hasSelectedNode: Boolean(focus?.node),
+          canUndo: true,
         },
       );
 
@@ -514,6 +558,25 @@ export const NavigationView = ({
             })();
           }
           break;
+        case 'archive-selected-node':
+          if (focus?.node && !isMapMutating) {
+            void onArchiveNode({ nodeId: focus.node.id });
+          }
+          break;
+        case 'duplicate-selected-node':
+          if (focus?.node && !isMapMutating) {
+            void onDuplicateNode({
+              nodeId: focus.node.id,
+              x: (focus.node.x ?? 0) + 40,
+              y: (focus.node.y ?? 0) + 40,
+            });
+          }
+          break;
+        case 'undo-map-mutation':
+          if (!isMapMutating) {
+            void onUndoMapMutation();
+          }
+          break;
         default:
           break;
       }
@@ -532,12 +595,89 @@ export const NavigationView = ({
     isMapMutating,
     isSummaryExpanded,
     onDeleteEdge,
+    onArchiveNode,
+    onDuplicateNode,
     onRefresh,
+    onUndoMapMutation,
     resolvedSelectedEdgeId,
   ]);
-  const handleCanvasNodeSelect = async (node: NavigationNodeSummary) => {
+  const startInlineRename = (
+    node: NavigationNodeSummary,
+    input?: { screenX: number; screenY: number; worldX?: number; worldY?: number },
+  ) => {
+    setCanvasContextMenu(null);
+    setNodeCreateTitle('');
+    setFloatingMapPanel(null);
+    setInlineNodeEditor({
+      mode: 'rename',
+      nodeId: node.id,
+      screenX: input?.screenX ?? window.innerWidth / 2,
+      screenY: input?.screenY ?? window.innerHeight / 2,
+      worldX: input?.worldX ?? node.x ?? 0,
+      worldY: input?.worldY ?? node.y ?? 0,
+      value: node.title,
+    });
+  };
+
+  const startInlineCreate = (input: { screenX: number; screenY: number; worldX: number; worldY: number }) => {
+    if (!selectedSkill) {
+      return;
+    }
+
     setSelectedEdgeId(null);
     setCanvasContextMenu(null);
+    setNodeCreateTitle('');
+    setFloatingMapPanel(null);
+    setInlineNodeEditor({
+      mode: 'create',
+      screenX: input.screenX,
+      screenY: input.screenY,
+      worldX: input.worldX,
+      worldY: input.worldY,
+      value: '',
+      skillId: selectedSkill.id,
+      existingNodeCount: selectedSkill.nodes.length,
+    });
+  };
+
+  const commitInlineNodeEditor = async () => {
+    if (!inlineNodeEditor || isMapMutating) {
+      return;
+    }
+
+    const title = inlineNodeEditor.value.trim() || 'Новый узел';
+    const saved =
+      inlineNodeEditor.mode === 'rename' && inlineNodeEditor.nodeId != null
+        ? await onRenameNode({ nodeId: inlineNodeEditor.nodeId, title })
+        : inlineNodeEditor.mode === 'create' && inlineNodeEditor.skillId != null
+          ? await onCreateNodeAt({
+              skillId: inlineNodeEditor.skillId,
+              existingNodeCount: inlineNodeEditor.existingNodeCount ?? 0,
+              x: inlineNodeEditor.worldX,
+              y: inlineNodeEditor.worldY,
+              title,
+            })
+          : false;
+
+    if (saved) {
+      setInlineNodeEditor(null);
+    }
+  };
+
+  const handleCanvasNodeSelect = async (
+    node: NavigationNodeSummary,
+    input?: { screenX: number; screenY: number },
+  ) => {
+    setSelectedEdgeId(null);
+    setCanvasContextMenu(null);
+    setInlineNodeEditor(null);
+    if (input) {
+      setFloatingMapPanel({
+        nodeId: node.id,
+        screenX: input.screenX,
+        screenY: input.screenY,
+      });
+    }
     onSelectNode(node);
   };
 
@@ -612,6 +752,14 @@ export const NavigationView = ({
     contextEdge != null ? navigationNodeIndex.get(contextEdge.target_node_id) ?? null : null;
   const contextNodeHierarchy =
     contextNode != null ? structureHierarchy.entries.get(contextNode.id) ?? null : null;
+  const floatingPanelNode =
+    floatingMapPanel?.nodeId != null ? navigationNodeIndex.get(floatingMapPanel.nodeId) ?? null : null;
+  const floatingPanelNodeHierarchy =
+    floatingPanelNode != null ? structureHierarchy.entries.get(floatingPanelNode.id) ?? null : null;
+  const floatingPanelEdge =
+    floatingMapPanel?.edgeId != null
+      ? graphEdges.find((edge) => edge.id === floatingMapPanel.edgeId) ?? null
+      : null;
   const contextSkill =
     contextNode != null
       ? spheres
@@ -973,6 +1121,39 @@ export const NavigationView = ({
                     onSelectEdge={(edgeId) => {
                       setSelectedEdgeId(edgeId);
                       setCanvasContextMenu(null);
+                      setInlineNodeEditor(null);
+                    }}
+                    onCreateChildNodeAt={async (input) => {
+                      const parentNode = navigationNodeIndex.get(input.parentNodeId);
+                      if (!parentNode || isMapMutating) {
+                        return false;
+                      }
+
+                      const parentSkill =
+                        spheres
+                          .flatMap((sphere) => sphere.directions)
+                          .flatMap((direction) => direction.skills)
+                          .find((skill) => skill.id === parentNode.skill_id) ?? selectedSkill;
+                      if (!parentSkill) {
+                        return false;
+                      }
+
+                      const created = await onCreateChildNodeAt({
+                        parentNodeId: input.parentNodeId,
+                        skillId: parentSkill.id,
+                        existingNodeCount: parentSkill.nodes.length,
+                        x: input.x,
+                        y: input.y,
+                        title: undefined,
+                      });
+                      if (created) {
+                        setCanvasContextMenu(null);
+                        setInlineNodeEditor(null);
+                        setFloatingMapPanel(null);
+                        setSelectedEdgeId(null);
+                        setMapCanvasMode('free');
+                      }
+                      return created;
                     }}
                     onCreateEdge={async (input) => {
                       if (isMapMutating) {
@@ -997,17 +1178,189 @@ export const NavigationView = ({
                     onCanvasContextMenu={(menu) => {
                       setCanvasContextMenu(menu);
                       setNodeCreateTitle('');
+                      setInlineNodeEditor(null);
+                      setFloatingMapPanel(null);
+                    }}
+                    onCanvasDoubleClick={(input) => {
+                      if (mapCanvasMode === 'free') {
+                        startInlineCreate(input);
+                      }
+                    }}
+                    onNodeDoubleClick={(input) => {
+                      void handleCanvasNodeSelect(input.node, {
+                        screenX: input.screenX,
+                        screenY: input.screenY,
+                      });
+                      startInlineRename(input.node, input);
                     }}
                     onCanvasPointerDown={(hit) => {
                       if (hit.button === 0 && hit.nodeId == null && hit.edgeId == null) {
                         setCanvasContextMenu(null);
                         setNodeCreateTitle('');
+                        setInlineNodeEditor(null);
+                        setFloatingMapPanel(null);
+                      } else if (hit.button === 0 && hit.nodeId != null) {
+                        setFloatingMapPanel({
+                          nodeId: hit.nodeId,
+                          screenX: hit.screenX,
+                          screenY: hit.screenY,
+                        });
+                      } else if (hit.button === 0 && hit.edgeId != null) {
+                        setFloatingMapPanel({
+                          edgeId: hit.edgeId,
+                          screenX: hit.screenX,
+                          screenY: hit.screenY,
+                        });
                       }
                     }}
                     onMoveNode={mapCanvasMode === 'free' ? onMoveNode : undefined}
                   className="h-[480px] min-w-0 max-w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] sm:h-[clamp(680px,calc(100dvh-220px),1040px)]"
                 />
               </PixelSurface>
+
+              {inlineNodeEditor ? (
+                <form
+                  className="fixed z-50 min-w-[240px]"
+                  style={{
+                    left: Math.min(inlineNodeEditor.screenX + 12, window.innerWidth - 270),
+                    top: Math.max(8, Math.min(inlineNodeEditor.screenY - 18, window.innerHeight - 90)),
+                  }}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void commitInlineNodeEditor();
+                  }}
+                >
+                  <PixelSurface frame="panel" padding="xs">
+                    <input
+                      autoFocus
+                      value={inlineNodeEditor.value}
+                      onChange={(event) =>
+                        setInlineNodeEditor((current) =>
+                          current ? { ...current, value: event.target.value } : current,
+                        )
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          event.preventDefault();
+                          setInlineNodeEditor(null);
+                        }
+                      }}
+                      disabled={isMapMutating}
+                      placeholder="Новый узел"
+                      className="w-full rounded border border-[var(--pixel-line)] bg-[var(--pixel-panel-inset)] px-2 py-1.5 text-sm font-semibold text-[var(--pixel-text)] outline-none focus:border-[var(--pixel-accent)]"
+                    />
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                      <PixelButton
+                        type="button"
+                        tone="ghost"
+                        onClick={() => setInlineNodeEditor(null)}
+                        style={{ minHeight: 26, padding: '4px 8px' }}
+                      >
+                        Esc
+                      </PixelButton>
+                      <PixelButton
+                        type="submit"
+                        tone="accent"
+                        disabled={isMapMutating}
+                        style={{ minHeight: 26, padding: '4px 8px' }}
+                      >
+                        Enter
+                      </PixelButton>
+                    </div>
+                  </PixelSurface>
+                </form>
+              ) : null}
+
+              {floatingMapPanel && (floatingPanelNode || floatingPanelEdge) && !inlineNodeEditor && !canvasContextMenu ? (
+                <div
+                  className="fixed z-40"
+                  style={{
+                    left: Math.min(floatingMapPanel.screenX + 12, window.innerWidth - 280),
+                    top: Math.max(8, Math.min(floatingMapPanel.screenY + 12, window.innerHeight - 120)),
+                  }}
+                >
+                  <PixelSurface frame="panel" padding="xxs" fullWidth={false}>
+                    <div className="flex items-center gap-1">
+                      {floatingPanelNode ? (
+                        <>
+                          <PixelButton
+                            tone="ghost"
+                            onClick={() =>
+                              startInlineRename(floatingPanelNode, {
+                                screenX: floatingMapPanel.screenX,
+                                screenY: floatingMapPanel.screenY,
+                              })
+                            }
+                            style={{ minHeight: 28, padding: '5px 7px' }}
+                            title="Переименовать"
+                          >
+                            <PencilLine size={13} />
+                          </PixelButton>
+                          <PixelButton
+                            tone="ghost"
+                            onClick={async () => {
+                              const duplicated = await onDuplicateNode({
+                                nodeId: floatingPanelNode.id,
+                                x: (floatingPanelNode.x ?? 0) + 40,
+                                y: (floatingPanelNode.y ?? 0) + 40,
+                              });
+                              if (duplicated) {
+                                setFloatingMapPanel(null);
+                              }
+                            }}
+                            disabled={isMapMutating}
+                            style={{ minHeight: 28, padding: '5px 7px' }}
+                            title="Дублировать"
+                          >
+                            <Copy size={13} />
+                          </PixelButton>
+                          {floatingPanelNodeHierarchy?.childIds.length ? (
+                            <PixelButton
+                              tone="ghost"
+                              onClick={() => openLayerAtNode(floatingPanelNode.id)}
+                              style={{ minHeight: 28, padding: '5px 7px' }}
+                              title="Открыть слой"
+                            >
+                              <GitBranch size={13} />
+                            </PixelButton>
+                          ) : null}
+                          <PixelButton
+                            tone="ghost"
+                            onClick={async () => {
+                              const archived = await onArchiveNode({ nodeId: floatingPanelNode.id });
+                              if (archived) {
+                                setFloatingMapPanel(null);
+                              }
+                            }}
+                            disabled={isMapMutating}
+                            style={{ minHeight: 28, padding: '5px 7px', color: 'var(--pixel-danger)' }}
+                            title="Архивировать"
+                          >
+                            <Archive size={13} />
+                          </PixelButton>
+                        </>
+                      ) : null}
+                      {floatingPanelEdge ? (
+                        <PixelButton
+                          tone="ghost"
+                          onClick={async () => {
+                            const deleted = await onDeleteEdge(floatingPanelEdge.id);
+                            if (deleted) {
+                              setSelectedEdgeId(null);
+                              setFloatingMapPanel(null);
+                            }
+                          }}
+                          disabled={isMapMutating}
+                          style={{ minHeight: 28, padding: '5px 7px', color: 'var(--pixel-danger)' }}
+                          title="Удалить связь"
+                        >
+                          <X size={13} />
+                        </PixelButton>
+                      ) : null}
+                    </div>
+                  </PixelSurface>
+                </div>
+              ) : null}
 
               {canvasContextMenu ? (
                 <div

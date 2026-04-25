@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import {
   Brain,
   Compass,
@@ -67,6 +67,7 @@ export default function App() {
   const [nodeEditorPendingAction, setNodeEditorPendingAction] = useState(null);
   const [nodeEditorNotice, setNodeEditorNotice] = useState(null);
   const [mapMutationPendingAction, setMapMutationPendingAction] = useState(null);
+  const mapUndoStackRef = useRef([]);
 
   useEffect(() => {
     const init = async () => {
@@ -385,6 +386,28 @@ export default function App() {
     await loadNavigationFocus(selection);
   };
 
+  const findNavigationNodeById = (nodeId) => {
+    for (const sphere of navigationSnapshot?.spheres ?? []) {
+      for (const direction of sphere.directions) {
+        for (const skill of direction.skills) {
+          const node = skill.nodes.find((item) => item.id === nodeId);
+          if (node) {
+            return node;
+          }
+        }
+      }
+    }
+
+    return null;
+  };
+
+  const findNavigationEdgeById = (edgeId) =>
+    navigationSnapshot?.edges?.find((edge) => edge.id === edgeId) ?? null;
+
+  const pushMapUndo = (entry) => {
+    mapUndoStackRef.current = [...mapUndoStackRef.current.slice(-49), entry];
+  };
+
   const persistNodeEditorDraft = async (draft) => {
     if (!navigationFocus?.node) {
       return null;
@@ -496,6 +519,9 @@ export default function App() {
           title,
         }),
       );
+      if (result?.node?.id) {
+        pushMapUndo({ type: 'archive-node', nodeId: result.node.id });
+      }
       await applyNodeEditorMutationResult(result, 'Новый узел добавлен на карту.');
       setActiveTab('map');
       return true;
@@ -542,6 +568,11 @@ export default function App() {
           edgeType: 'supports',
         }),
       );
+      pushMapUndo({
+        type: 'create-child',
+        nodeId: createdNodeId,
+        edgeId: edgeResult?.edge?.id ?? null,
+      });
 
       await loadNowDashboard(nowSelection);
       setNavigationSnapshot(edgeResult?.navigation ?? nodeResult?.navigation ?? null);
@@ -565,12 +596,21 @@ export default function App() {
       return;
     }
 
+    const previousNode = findNavigationNodeById(nodeId);
     setMapMutationPendingAction('move-node');
     setNavigationError(null);
     setNodeEditorNotice(null);
 
     try {
       const result = await db.updateNodeRecord(nodeId, { x, y });
+      if (previousNode) {
+        pushMapUndo({
+          type: 'move-node',
+          nodeId,
+          x: previousNode.x ?? 0,
+          y: previousNode.y ?? 0,
+        });
+      }
       await applyNodeEditorMutationResult(result);
     } catch (error) {
       console.error('Failed to move node on map', error);
@@ -598,6 +638,9 @@ export default function App() {
           edgeType,
         }),
       );
+      if (result?.edge?.id) {
+        pushMapUndo({ type: 'delete-edge', edgeId: result.edge.id });
+      }
       await loadNowDashboard(nowSelection);
       setNavigationSnapshot(result?.navigation ?? null);
       setNavigationSelection(result?.selection ?? null);
@@ -620,12 +663,21 @@ export default function App() {
       return false;
     }
 
+    const previousEdge = findNavigationEdgeById(edgeId);
     setMapMutationPendingAction('delete-edge');
     setNavigationError(null);
     setNodeEditorNotice(null);
 
     try {
       const result = await db.deleteGraphEdge(edgeId);
+      if (previousEdge) {
+        pushMapUndo({
+          type: 'create-edge',
+          sourceNodeId: previousEdge.source_node_id,
+          targetNodeId: previousEdge.target_node_id,
+          edgeType: previousEdge.edge_type,
+        });
+      }
       await loadNowDashboard(nowSelection);
       setNavigationSnapshot(result?.navigation ?? null);
       setNavigationSelection(result?.selection ?? null);
@@ -636,6 +688,143 @@ export default function App() {
     } catch (error) {
       console.error('Failed to delete edge from map', error);
       setNavigationError(error.message || 'Не удалось удалить связь.');
+      await loadNavigationSnapshot(navigationSelection);
+      return false;
+    } finally {
+      setMapMutationPendingAction(null);
+    }
+  };
+
+  const handleRenameMapNode = async ({ nodeId, title }) => {
+    if (mapMutationPendingAction) {
+      return false;
+    }
+
+    const previousNode = findNavigationNodeById(nodeId);
+    setMapMutationPendingAction('rename-node');
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      const result = await db.updateNodeRecord(nodeId, { title });
+      if (previousNode) {
+        pushMapUndo({ type: 'rename-node', nodeId, title: previousNode.title });
+      }
+      await applyNodeEditorMutationResult(result, 'Название узла обновлено.');
+      setActiveTab('map');
+      return true;
+    } catch (error) {
+      console.error('Failed to rename node from map', error);
+      setNavigationError(error.message || 'Не удалось переименовать узел.');
+      await loadNavigationSnapshot(navigationSelection);
+      return false;
+    } finally {
+      setMapMutationPendingAction(null);
+    }
+  };
+
+  const handleArchiveMapNode = async ({ nodeId }) => {
+    if (mapMutationPendingAction) {
+      return false;
+    }
+
+    setMapMutationPendingAction('archive-node');
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      const result = await db.archiveNodeRecord(nodeId, {});
+      pushMapUndo({ type: 'restore-node', nodeId });
+      await applyNodeEditorMutationResult(result, 'Узел отправлен в архив.');
+      setActiveTab('map');
+      return true;
+    } catch (error) {
+      console.error('Failed to archive node from map', error);
+      setNavigationError(error.message || 'Не удалось архивировать узел.');
+      await loadNavigationSnapshot(navigationSelection);
+      return false;
+    } finally {
+      setMapMutationPendingAction(null);
+    }
+  };
+
+  const handleDuplicateMapNode = async ({ nodeId, x, y }) => {
+    if (mapMutationPendingAction) {
+      return false;
+    }
+
+    setMapMutationPendingAction('duplicate-node');
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      const result = await db.duplicateNodeRecord(nodeId, { x, y });
+      if (result?.node?.id) {
+        pushMapUndo({ type: 'archive-node', nodeId: result.node.id });
+      }
+      await applyNodeEditorMutationResult(result, 'Дубль узла создан.');
+      setActiveTab('map');
+      return true;
+    } catch (error) {
+      console.error('Failed to duplicate node from map', error);
+      setNavigationError(error.message || 'Не удалось дублировать узел.');
+      await loadNavigationSnapshot(navigationSelection);
+      return false;
+    } finally {
+      setMapMutationPendingAction(null);
+    }
+  };
+
+  const handleUndoMapMutation = async () => {
+    if (mapMutationPendingAction) {
+      return false;
+    }
+
+    const entry = mapUndoStackRef.current.at(-1);
+    if (!entry) {
+      setNodeEditorNotice('Нет действия для отмены.');
+      return false;
+    }
+
+    mapUndoStackRef.current = mapUndoStackRef.current.slice(0, -1);
+    setMapMutationPendingAction('undo');
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      if (entry.type === 'archive-node') {
+        await db.archiveNodeRecord(entry.nodeId, {});
+      } else if (entry.type === 'restore-node') {
+        await db.updateNodeRecord(entry.nodeId, { is_archived: 0 });
+      } else if (entry.type === 'move-node') {
+        await db.updateNodeRecord(entry.nodeId, { x: entry.x, y: entry.y });
+      } else if (entry.type === 'rename-node') {
+        await db.updateNodeRecord(entry.nodeId, { title: entry.title });
+      } else if (entry.type === 'delete-edge' && entry.edgeId != null) {
+        await db.deleteGraphEdge(entry.edgeId);
+      } else if (entry.type === 'create-edge') {
+        await db.createGraphEdge(
+          buildGraphEdgeCreatePayload({
+            sourceNodeId: entry.sourceNodeId,
+            targetNodeId: entry.targetNodeId,
+            edgeType: entry.edgeType,
+          }),
+        );
+      } else if (entry.type === 'create-child') {
+        if (entry.edgeId != null) {
+          await db.deleteGraphEdge(entry.edgeId);
+        }
+        await db.archiveNodeRecord(entry.nodeId, {});
+      }
+
+      await loadNowDashboard(nowSelection);
+      await loadNavigationSnapshot(navigationSelection);
+      setNodeEditorNotice('Последнее действие на карте отменено.');
+      setActiveTab('map');
+      return true;
+    } catch (error) {
+      console.error('Failed to undo map mutation', error);
+      setNavigationError(error.message || 'Не удалось отменить последнее действие.');
       await loadNavigationSnapshot(navigationSelection);
       return false;
     } finally {
@@ -1012,6 +1201,10 @@ export default function App() {
             onMoveNode={handleMoveMapNode}
             onCreateEdge={handleCreateMapEdge}
             onDeleteEdge={handleDeleteMapEdge}
+            onRenameNode={handleRenameMapNode}
+            onArchiveNode={handleArchiveMapNode}
+            onDuplicateNode={handleDuplicateMapNode}
+            onUndoMapMutation={handleUndoMapMutation}
             editorPendingAction={nodeEditorPendingAction}
             editorNotice={nodeEditorNotice}
             mapMutationPendingAction={mapMutationPendingAction}

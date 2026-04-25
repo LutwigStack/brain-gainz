@@ -9,6 +9,8 @@ const baseContext = {
   hasOverlayOpen: false,
   hasFocusNode: true,
   hasSelectedEdge: true,
+  hasSelectedNode: true,
+  canUndo: true,
 };
 
 test('map shortcuts resolve common map intents when map owns focus', () => {
@@ -18,6 +20,12 @@ test('map shortcuts resolve common map intents when map owns focus', () => {
   assert.equal(resolveMapShortcutIntent({ key: 'r' }, baseContext), 'refresh-map');
   assert.equal(resolveMapShortcutIntent({ key: 'Escape' }, baseContext), 'cancel-transients');
   assert.equal(resolveMapShortcutIntent({ key: 'Delete' }, baseContext), 'delete-selected-edge');
+  assert.equal(
+    resolveMapShortcutIntent({ key: 'Delete' }, { ...baseContext, hasSelectedEdge: false }),
+    'archive-selected-node',
+  );
+  assert.equal(resolveMapShortcutIntent({ key: 'd', ctrlKey: true }, baseContext), 'duplicate-selected-node');
+  assert.equal(resolveMapShortcutIntent({ key: 'z', ctrlKey: true }, baseContext), 'undo-map-mutation');
 });
 
 test('map shortcuts are ignored outside map focus or text-editing contexts', () => {
@@ -34,7 +42,7 @@ test('map shortcuts are ignored outside map focus or text-editing contexts', () 
     null,
   );
   assert.equal(
-    resolveMapShortcutIntent({ key: 'Delete' }, { ...baseContext, hasSelectedEdge: false }),
+    resolveMapShortcutIntent({ key: 'Delete' }, { ...baseContext, hasSelectedEdge: false, hasSelectedNode: false }),
     null,
   );
   assert.equal(
@@ -47,6 +55,11 @@ test('map shortcuts ignore modified key chords reserved for browser or OS behavi
   assert.equal(resolveMapShortcutIntent({ key: 'r', ctrlKey: true }, baseContext), null);
   assert.equal(resolveMapShortcutIntent({ key: 'g', metaKey: true }, baseContext), null);
   assert.equal(resolveMapShortcutIntent({ key: 'l', altKey: true }, baseContext), null);
+  assert.equal(resolveMapShortcutIntent({ key: 'z', ctrlKey: true }, { ...baseContext, canUndo: false }), null);
+  assert.equal(
+    resolveMapShortcutIntent({ key: 'd', ctrlKey: true }, { ...baseContext, hasSelectedNode: false }),
+    null,
+  );
 });
 
 test('map shortcuts do not expose editing modes', () => {

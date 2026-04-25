@@ -11,9 +11,10 @@ import { getViewportWorldBounds, screenToWorld, worldToScreen, type ViewportCame
 interface GameMapCanvasProps {
   snapshot: NavigationSnapshot | null;
   focus: NodeFocusSnapshot | null;
-  onSelectNode: (node: NavigationNodeSummary) => void;
+  onSelectNode: (node: NavigationNodeSummary, input?: { screenX: number; screenY: number }) => void;
   onSelectEdge?: (edgeId: number) => void;
   onCreateNodeAt?: (input: { x: number; y: number }) => Promise<boolean> | boolean;
+  onCreateChildNodeAt?: (input: { parentNodeId: number; x: number; y: number }) => Promise<boolean> | boolean;
   onMoveNode?: (input: { nodeId: number; x: number; y: number }) => Promise<void> | void;
   canDragNodes?: boolean;
   previewNodePositions?: Record<number, GamePoint> | null;
@@ -38,6 +39,19 @@ interface GameMapCanvasProps {
     worldY: number;
     nodeId: number | null;
     edgeId: number | null;
+  }) => void;
+  onCanvasDoubleClick?: (input: {
+    screenX: number;
+    screenY: number;
+    worldX: number;
+    worldY: number;
+  }) => void;
+  onNodeDoubleClick?: (input: {
+    node: NavigationNodeSummary;
+    screenX: number;
+    screenY: number;
+    worldX: number;
+    worldY: number;
   }) => void;
   onCanvasPointerDown?: (input: {
     screenX: number;
@@ -190,6 +204,7 @@ export const GameMapCanvas = ({
   onSelectNode,
   onSelectEdge,
   onCreateNodeAt,
+  onCreateChildNodeAt,
   onCreateEdge,
   onMoveNode,
   canDragNodes = true,
@@ -204,6 +219,8 @@ export const GameMapCanvas = ({
   visibleNodeIds = null,
   mapCommand = null,
   onCanvasContextMenu,
+  onCanvasDoubleClick,
+  onNodeDoubleClick,
   onCanvasPointerDown,
   onFocusChange,
   className = 'h-[clamp(620px,calc(100dvh-180px),1080px)] w-full overflow-hidden rounded-[1rem] border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)]',
@@ -236,6 +253,17 @@ export const GameMapCanvas = ({
     }
 
     return onCreateNodeAt(position);
+  });
+  const onCreateChildNodeAtEvent = useEffectEvent(async (input: { parentNodeId: number; position: GamePoint }) => {
+    if (!onCreateChildNodeAt) {
+      return false;
+    }
+
+    return onCreateChildNodeAt({
+      parentNodeId: input.parentNodeId,
+      x: input.position.x,
+      y: input.position.y,
+    });
   });
   const onMoveNodeEvent = useEffectEvent((nodeId: number, position: { x: number; y: number }) =>
     onMoveNode?.({ nodeId, x: position.x, y: position.y }),
@@ -279,10 +307,19 @@ export const GameMapCanvas = ({
   );
   const viewportModeKey = `${visibleSphereId ?? 'all'}:${canvasMode}:${visibleNodeIds?.join(',') ?? 'all'}`;
   const shouldRenderOverview = false;
-  const onSelectNodeEvent = useEffectEvent((nodeId: number) => {
+  const onSelectNodeEvent = useEffectEvent((nodeId: number, input?: { screenX: number; screenY: number }) => {
     const node = findNodeById(snapshot, nodeId);
     if (node) {
-      onSelectNode(node);
+      const rect = hostRef.current?.getBoundingClientRect();
+      onSelectNode(
+        node,
+        rect && input
+          ? {
+              screenX: rect.left + input.screenX,
+              screenY: rect.top + input.screenY,
+            }
+          : undefined,
+      );
     }
   });
 
@@ -345,6 +382,7 @@ export const GameMapCanvas = ({
             onNodeSelect: onSelectNodeEvent,
             onNodeMove: onMoveNodeEvent,
             onCreateNodeAt: onCreateNodeAtEvent,
+            onCreateChildNodeAt: onCreateChildNodeAtEvent,
             onCreateEdge: onCreateEdgeEvent,
             onEdgeSelect: onSelectEdgeEvent,
             onEdgeContextMenu: onEdgeContextMenuEvent,
@@ -431,6 +469,7 @@ export const GameMapCanvas = ({
           onNodeSelect: onSelectNodeEvent,
           onNodeMove: onMoveNodeEvent,
           onCreateNodeAt: onCreateNodeAtEvent,
+          onCreateChildNodeAt: onCreateChildNodeAtEvent,
           onCreateEdge: onCreateEdgeEvent,
           onEdgeSelect: onSelectEdgeEvent,
           onEdgeContextMenu: onEdgeContextMenuEvent,
@@ -626,6 +665,35 @@ export const GameMapCanvas = ({
           });
         }
       }}
+      onDoubleClickCapture={(event) => {
+        event.preventDefault();
+        rootRef.current?.focus({ preventScroll: true });
+        const hit = resolveCanvasHit(event.clientX, event.clientY);
+        if (!hit) {
+          return;
+        }
+
+        if (hit.nodeId != null) {
+          const node = findNodeById(snapshot, hit.nodeId);
+          if (node) {
+            onNodeDoubleClick?.({
+              node,
+              screenX: hit.screenX,
+              screenY: hit.screenY,
+              worldX: hit.worldX,
+              worldY: hit.worldY,
+            });
+          }
+          return;
+        }
+
+        onCanvasDoubleClick?.({
+          screenX: hit.screenX,
+          screenY: hit.screenY,
+          worldX: hit.worldX,
+          worldY: hit.worldY,
+        });
+      }}
       onContextMenu={handleContextMenu}
       onFocusCapture={() => onFocusChange?.(true)}
       onBlurCapture={(event) => {
@@ -669,7 +737,7 @@ export const GameMapCanvas = ({
               </PixelText>
             ) : null}
             <PixelText as="span" size="xs" color="textMuted" uppercase className="hidden lg:inline">
-              Правый клик меню · F фокус · Esc отмена
+              Double click узел · gate drag связь · Esc отмена
             </PixelText>
           </div>
         </PixelSurface>

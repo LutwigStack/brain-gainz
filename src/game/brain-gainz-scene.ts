@@ -40,10 +40,11 @@ interface GateDragState extends SceneInteractionState {
 }
 
 interface SceneCallbacks {
-  onNodeSelect: (nodeId: number) => void;
+  onNodeSelect: (nodeId: number, input?: { screenX: number; screenY: number }) => void;
   onEdgeSelect?: (edgeId: number) => void;
   onNodeMove?: (nodeId: number, position: GamePoint) => void | Promise<void>;
   onCreateNodeAt?: (position: GamePoint) => void | Promise<boolean>;
+  onCreateChildNodeAt?: (input: { parentNodeId: number; position: GamePoint }) => void | Promise<boolean>;
   onCreateEdge?: (input: {
     sourceNodeId: number;
     targetNodeId: number;
@@ -500,7 +501,10 @@ export class BrainGainzScene {
     this.gateDragInteraction = null;
 
     if (!interaction.moved) {
-      this.currentCallbacks.onNodeSelect(interaction.nodeId);
+      this.currentCallbacks.onNodeSelect(interaction.nodeId, {
+        screenX: interaction.lastScreen.x,
+        screenY: interaction.lastScreen.y,
+      });
       this.clearConnectPreview();
       this.updateBackdropCursor();
       return;
@@ -521,6 +525,11 @@ export class BrainGainzScene {
           edgeType: 'supports',
         });
       }
+    } else if (interaction.gate === 'output' && this.currentCallbacks.onCreateChildNodeAt) {
+      await this.currentCallbacks.onCreateChildNodeAt({
+        parentNodeId: interaction.nodeId,
+        position: screenToWorld({ x: event.global.x, y: event.global.y }, this.currentCamera),
+      });
     }
 
     this.clearConnectPreview();
@@ -536,7 +545,10 @@ export class BrainGainzScene {
     this.nodeDragInteraction = null;
 
     if (!interaction.moved) {
-      this.currentCallbacks.onNodeSelect(interaction.nodeId);
+      this.currentCallbacks.onNodeSelect(interaction.nodeId, {
+        screenX: interaction.lastScreen.x,
+        screenY: interaction.lastScreen.y,
+      });
       this.updateBackdropCursor();
       return;
     }
@@ -556,6 +568,10 @@ export class BrainGainzScene {
       interaction.nodeId,
       snapPointToGrid(nextPosition, this.currentCallbacks.snapToGrid ?? false),
     );
+    this.currentCallbacks.onNodeSelect(interaction.nodeId, {
+      screenX: event.global.x,
+      screenY: event.global.y,
+    });
     this.updateBackdropCursor();
   }
 
@@ -583,7 +599,10 @@ export class BrainGainzScene {
         .sort((left, right) => left.distance - right.distance)[0];
 
       if (nearestNode && nearestNode.distance <= CONNECT_NODE_HIT_RADIUS) {
-        this.currentCallbacks.onNodeSelect(nearestNode.node.id);
+        this.currentCallbacks.onNodeSelect(nearestNode.node.id, {
+          screenX: event.global.x,
+          screenY: event.global.y,
+        });
         this.updateBackdropCursor();
         return;
       }

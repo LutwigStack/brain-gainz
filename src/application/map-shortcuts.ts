@@ -4,7 +4,10 @@ export type MapShortcutIntent =
   | 'reset-camera'
   | 'refresh-map'
   | 'cancel-transients'
-  | 'delete-selected-edge';
+  | 'delete-selected-edge'
+  | 'archive-selected-node'
+  | 'duplicate-selected-node'
+  | 'undo-map-mutation';
 
 export interface MapShortcutContext {
   isMapFocused: boolean;
@@ -12,6 +15,8 @@ export interface MapShortcutContext {
   hasOverlayOpen: boolean;
   hasFocusNode: boolean;
   hasSelectedEdge: boolean;
+  hasSelectedNode: boolean;
+  canUndo: boolean;
 }
 
 export interface MapShortcutKeyInput {
@@ -32,6 +37,18 @@ export const resolveMapShortcutIntent = (
     return null;
   }
 
+  const hasPrimaryModifier = input.metaKey || input.ctrlKey;
+
+  if (hasPrimaryModifier && !input.altKey) {
+    if (normalizeKey(input.key) === 'z' && context.canUndo) {
+      return 'undo-map-mutation';
+    }
+
+    if (normalizeKey(input.key) === 'd' && context.hasSelectedNode) {
+      return 'duplicate-selected-node';
+    }
+  }
+
   if (input.metaKey || input.ctrlKey || input.altKey) {
     return null;
   }
@@ -43,7 +60,11 @@ export const resolveMapShortcutIntent = (
   }
 
   if (key === 'delete' || key === 'backspace') {
-    return context.hasSelectedEdge ? 'delete-selected-edge' : null;
+    if (context.hasSelectedEdge) {
+      return 'delete-selected-edge';
+    }
+
+    return context.hasSelectedNode ? 'archive-selected-node' : null;
   }
 
   switch (key) {
