@@ -44,3 +44,10 @@ src-tauri/bin
 # Local automation/tooling state
 .playwright-cli/
 .playwright-mcp/
+.agent/
+
+# Local QA screenshots and review scratch files
+map-*.png
+map-*-snapshot.md
+ui-*.png
+ui-*-snapshot.md
