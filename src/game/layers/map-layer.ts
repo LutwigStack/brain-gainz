@@ -159,7 +159,7 @@ const drawArrowHead = (
   graphic.fill({ color, alpha });
 };
 
-const resolveNodeBox = (node: GameNode, overviewMode = false) => {
+export const resolveNodeBox = (node: GameNode, overviewMode = false) => {
   const box = overviewMode ? OVERVIEW_NODE_BOX : NODE_BOX;
   const charWidth = overviewMode ? 8.2 : 6.2;
   const lineLength = overviewMode ? 34 : 30;

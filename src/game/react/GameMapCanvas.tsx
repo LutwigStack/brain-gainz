@@ -5,6 +5,7 @@ import { PixelSurface, PixelText } from '../../components/pixel';
 import type { NavigationNodeSummary, NavigationSnapshot, NodeFocusSnapshot } from '../../types/app-shell';
 import { BrainGainzScene } from '../brain-gainz-scene';
 import { createGameViewModel } from '../create-game-view-model';
+import { resolveNodeBox } from '../layers/map-layer';
 import type { GameBounds, GamePoint, GameSceneModel } from '../types';
 import { getViewportWorldBounds, screenToWorld, worldToScreen, type ViewportCamera } from '../viewport';
 
@@ -84,9 +85,6 @@ const findNodeById = (snapshot: NavigationSnapshot | null, nodeId: number): Navi
 
   return null;
 };
-
-const formatZoomPercent = (camera: ViewportCamera | null) =>
-  `${Math.round((camera?.zoom ?? 1) * 100)}%`;
 
 const MINIMAP_SIZE = {
   width: 220,
@@ -569,16 +567,25 @@ export const GameMapCanvas = ({
       })
       .filter((entry): entry is { edge: GameSceneModel['edges'][number]; distance: number } => entry != null)
       .sort((left, right) => left.distance - right.distance)[0];
-    const nearestNode = model.nodes
+    const nodeHitPadding = 10 / viewportCameraRef.current.zoom;
+    const nodeHit = model.nodes
       .map((node) => {
-        const nodeScreen = worldToScreen(node.position, viewportCameraRef.current!);
-        return {
-          node,
-          distance: Math.hypot(nodeScreen.x - screenPoint.x, nodeScreen.y - screenPoint.y),
-        };
+        const box = resolveNodeBox(node, shouldRenderOverview);
+        const dx = Math.abs(worldPoint.x - node.position.x);
+        const dy = Math.abs(worldPoint.y - node.position.y);
+        const hit =
+          dx <= box.width / 2 + nodeHitPadding &&
+          dy <= box.height / 2 + nodeHitPadding;
+
+        return hit
+          ? {
+              node,
+              distance: Math.hypot(dx, dy),
+            }
+          : null;
       })
-      .sort((left, right) => left.distance - right.distance)[0];
-    const nodeHit = nearestNode && nearestNode.distance <= 96 ? nearestNode : null;
+      .filter((entry): entry is { node: GameSceneModel['nodes'][number]; distance: number } => entry != null)
+      .sort((left, right) => left.distance - right.distance)[0] ?? null;
     const edgeHit = !nodeHit && nearestEdge && nearestEdge.distance <= 24 ? nearestEdge : null;
 
     return {
@@ -621,7 +628,7 @@ export const GameMapCanvas = ({
     switch (mapCommand.type) {
       case 'focus-node':
         if (highlightedNode) {
-          sceneRef.current.centerOnPoint(highlightedNode.position, Math.max(viewportCameraRef.current?.zoom ?? 1, 0.9));
+          sceneRef.current.ensurePointVisible(highlightedNode.position);
         }
         break;
       case 'fit-graph':
@@ -720,12 +727,9 @@ export const GameMapCanvas = ({
         </div>
       ) : null}
 
-      <div className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-2 sm:left-3 sm:top-3 sm:max-w-[calc(100%-1.5rem)]">
-        <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
-          <div className="flex flex-wrap items-center gap-2">
-            <PixelText as="span" size="xs" color="textMuted" uppercase className="hidden sm:inline">
-              {formatZoomPercent(viewportCamera)}
-            </PixelText>
+      {createMode || connectSourceNodeId != null ? (
+        <div className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-2 sm:left-3 sm:top-3 sm:max-w-[calc(100%-1.5rem)]">
+          <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
             {createMode ? (
               <PixelText as="span" size="xs" color="accent" uppercase>
                 {'\u0420\u0435\u0436\u0438\u043c: \u043d\u043e\u0432\u044b\u0439 \u0443\u0437\u0435\u043b'}
@@ -736,12 +740,9 @@ export const GameMapCanvas = ({
                 {'\u0421\u0432\u044f\u0437\u044c: \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0446\u0435\u043b\u044c'}
               </PixelText>
             ) : null}
-            <PixelText as="span" size="xs" color="textMuted" uppercase className="hidden lg:inline">
-              Double click узел · gate drag связь · Esc отмена
-            </PixelText>
-          </div>
-        </PixelSurface>
-      </div>
+          </PixelSurface>
+        </div>
+      ) : null}
 
       {canvasMode === 'free' && minimap && !isEmptyMap && !shouldRenderOverview ? (
         <div className="pointer-events-none absolute bottom-3 right-3 z-10 hidden sm:block">

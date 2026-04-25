@@ -74,7 +74,7 @@ const isRecommendationCandidate = (
 ): candidate is RecommendationCandidate => candidate != null;
 
 const renderReasons = (reasons: string[]) =>
-  reasons.map((reason) => (
+  reasons.slice(0, 2).map((reason) => (
     <PixelSurface
       key={reason}
       frame="ghost"
@@ -164,6 +164,9 @@ export const NowView = ({
     progress.totalActions > 0 &&
     progress.completedActions > 0 &&
     progressPercent >= 60;
+  const shouldShowWeakeningSection = !primaryRecommendation && weakeningItems.length > 0;
+  const shouldShowNearCompletionSection = nearCompletionReady;
+  const shouldShowOptionalSection = optionalItems.length > 0 || remainingNodeActions.length > 0;
   const focusedPath = focusedNode
     ? `${focusedNode.sphere_name} / ${focusedNode.direction_name} / ${focusedNode.skill_name}`
     : '';
@@ -245,9 +248,8 @@ export const NowView = ({
             </PixelSurface>
           ) : null}
 
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-2">
             <PixelStatCard label="Ослабевает" value={weakeningItems.length} tone="inset" compact />
-            <PixelStatCard label="Почти готово" value={nearCompletionReady ? `${progressPercent}%` : '—'} tone="inset" compact />
             <PixelStatCard label="В очереди" value={extraOptionsCount} tone="inset" compact />
           </div>
 
@@ -277,8 +279,9 @@ export const NowView = ({
         </PixelSurface>
       ) : null}
 
-      {(primaryRecommendation || focusedNode) ? (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.15fr)_minmax(0,0.95fr)]">
+      {shouldShowWeakeningSection || shouldShowNearCompletionSection || shouldShowOptionalSection ? (
+        <div className="grid gap-4 xl:grid-cols-2">
+          {shouldShowWeakeningSection ? (
           <PixelSurface frame="panel" padding="lg">
             <PixelText as="p" size="xs" color="textMuted" uppercase>
               Ослабевает
@@ -317,7 +320,9 @@ export const NowView = ({
               </div>
             )}
           </PixelSurface>
+          ) : null}
 
+          {shouldShowNearCompletionSection ? (
           <PixelSurface frame="panel" padding="lg">
             <PixelText as="p" size="xs" color="textMuted" uppercase>
               Почти завершено
@@ -332,7 +337,7 @@ export const NowView = ({
               </PixelText>
             ) : null}
 
-            {!isFocusLoading && nearCompletionReady && focusedNode && focusedAction && progress ? (
+            {!isFocusLoading && focusedNode && focusedAction && progress ? (
               <PixelStack gap="md" style={{ marginTop: 16 }}>
                 <PixelActionCard
                   active
@@ -391,13 +396,10 @@ export const NowView = ({
               </PixelStack>
             ) : null}
 
-            {!isFocusLoading && !nearCompletionReady ? (
-              <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
-                Сейчас нет узла, который почти дожат. Основная работа и закрытие шагов идет на карте.
-              </PixelText>
-            ) : null}
           </PixelSurface>
+          ) : null}
 
+          {shouldShowOptionalSection ? (
           <PixelSurface frame="panel" padding="lg">
             <PixelText as="p" size="xs" color="textMuted" uppercase>
               Еще можно сделать
@@ -431,12 +433,9 @@ export const NowView = ({
                   />
                 ))}
               </div>
-            ) : (
-              <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
-                Очередь короткая: после текущего шага можно сразу вернуться на карту и выбрать новый узел.
-              </PixelText>
-            )}
+            ) : null}
           </PixelSurface>
+          ) : null}
         </div>
       ) : null}
     </div>

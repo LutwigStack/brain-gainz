@@ -200,6 +200,43 @@ export class BrainGainzScene {
     return this.currentCamera;
   }
 
+  ensurePointVisible(point: GamePoint, margin = 120) {
+    if (!this.currentCamera) {
+      return null;
+    }
+
+    const width = this.app.renderer.width;
+    const height = this.app.renderer.height;
+    const screenX = point.x * this.currentCamera.zoom + this.currentCamera.x;
+    const screenY = point.y * this.currentCamera.zoom + this.currentCamera.y;
+    let nextX = this.currentCamera.x;
+    let nextY = this.currentCamera.y;
+
+    if (screenX < margin) {
+      nextX += margin - screenX;
+    } else if (screenX > width - margin) {
+      nextX -= screenX - (width - margin);
+    }
+
+    if (screenY < margin) {
+      nextY += margin - screenY;
+    } else if (screenY > height - margin) {
+      nextY -= screenY - (height - margin);
+    }
+
+    if (nextX === this.currentCamera.x && nextY === this.currentCamera.y) {
+      return this.currentCamera;
+    }
+
+    this.currentCamera = {
+      ...this.currentCamera,
+      x: nextX,
+      y: nextY,
+    };
+    this.applyViewport();
+    return this.currentCamera;
+  }
+
   zoomAtScreenPoint(screenPoint: GamePoint, scaleDelta: number) {
     if (!this.currentCamera) {
       return null;
@@ -568,10 +605,7 @@ export class BrainGainzScene {
       interaction.nodeId,
       snapPointToGrid(nextPosition, this.currentCallbacks.snapToGrid ?? false),
     );
-    this.currentCallbacks.onNodeSelect(interaction.nodeId, {
-      screenX: event.global.x,
-      screenY: event.global.y,
-    });
+    this.currentCallbacks.onNodeSelect(interaction.nodeId);
     this.updateBackdropCursor();
   }
 

@@ -951,7 +951,7 @@ export default function App() {
       }}
     >
       <header
-        inert={showSettings ? '' : undefined}
+        inert={showSettings ? true : undefined}
         aria-hidden={showSettings ? true : undefined}
         className="sticky top-0 z-50 px-3 pb-2 pt-2 sm:px-4"
         style={{
@@ -1144,7 +1144,7 @@ export default function App() {
       )}
 
       <main
-        inert={showSettings ? '' : undefined}
+        inert={showSettings ? true : undefined}
         aria-hidden={showSettings ? true : undefined}
         className="w-full min-w-0 flex-grow px-3 pb-4 pt-1 sm:px-4 sm:pb-6 sm:pt-1"
       >

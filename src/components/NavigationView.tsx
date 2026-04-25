@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Archive,
   CheckCircle2,
+  ChevronRight,
   Compass,
   Copy,
   GitBranch,
@@ -32,11 +33,7 @@ import {
 } from './pixel';
 import { GameMapCanvas } from '../game';
 import {
-  getGraphEdgeDirectionalCopy,
-  getGraphEdgeLineTitle,
   getGraphEdgeSemantics,
-  graphEdgeTypeOrder,
-  type GraphEdgeDirection,
 } from '../application/graph-edge-semantics';
 import { resolveMapShortcutIntent } from '../application/map-shortcuts';
 import { buildGraphHierarchyIndex } from '../application/graph-hierarchy';
@@ -143,7 +140,6 @@ interface InlineNodeEditorState {
 interface FloatingMapPanelState {
   screenX: number;
   screenY: number;
-  nodeId?: number;
   edgeId?: number;
 }
 
@@ -151,11 +147,6 @@ interface GraphRailEdgeEntry {
   edge: NavigationGraphEdge;
   node: NavigationNodeSummary;
   direction: 'incoming' | 'outgoing';
-}
-
-interface GraphRailEdgeGroup {
-  type: GraphEdgeType;
-  items: GraphRailEdgeEntry[];
 }
 
 interface NavigationViewProps {
@@ -281,6 +272,7 @@ export const NavigationView = ({
   const [nodeCreateTitle, setNodeCreateTitle] = useState('');
   const [inlineNodeEditor, setInlineNodeEditor] = useState<InlineNodeEditorState | null>(null);
   const [floatingMapPanel, setFloatingMapPanel] = useState<FloatingMapPanelState | null>(null);
+  const [expandedTreeNodeIds, setExpandedTreeNodeIds] = useState<Set<number>>(new Set());
   const [isCreatingStructure, setIsCreatingStructure] = useState(false);
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
   const [isMapFocused, setIsMapFocused] = useState(false);
@@ -288,6 +280,7 @@ export const NavigationView = ({
     id: number;
     type: 'focus-node' | 'fit-graph' | 'reset-camera';
   } | null>(null);
+  const hasInitializedTreeExpansion = useRef(false);
 
   const updateDraft = (patch: Partial<NodeEditorDraft>) => {
     if (!focus?.node) {
@@ -329,14 +322,6 @@ export const NavigationView = ({
   const totalDirections = selectedSphere?.directions.length ?? 0;
   const totalSkills =
     selectedSphere?.directions.reduce((sum, direction) => sum + direction.skills.length, 0) ?? 0;
-  const workspaceDirections = spheres.reduce((sum, sphere) => sum + sphere.directions.length, 0);
-  const workspaceSkills = spheres.reduce(
-    (sum, sphere) =>
-      sum + sphere.directions.reduce((directionSum, direction) => directionSum + direction.skills.length, 0),
-    0,
-  );
-  const workspaceNodes = spheres.reduce((sum, sphere) => sum + sphere.node_count, 0);
-  const workspaceActions = spheres.reduce((sum, sphere) => sum + sphere.open_action_count, 0);
   const completionValue = focus?.progress.totalActions ? focus.progress.completionPercent : 0;
   const baseEditorDraft = focus?.node ? createNodeEditorDraft(focus) : null;
   const editorDraft =
@@ -378,11 +363,53 @@ export const NavigationView = ({
   }
   const graphEdges = snapshot?.edges ?? [];
   const mapModel = createGameViewModel(snapshot, focus, { visibleSphereId: selectedSphereId });
-  const structureHierarchy = buildGraphHierarchyIndex(snapshot, selectedSphereId, focus?.node?.id ?? null);
+  const structureHierarchy = useMemo(
+    () => buildGraphHierarchyIndex(snapshot, selectedSphereId, focus?.node?.id ?? null),
+    [snapshot, selectedSphereId, focus?.node?.id],
+  );
+  useEffect(() => {
+    hasInitializedTreeExpansion.current = false;
+    setExpandedTreeNodeIds(new Set());
+  }, [selectedSphereId]);
+  useEffect(() => {
+    setExpandedTreeNodeIds((current) => {
+      const next = new Set<number>();
+      let changed = false;
+
+      for (const nodeId of current) {
+        if (structureHierarchy.entries.has(nodeId)) {
+          next.add(nodeId);
+        } else {
+          changed = true;
+        }
+      }
+
+      if (!hasInitializedTreeExpansion.current) {
+        for (const [nodeId, entry] of structureHierarchy.entries) {
+          if (entry.depth <= 1) {
+            next.add(nodeId);
+          }
+        }
+        hasInitializedTreeExpansion.current = true;
+        changed = true;
+      }
+
+      for (const [nodeId, entry] of structureHierarchy.entries) {
+        if (entry.isOnSelectedPath && !next.has(nodeId)) {
+          next.add(nodeId);
+          changed = true;
+        }
+      }
+
+      return changed || next.size !== current.size ? next : current;
+    });
+  }, [structureHierarchy]);
   const resolvedSelectedEdgeId =
     selectedEdgeId != null && graphEdges.some((edge) => edge.id === selectedEdgeId) ? selectedEdgeId : null;
   const selectedEdge =
     resolvedSelectedEdgeId != null ? graphEdges.find((edge) => edge.id === resolvedSelectedEdgeId) ?? null : null;
+  const focusHierarchyEntry =
+    focus?.node != null ? structureHierarchy.entries.get(focus.node.id) ?? null : null;
   const incomingGraphEdges: GraphRailEdgeEntry[] = !focus?.node
     ? []
     : graphEdges.flatMap((edge) => {
@@ -407,26 +434,7 @@ export const NavigationView = ({
     selectedEdge != null ? navigationNodeIndex.get(selectedEdge.source_node_id) ?? null : null;
   const selectedEdgeTargetNode =
     selectedEdge != null ? navigationNodeIndex.get(selectedEdge.target_node_id) ?? null : null;
-  const groupedOutgoingGraphEdges: GraphRailEdgeGroup[] = graphEdgeTypeOrder
-    .map((type) => ({
-      type,
-      items: outgoingGraphEdges.filter(({ edge }) => edge.edge_type === type),
-    }))
-    .filter((group) => group.items.length > 0);
-  const groupedIncomingGraphEdges: GraphRailEdgeGroup[] = graphEdgeTypeOrder
-    .map((type) => ({
-      type,
-      items: incomingGraphEdges.filter(({ edge }) => edge.edge_type === type),
-    }))
-    .filter((group) => group.items.length > 0);
   const selectedEdgeSemantics = selectedEdge ? getGraphEdgeSemantics(selectedEdge.edge_type) : null;
-  const selectedEdgeDirection: GraphEdgeDirection | null = !focus?.node || !selectedEdge
-    ? null
-    : selectedEdge.source_node_id === focus.node.id
-      ? 'outgoing'
-      : selectedEdge.target_node_id === focus.node.id
-        ? 'incoming'
-        : null;
   const findSphereEntryNode = (sphereId: number): NavigationNodeSummary | null => {
     const sphere = spheres.find((item) => item.id === sphereId);
     const nodes = sphere?.directions.flatMap((direction) => direction.skills.flatMap((skill) => skill.nodes)) ?? [];
@@ -664,20 +672,11 @@ export const NavigationView = ({
     }
   };
 
-  const handleCanvasNodeSelect = async (
-    node: NavigationNodeSummary,
-    input?: { screenX: number; screenY: number },
-  ) => {
+  const handleCanvasNodeSelect = async (node: NavigationNodeSummary) => {
     setSelectedEdgeId(null);
     setCanvasContextMenu(null);
     setInlineNodeEditor(null);
-    if (input) {
-      setFloatingMapPanel({
-        nodeId: node.id,
-        screenX: input.screenX,
-        screenY: input.screenY,
-      });
-    }
+    setFloatingMapPanel(null);
     onSelectNode(node);
   };
 
@@ -688,19 +687,6 @@ export const NavigationView = ({
     : selectedSphere
       ? `${selectedSphere.name} / ${totalDirections} направл. / ${totalSkills} навык.`
       : 'Создайте стартовый набор, чтобы карта стала рабочей.';
-  const modeLabel = !hasMapNodes
-    ? 'Карта пуста: начните со стартового набора или нового узла'
-    : mapCanvasMode === 'layers'
-      ? 'Слои: показан один родитель и его прямые дочерние узлы'
-      : isMapFocused
-        ? 'Свободный канвас: перетаскивайте поле мышью, колесо меняет масштаб'
-        : 'Свободный канвас: правый клик открывает меню действий';
-  const mapStats = [
-    { label: 'Узлы', value: workspaceNodes },
-    { label: 'Шаги', value: workspaceActions },
-    { label: 'Ветки', value: `${workspaceDirections}/${workspaceSkills}` },
-    { label: 'Фокус', value: selectedAction?.title ?? focus?.node?.title ?? 'не выбран' },
-  ];
   const fallbackLayerParentId =
     focus?.node && structureHierarchy.entries.get(focus.node.id)?.childIds.length
       ? focus.node.id
@@ -752,10 +738,6 @@ export const NavigationView = ({
     contextEdge != null ? navigationNodeIndex.get(contextEdge.target_node_id) ?? null : null;
   const contextNodeHierarchy =
     contextNode != null ? structureHierarchy.entries.get(contextNode.id) ?? null : null;
-  const floatingPanelNode =
-    floatingMapPanel?.nodeId != null ? navigationNodeIndex.get(floatingMapPanel.nodeId) ?? null : null;
-  const floatingPanelNodeHierarchy =
-    floatingPanelNode != null ? structureHierarchy.entries.get(floatingPanelNode.id) ?? null : null;
   const floatingPanelEdge =
     floatingMapPanel?.edgeId != null
       ? graphEdges.find((edge) => edge.id === floatingMapPanel.edgeId) ?? null
@@ -813,6 +795,17 @@ export const NavigationView = ({
     setCanvasContextMenu(null);
     runMapCommand('fit-graph');
   };
+  const toggleTreeNode = (nodeId: number) => {
+    setExpandedTreeNodeIds((current) => {
+      const next = new Set(current);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  };
   const renderStructureTreeNode = (nodeId: number): ReactNode => {
     const entry = structureHierarchy.entries.get(nodeId);
     if (!entry) {
@@ -821,53 +814,71 @@ export const NavigationView = ({
 
     const isSelected = focus?.node?.id === nodeId;
     const hasChildren = entry.childIds.length > 0;
+    const isExpanded = expandedTreeNodeIds.has(nodeId);
     const selectTreeNode = () => {
       void handleCanvasNodeSelect(entry.node);
     };
-    const rowClassName = `w-full min-w-0 rounded border px-2 py-1.5 text-left transition ${
+    const rowClassName = `w-full min-w-0 rounded border px-2 py-1.5 transition ${
       isSelected
         ? 'border-[var(--pixel-accent)] bg-[rgba(94,234,212,0.14)] text-[var(--pixel-text)]'
         : 'border-[var(--pixel-line-soft)] bg-[rgba(8,16,29,0.48)] text-[var(--pixel-text-muted)] hover:border-[var(--pixel-line)] hover:text-[var(--pixel-text)]'
     }`;
     const rowContent = (
-      <span className="flex min-w-0 items-center justify-between gap-2">
-        <span className="min-w-0 truncate">{entry.node.title}</span>
+      <>
+        <span className="flex min-w-0 items-center gap-2">
+          {hasChildren ? (
+            <button
+              type="button"
+              aria-label={isExpanded ? 'Свернуть ветку' : 'Развернуть ветку'}
+              aria-expanded={isExpanded}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleTreeNode(nodeId);
+              }}
+              className="grid h-5 w-5 shrink-0 place-items-center rounded border border-[var(--pixel-line-soft)] bg-[rgba(2,6,14,0.45)] text-[var(--pixel-text-muted)] transition hover:border-[var(--pixel-accent)] hover:text-[var(--pixel-accent)]"
+            >
+              <ChevronRight
+                size={13}
+                className={`transition-transform ${isExpanded ? 'rotate-90 text-[var(--pixel-accent)]' : ''}`}
+              />
+            </button>
+          ) : (
+            <span className="h-5 w-5 shrink-0" />
+          )}
+          <button
+            type="button"
+            onClick={selectTreeNode}
+            className="min-w-0 flex-1 truncate text-left"
+            title={entry.node.title}
+          >
+            {entry.node.title}
+          </button>
+        </span>
         <span className="shrink-0 text-[10px] uppercase text-[var(--pixel-text-dim)]">
           {hasChildren ? `${entry.descendantCount} узл.` : statusLabel(entry.node.status)}
         </span>
-      </span>
+      </>
     );
-    const leafRow = (
-      <button
-        type="button"
-        onClick={selectTreeNode}
-        className={rowClassName}
+    const row = (
+      <div
+        className={`${rowClassName} flex items-center justify-between gap-2`}
         style={{ marginLeft: entry.depth * 12, width: `calc(100% - ${entry.depth * 12}px)` }}
       >
         {rowContent}
-      </button>
-    );
-    const parentRow = (
-      <summary
-        className={`list-none cursor-pointer ${rowClassName}`}
-        onClick={selectTreeNode}
-        style={{ marginLeft: entry.depth * 12, width: `calc(100% - ${entry.depth * 12}px)` }}
-      >
-        {rowContent}
-      </summary>
+      </div>
     );
 
     if (!hasChildren) {
-      return <div key={nodeId}>{leafRow}</div>;
+      return <div key={nodeId}>{row}</div>;
     }
 
     return (
-      <details key={nodeId} open={entry.depth <= 1 || entry.isOnSelectedPath} className="min-w-0">
-        {parentRow}
-        <div className="mt-1 grid gap-1">
+      <div key={nodeId} className="min-w-0">
+        {row}
+        <div className={`mt-1 grid gap-1 ${isExpanded ? '' : 'hidden'}`} aria-hidden={!isExpanded}>
           {entry.childIds.map((childId) => renderStructureTreeNode(childId))}
         </div>
-      </details>
+      </div>
     );
   };
 
@@ -953,29 +964,6 @@ export const NavigationView = ({
                       <Plus size={14} /> {isCreatingStructure ? 'Создаю...' : 'Создать'}
                     </PixelButton>
                   </div>
-                  <PixelText as="p" readable size="xs" color="textMuted" className="md:col-span-2" style={{ margin: 0 }}>
-                    Выбор переключает карту на записанную структуру; базовый шаблон создается при первом выборе.
-                  </PixelText>
-                </div>
-              </PixelSurface>
-
-              <PixelSurface frame="inset" padding="xs">
-                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  {mapStats.map((item) => (
-                    <div key={item.label} className="min-w-0 border-l border-[var(--pixel-line-soft)] pl-2 first:border-l-0">
-                      <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0, lineHeight: 1 }}>
-                        {item.label}
-                      </PixelText>
-                      <PixelText
-                        as="p"
-                        readable
-                        size="sm"
-                        style={{ marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      >
-                        {item.value}
-                      </PixelText>
-                    </div>
-                  ))}
                 </div>
               </PixelSurface>
 
@@ -1010,9 +998,6 @@ export const NavigationView = ({
                       <GitBranch size={14} /> Слои
                     </PixelButton>
                   </div>
-                  <PixelText as="span" size="xs" color="textMuted" uppercase>
-                    {modeLabel}
-                  </PixelText>
                 </div>
               </PixelSurface>
 
@@ -1187,10 +1172,7 @@ export const NavigationView = ({
                       }
                     }}
                     onNodeDoubleClick={(input) => {
-                      void handleCanvasNodeSelect(input.node, {
-                        screenX: input.screenX,
-                        screenY: input.screenY,
-                      });
+                      void handleCanvasNodeSelect(input.node);
                       startInlineRename(input.node, input);
                     }}
                     onCanvasPointerDown={(hit) => {
@@ -1200,11 +1182,9 @@ export const NavigationView = ({
                         setInlineNodeEditor(null);
                         setFloatingMapPanel(null);
                       } else if (hit.button === 0 && hit.nodeId != null) {
-                        setFloatingMapPanel({
-                          nodeId: hit.nodeId,
-                          screenX: hit.screenX,
-                          screenY: hit.screenY,
-                        });
+                        setCanvasContextMenu(null);
+                        setInlineNodeEditor(null);
+                        setFloatingMapPanel(null);
                       } else if (hit.button === 0 && hit.edgeId != null) {
                         setFloatingMapPanel({
                           edgeId: hit.edgeId,
@@ -1271,92 +1251,31 @@ export const NavigationView = ({
                 </form>
               ) : null}
 
-              {floatingMapPanel && (floatingPanelNode || floatingPanelEdge) && !inlineNodeEditor && !canvasContextMenu ? (
+              {floatingMapPanel && floatingPanelEdge && !inlineNodeEditor && !canvasContextMenu ? (
                 <div
                   className="fixed z-40"
                   style={{
-                    left: Math.min(floatingMapPanel.screenX + 12, window.innerWidth - 280),
-                    top: Math.max(8, Math.min(floatingMapPanel.screenY + 12, window.innerHeight - 120)),
+                    left: Math.min(floatingMapPanel.screenX + 24, window.innerWidth - 280),
+                    top: Math.max(8, Math.min(floatingMapPanel.screenY - 54, window.innerHeight - 120)),
                   }}
                 >
                   <PixelSurface frame="panel" padding="xxs" fullWidth={false}>
                     <div className="flex items-center gap-1">
-                      {floatingPanelNode ? (
-                        <>
-                          <PixelButton
-                            tone="ghost"
-                            onClick={() =>
-                              startInlineRename(floatingPanelNode, {
-                                screenX: floatingMapPanel.screenX,
-                                screenY: floatingMapPanel.screenY,
-                              })
-                            }
-                            style={{ minHeight: 28, padding: '5px 7px' }}
-                            title="Переименовать"
-                          >
-                            <PencilLine size={13} />
-                          </PixelButton>
-                          <PixelButton
-                            tone="ghost"
-                            onClick={async () => {
-                              const duplicated = await onDuplicateNode({
-                                nodeId: floatingPanelNode.id,
-                                x: (floatingPanelNode.x ?? 0) + 40,
-                                y: (floatingPanelNode.y ?? 0) + 40,
-                              });
-                              if (duplicated) {
-                                setFloatingMapPanel(null);
-                              }
-                            }}
-                            disabled={isMapMutating}
-                            style={{ minHeight: 28, padding: '5px 7px' }}
-                            title="Дублировать"
-                          >
-                            <Copy size={13} />
-                          </PixelButton>
-                          {floatingPanelNodeHierarchy?.childIds.length ? (
-                            <PixelButton
-                              tone="ghost"
-                              onClick={() => openLayerAtNode(floatingPanelNode.id)}
-                              style={{ minHeight: 28, padding: '5px 7px' }}
-                              title="Открыть слой"
-                            >
-                              <GitBranch size={13} />
-                            </PixelButton>
-                          ) : null}
-                          <PixelButton
-                            tone="ghost"
-                            onClick={async () => {
-                              const archived = await onArchiveNode({ nodeId: floatingPanelNode.id });
-                              if (archived) {
-                                setFloatingMapPanel(null);
-                              }
-                            }}
-                            disabled={isMapMutating}
-                            style={{ minHeight: 28, padding: '5px 7px', color: 'var(--pixel-danger)' }}
-                            title="Архивировать"
-                          >
-                            <Archive size={13} />
-                          </PixelButton>
-                        </>
-                      ) : null}
-                      {floatingPanelEdge ? (
-                        <PixelButton
-                          tone="ghost"
-                          onClick={async () => {
-                            const deleted = await onDeleteEdge(floatingPanelEdge.id);
-                            if (deleted) {
-                              setSelectedEdgeId(null);
-                              setFloatingMapPanel(null);
-                            }
-                          }}
-                          disabled={isMapMutating}
-                          style={{ minHeight: 28, padding: '5px 7px', color: 'var(--pixel-danger)' }}
-                          title="Удалить связь"
-                        >
-                          <X size={13} />
-                        </PixelButton>
-                      ) : null}
+                      <PixelButton
+                        tone="ghost"
+                        onClick={async () => {
+                          const deleted = await onDeleteEdge(floatingPanelEdge.id);
+                          if (deleted) {
+                            setSelectedEdgeId(null);
+                            setFloatingMapPanel(null);
+                          }
+                        }}
+                        disabled={isMapMutating}
+                        style={{ minHeight: 28, padding: '5px 7px', color: 'var(--pixel-danger)' }}
+                        title="Удалить связь"
+                      >
+                        <X size={13} />
+                      </PixelButton>
                     </div>
                   </PixelSurface>
                 </div>
@@ -1511,57 +1430,9 @@ export const NavigationView = ({
                 </div>
               ) : null}
 
-              <PixelSurface frame="ghost" padding="xs">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <PixelText as="span" size="xs" color="textMuted" uppercase>
-                    Закрыт · серый
-                  </PixelText>
-                  <PixelText as="span" size="xs" color="textMuted" uppercase>
-                    Доступен · бирюзовый
-                  </PixelText>
-                  <PixelText as="span" size="xs" color="textMuted" uppercase>
-                    Активен · синий
-                  </PixelText>
-                  <PixelText as="span" size="xs" color="textMuted" uppercase>
-                    Завершен · зеленый
-                  </PixelText>
-                  <PixelText as="span" size="xs" color="textMuted" uppercase>
-                    На паузе · янтарный
-                  </PixelText>
-                </div>
-              </PixelSurface>
             </div>
           </PixelSurface>
 
-          <PixelSurface frame="panel" padding="lg" className="min-w-0">
-            <PixelPanelHeader
-              eyebrow={
-                <span className="flex items-center gap-2">
-                  <GitBranch size={14} className="text-[var(--pixel-accent)]" /> Дерево структуры
-                </span>
-              }
-              title={selectedSphere?.name ?? 'Структура карты'}
-              description={
-                selectedSphere
-                  ? 'Разделы, темы и листья выбранной структуры.'
-                  : 'Пока пусто. Сначала создайте стартовый набор.'
-              }
-            />
-
-            {!selectedSphere ? (
-              <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
-                Пока пусто. Сначала создайте стартовый набор.
-              </PixelText>
-            ) : structureHierarchy.roots.length > 0 ? (
-              <div className="mt-3 grid min-w-0 gap-1">
-                {structureHierarchy.roots.map((nodeId) => renderStructureTreeNode(nodeId))}
-              </div>
-            ) : (
-              <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
-                В этой структуре пока нет узлов.
-              </PixelText>
-            )}
-          </PixelSurface>
         </div>
 
         <div className="min-w-0 max-w-full self-start xl:sticky xl:top-3 xl:justify-self-end xl:w-[340px] 2xl:w-[360px]">
@@ -1583,7 +1454,7 @@ export const NavigationView = ({
                     size="sm"
                     style={{ marginTop: 16, textAlign: 'center' }}
                   >
-                    Выберите узел на карте или в навигационных ветках.
+                    Выберите узел на карте или в дереве структуры.
                   </PixelText>
                 </PixelSurface>
               ) : null}
@@ -1628,6 +1499,117 @@ export const NavigationView = ({
                         <PixelStatCard label="Статус" value={statusLabel(editorDraft.status)} tone="ghost" compact />
                       </div>
                     </div>
+                  </PixelSurface>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <PixelButton
+                      tone="ghost"
+                      onClick={async () => {
+                        const duplicated = await onDuplicateNode({
+                          nodeId: focus.node.id,
+                          x: (focus.node.x ?? 0) + 40,
+                          y: (focus.node.y ?? 0) + 40,
+                        });
+                        if (duplicated) {
+                          setFloatingMapPanel(null);
+                          setSelectedEdgeId(null);
+                        }
+                      }}
+                      disabled={isMapMutating}
+                      style={{ justifyContent: 'center', minHeight: 30, padding: '6px 8px', gap: 6 }}
+                    >
+                      <Copy size={14} /> Дубль
+                    </PixelButton>
+                    {focusHierarchyEntry?.childIds.length ? (
+                      <PixelButton
+                        tone="ghost"
+                        onClick={() => openLayerAtNode(focus.node.id)}
+                        style={{ justifyContent: 'center', minHeight: 30, padding: '6px 8px', gap: 6 }}
+                      >
+                        <GitBranch size={14} /> Слой
+                      </PixelButton>
+                    ) : null}
+                    <PixelButton
+                      tone="ghost"
+                      onClick={async () => {
+                        const archived = await onArchiveNode({ nodeId: focus.node.id });
+                        if (archived) {
+                          setFloatingMapPanel(null);
+                          setSelectedEdgeId(null);
+                        }
+                      }}
+                      disabled={isMapMutating}
+                      style={{
+                        justifyContent: 'center',
+                        minHeight: 30,
+                        padding: '6px 8px',
+                        gap: 6,
+                        color: 'var(--pixel-danger)',
+                      }}
+                    >
+                      <Archive size={14} /> Архив
+                    </PixelButton>
+                  </div>
+
+                  <PixelMeter
+                    value={completionValue}
+                    max={100}
+                    label="Прогресс узла"
+                    tone={focus.session?.status === 'active' ? 'success' : 'accent'}
+                    showValue
+                  />
+
+                  <div className="grid gap-2 grid-cols-3">
+                    <PixelStatCard label="Открыто" value={focus.progress.openActions} tone="inset" compact />
+                    <PixelStatCard
+                      label="Риск"
+                      value={riskLabel(focus.reviewState?.current_risk ?? 'none')}
+                      tone="inset"
+                      compact
+                    />
+                    <PixelStatCard
+                      label="Связи"
+                      value={incomingGraphEdges.length + outgoingGraphEdges.length}
+                      tone="inset"
+                      compact
+                    />
+                  </div>
+
+                  <PixelSurface frame="inset" padding="sm">
+                    <PixelStack gap="xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                          Граф
+                        </PixelText>
+                        <PixelText as="span" size="xs" color="textMuted" uppercase>
+                          {outgoingGraphEdges.length} исход. / {incomingGraphEdges.length} вход.
+                        </PixelText>
+                      </div>
+
+                      {selectedEdge && selectedEdgeSemantics ? (
+                        <PixelSurface frame="ghost" padding="xs">
+                          <div className="flex items-start justify-between gap-2">
+                            <PixelText as="p" readable size="xs">
+                              {selectedEdgeSemantics.label}: {selectedEdgeSourceNode?.title ?? 'Источник'} {'->'}{' '}
+                              {selectedEdgeTargetNode?.title ?? 'Цель'}
+                            </PixelText>
+                            <PixelButton
+                              tone="ghost"
+                              onClick={async () => {
+                                const deleted = await onDeleteEdge(selectedEdge.id);
+                                if (deleted) {
+                                  setSelectedEdgeId(null);
+                                }
+                              }}
+                              disabled={isMapMutating}
+                              style={{ minHeight: 26, padding: '4px 8px', gap: 6 }}
+                            >
+                              <X size={12} /> Убрать
+                            </PixelButton>
+                          </div>
+                        </PixelSurface>
+                      ) : null}
+                    </PixelStack>
                   </PixelSurface>
 
                   {showInlineEditor && isEditorExpanded && editorDraft ? (
@@ -1818,251 +1800,35 @@ export const NavigationView = ({
               ) : null}
             </PixelSurface>
 
-            {focus?.node ? (
-            <PixelSurface frame="panel" padding="sm">
-              <PixelStack gap="sm">
-                <PixelPanelHeader
-                  eyebrow="Сводка узла"
-                  title={editorDraft?.title ?? focus.node.title}
-                  description={editorDraft?.theme ?? `${focus.node.sphere_name} / ${focus.node.direction_name} / ${focus.node.skill_name}`}
-                  aside={
-                    <PixelButton
-                      tone="ghost"
-                      onClick={() => setIsSummaryExpanded(true)}
-                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                    >
-                      <Compass size={14} /> Сводка
-                    </PixelButton>
-                  }
-                />
+            <PixelSurface frame="panel" padding="sm" className="min-w-0">
+              <PixelPanelHeader
+                eyebrow={
+                  <span className="flex items-center gap-2">
+                    <GitBranch size={14} className="text-[var(--pixel-accent)]" /> Дерево структуры
+                  </span>
+                }
+                title={selectedSphere?.name ?? 'Структура'}
+                description={
+                  selectedSphere
+                    ? 'Быстрая навигация по текущей структуре.'
+                    : 'Сначала выберите или создайте структуру.'
+                }
+              />
 
-                <PixelMeter
-                  value={completionValue}
-                  max={100}
-                  label="Прогресс узла"
-                  tone={focus.session?.status === 'active' ? 'success' : 'accent'}
-                  showValue
-                />
-
-                <div className="grid gap-2 grid-cols-3">
-                  <PixelStatCard label="Открыто" value={focus.progress.openActions} tone="inset" compact />
-                  <PixelStatCard
-                    label="Риск"
-                    value={riskLabel(focus.reviewState?.current_risk ?? 'none')}
-                    tone="inset"
-                    compact
-                  />
-                  <PixelStatCard
-                    label="Редактор"
-                    value={statusLabel(editorDraft?.status ?? focus.node.status)}
-                    tone="inset"
-                    compact
-                  />
+              {!selectedSphere ? (
+                <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 12 }}>
+                  Пока пусто.
+                </PixelText>
+              ) : structureHierarchy.roots.length > 0 ? (
+                <div className="mt-3 grid max-h-[42dvh] min-w-0 gap-1 overflow-auto pr-1">
+                  {structureHierarchy.roots.map((nodeId) => renderStructureTreeNode(nodeId))}
                 </div>
-
-                {(editorDraft?.summary || focus.node.summary) ? (
-                  <PixelText as="p" readable color="textMuted" size="xs">
-                    {editorDraft?.summary || focus.node.summary}
-                  </PixelText>
-                ) : null}
-
-                <div className="grid gap-2">
-                  <PixelSurface frame="inset" padding="xs">
-                    <PixelText as="p" size="xs" color="textDim" uppercase>
-                      Критерий завершения
-                    </PixelText>
-                    <PixelText as="p" readable size="xs" style={{ marginTop: 6, whiteSpace: 'pre-line' }}>
-                      {hasAuthoredCompletionCriteria
-                        ? editorDraft?.completionCriteria
-                        : completionCriteriaPreview || 'Пока не определен.'}
-                    </PixelText>
-                  </PixelSurface>
-                  {!hasAuthoredCompletionCriteria && completionCriteriaPreview ? (
-                    <PixelText as="p" readable color="textMuted" size="xs">
-                      Рассчитано автоматически, пока поле не заполнено вручную.
-                    </PixelText>
-                  ) : null}
-
-                  <PixelSurface frame="inset" padding="xs">
-                    <PixelText as="p" size="xs" color="textDim" uppercase>
-                      Заметка к графу
-                    </PixelText>
-                    <PixelText as="p" readable size="xs" style={{ marginTop: 6, whiteSpace: 'pre-line' }}>
-                      {hasAuthoredLinks ? editorDraft?.links : linksPreview || 'Пока заметка не задана.'}
-                    </PixelText>
-                  </PixelSurface>
-                  {!hasAuthoredLinks && linksPreview ? (
-                    <PixelText as="p" readable color="textMuted" size="xs">
-                      Рассчитано автоматически, пока поле не заполнено вручную.
-                    </PixelText>
-                  ) : null}
-
-                  <PixelSurface frame="inset" padding="xs">
-                    <PixelText as="p" size="xs" color="textDim" uppercase>
-                      Награда
-                    </PixelText>
-                    <PixelText as="p" readable size="xs" style={{ marginTop: 6, whiteSpace: 'pre-line' }}>
-                      {hasAuthoredReward ? editorDraft?.reward : rewardPreview || 'Пока не задана.'}
-                    </PixelText>
-                  </PixelSurface>
-                  {!hasAuthoredReward && rewardPreview ? (
-                    <PixelText as="p" readable color="textMuted" size="xs">
-                      Рассчитано автоматически, пока поле не заполнено вручную.
-                    </PixelText>
-                  ) : null}
-                </div>
-
-                <PixelSurface frame="inset" padding="xs">
-                  <PixelStack gap="xs">
-                    <PixelText as="p" size="xs" color="textDim" uppercase>
-                      Граф
-                    </PixelText>
-
-                    {selectedEdge && selectedEdgeSemantics ? (
-                      <PixelSurface frame="ghost" padding="xs">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="space-y-2">
-                            <PixelText as="p" readable size="xs">
-                              {selectedEdgeSemantics.label}: {selectedEdgeSourceNode?.title ?? '\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a'} →{' '}
-                              {selectedEdgeTargetNode?.title ?? '\u0426\u0435\u043b\u044c'}
-                            </PixelText>
-                            {selectedEdgeDirection ? (
-                              <PixelText as="p" readable size="xs" color="textMuted">
-                                {getGraphEdgeDirectionalCopy(selectedEdge.edge_type, selectedEdgeDirection)}
-                              </PixelText>
-                            ) : null}
-                            <PixelText as="p" readable size="xs" color="textMuted">
-                              {selectedEdgeSemantics.arrowMeaning}
-                            </PixelText>
-                          </div>
-                          <PixelButton
-                            tone="ghost"
-                            onClick={async () => {
-                              const deleted = await onDeleteEdge(selectedEdge.id);
-                              if (deleted) {
-                                setSelectedEdgeId(null);
-                              }
-                            }}
-                            disabled={isMapMutating}
-                            style={{ minHeight: 26, padding: '4px 8px', gap: 6 }}
-                          >
-                            <X size={12} /> {'\u0423\u0431\u0440\u0430\u0442\u044c'}
-                          </PixelButton>
-                        </div>
-                      </PixelSurface>
-                    ) : null}
-
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      {graphEdgeTypeOrder.map((type) => {
-                        const semantics = getGraphEdgeSemantics(type);
-                        return (
-                          <PixelSurface key={type} frame="ghost" padding="xs">
-                            <PixelText as="p" size="xs" color="textMuted" uppercase>
-                              {semantics.label}
-                            </PixelText>
-                            <PixelText as="p" readable size="xs" style={{ marginTop: 4 }}>
-                              {semantics.railSummary}
-                            </PixelText>
-                          </PixelSurface>
-                        );
-                      })}
-                    </div>
-
-                    <PixelSurface frame="ghost" padding="xs">
-                      <PixelText as="p" size="xs" color="textMuted" uppercase>
-                        {'\u0418\u0441\u0445\u043e\u0434\u044f\u0449\u0438\u0435'}
-                      </PixelText>
-                      {groupedOutgoingGraphEdges.length === 0 ? (
-                        <PixelText as="p" readable size="xs" style={{ marginTop: 6 }}>
-                          {'\u041f\u043e\u043a\u0430 \u043d\u0435\u0442.'}
-                        </PixelText>
-                      ) : (
-                        <div className="mt-2 space-y-2">
-                          {groupedOutgoingGraphEdges.map((group) => {
-                            const semantics = getGraphEdgeSemantics(group.type);
-                            return (
-                              <div key={group.type} className="space-y-2">
-                                <PixelText as="p" size="xs" color="textMuted" uppercase>
-                                  {semantics.label} {'\u00b7'} {group.items.length}
-                                </PixelText>
-                                {group.items.map(({ edge, node }) => (
-                                  <button
-                                    key={edge.id}
-                                    type="button"
-                                    onClick={() => setSelectedEdgeId(edge.id)}
-                                    className="w-full text-left"
-                                  >
-                                    <PixelSurface frame={selectedEdgeId === edge.id ? 'accent' : 'ghost'} padding="xs">
-                                      <PixelText as="p" readable size="xs">
-                                        {getGraphEdgeLineTitle(edge.edge_type, 'outgoing', node.title)}
-                                      </PixelText>
-                                      <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 4 }}>
-                                        {getGraphEdgeDirectionalCopy(edge.edge_type, 'outgoing')}
-                                      </PixelText>
-                                    </PixelSurface>
-                                  </button>
-                                ))}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </PixelSurface>
-
-                    <PixelSurface frame="ghost" padding="xs">
-                      <PixelText as="p" size="xs" color="textMuted" uppercase>
-                        {'\u0412\u0445\u043e\u0434\u044f\u0449\u0438\u0435'}
-                      </PixelText>
-                      {groupedIncomingGraphEdges.length === 0 ? (
-                        <PixelText as="p" readable size="xs" style={{ marginTop: 6 }}>
-                          {'\u041f\u043e\u043a\u0430 \u043d\u0435\u0442.'}
-                        </PixelText>
-                      ) : (
-                        <div className="mt-2 space-y-2">
-                          {groupedIncomingGraphEdges.map((group) => {
-                            const semantics = getGraphEdgeSemantics(group.type);
-                            return (
-                              <div key={group.type} className="space-y-2">
-                                <PixelText as="p" size="xs" color="textMuted" uppercase>
-                                  {semantics.label} {'\u00b7'} {group.items.length}
-                                </PixelText>
-                                {group.items.map(({ edge, node }) => (
-                                  <button
-                                    key={edge.id}
-                                    type="button"
-                                    onClick={() => setSelectedEdgeId(edge.id)}
-                                    className="w-full text-left"
-                                  >
-                                    <PixelSurface frame={selectedEdgeId === edge.id ? 'accent' : 'ghost'} padding="xs">
-                                      <PixelText as="p" readable size="xs">
-                                        {getGraphEdgeLineTitle(edge.edge_type, 'incoming', node.title)}
-                                      </PixelText>
-                                      <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 4 }}>
-                                        {getGraphEdgeDirectionalCopy(edge.edge_type, 'incoming')}
-                                      </PixelText>
-                                    </PixelSurface>
-                                  </button>
-                                ))}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </PixelSurface>
-                  </PixelStack>
-                </PixelSurface>
-
-                <PixelSurface frame="inset" padding="xs">
-                  <PixelText as="p" size="xs" color="textDim" uppercase>
-                    Следующий шаг
-                  </PixelText>
-                  <PixelText as="p" readable size="xs" style={{ marginTop: 6, lineHeight: 1.25 }}>
-                    {selectedAction?.title ?? 'Пока нет активного шага.'}
-                  </PixelText>
-                </PixelSurface>
-              </PixelStack>
+              ) : (
+                <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 12 }}>
+                  В этой структуре пока нет узлов.
+                </PixelText>
+              )}
             </PixelSurface>
-            ) : null}
           </PixelStack>
         </div>
       </section>
