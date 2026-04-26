@@ -1,4 +1,5 @@
 export type GameNodeState = 'locked' | 'available' | 'active' | 'completed' | 'paused';
+export type CanvasInteractionMode = 'free-edit' | 'layer-edit' | 'readonly';
 
 export interface GamePoint {
   x: number;

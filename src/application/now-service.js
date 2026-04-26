@@ -939,6 +939,60 @@ const navigationContainsNode = (navigation, nodeId) =>
     sphere.directions.some((direction) => direction.skills.some((skill) => skill.nodes.some((node) => node.id === nodeId))),
   );
 
+const findFirstNavigationSelectionInSphere = (navigation, sphereId) => {
+  const sphere = navigation.spheres.find((candidate) => candidate.id === sphereId);
+
+  if (!sphere) {
+    return null;
+  }
+
+  for (const direction of sphere.directions) {
+    for (const skill of direction.skills) {
+      const node = skill.nodes[0];
+
+      if (node) {
+        return { nodeId: node.id, actionId: node.next_action_id ?? null };
+      }
+    }
+  }
+
+  return null;
+};
+
+const findNavigationSphereIdForNode = (navigation, node) => {
+  if (node?.sphere_id != null) {
+    return node.sphere_id;
+  }
+
+  if (node?.skill_id == null) {
+    return null;
+  }
+
+  for (const sphere of navigation.spheres) {
+    for (const direction of sphere.directions) {
+      if (direction.skills.some((skill) => skill.id === node.skill_id)) {
+        return sphere.id;
+      }
+    }
+  }
+
+  return null;
+};
+
+const resolveNavigationSelectionAfterNodeMutation = (navigation, node, actionId = null) => {
+  if (!node) {
+    return navigation.defaultSelection;
+  }
+
+  if (!node.is_archived && navigationContainsNode(navigation, node.id)) {
+    return { nodeId: node.id, actionId };
+  }
+
+  const sphereId = findNavigationSphereIdForNode(navigation, node);
+
+  return findFirstNavigationSelectionInSphere(navigation, sphereId) ?? navigation.defaultSelection;
+};
+
 const refreshEditorMutationResult = async (service, nodeId, actionId = null) => {
   const [node, dashboard, navigation] = await Promise.all([
     service.getNodeEditorRecord(nodeId),
@@ -950,10 +1004,7 @@ const refreshEditorMutationResult = async (service, nodeId, actionId = null) => 
     return null;
   }
 
-  const selection =
-    !node.is_archived && navigationContainsNode(navigation, node.id)
-      ? { nodeId: node.id, actionId }
-      : navigation.defaultSelection;
+  const selection = resolveNavigationSelectionAfterNodeMutation(navigation, node, actionId);
   const focus =
     selection != null ? await service.getNodeFocus(selection.nodeId, selection.actionId ?? null) : null;
 

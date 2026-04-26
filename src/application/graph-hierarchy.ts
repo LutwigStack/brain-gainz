@@ -15,6 +15,11 @@ export interface GraphHierarchyIndex {
   selectedPathIds: Set<number>;
 }
 
+const hierarchyTitleCollator = new Intl.Collator('ru', {
+  numeric: false,
+  sensitivity: 'base',
+});
+
 const collectSphereNodes = (snapshot: NavigationSnapshot, visibleSphereId: number | null) => {
   const nodes: NavigationNodeSummary[] = [];
 
@@ -43,6 +48,18 @@ export const buildGraphHierarchyIndex = (
   const nodes = collectSphereNodes(snapshot, visibleSphereId);
   const nodeIds = new Set(nodes.map((node) => node.id));
   const order = new Map(nodes.map((node, index) => [node.id, index]));
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const compareNodeIdsLexicographically = (left: number, right: number) => {
+    const leftNode = nodeById.get(left);
+    const rightNode = nodeById.get(right);
+    const titleComparison = hierarchyTitleCollator.compare(leftNode?.title ?? '', rightNode?.title ?? '');
+
+    if (titleComparison !== 0) {
+      return titleComparison;
+    }
+
+    return (order.get(left) ?? 0) - (order.get(right) ?? 0);
+  };
   const parentByChild = new Map<number, number>();
   const childrenByParent = new Map<number, number[]>();
 
@@ -67,13 +84,13 @@ export const buildGraphHierarchyIndex = (
   });
 
   childrenByParent.forEach((children) => {
-    children.sort((left, right) => (order.get(left) ?? 0) - (order.get(right) ?? 0));
+    children.sort(compareNodeIdsLexicographically);
   });
 
   const roots = nodes
     .map((node) => node.id)
     .filter((nodeId) => !parentByChild.has(nodeId))
-    .sort((left, right) => (order.get(left) ?? 0) - (order.get(right) ?? 0));
+    .sort(compareNodeIdsLexicographically);
   const entries = new Map<number, GraphHierarchyEntry>();
   const visited = new Set<number>();
 
@@ -82,7 +99,7 @@ export const buildGraphHierarchyIndex = (
       return;
     }
 
-    const node = nodes.find((item) => item.id === nodeId);
+    const node = nodeById.get(nodeId);
     if (!node) {
       return;
     }

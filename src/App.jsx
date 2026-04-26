@@ -583,10 +583,14 @@ export default function App() {
         edgeId: edgeResult?.edge?.id ?? null,
       });
 
+      const childSelection = {
+        nodeId: createdNodeId,
+        actionId: nodeResult?.focus?.selectedAction?.id ?? nodeResult?.focus?.node?.next_action_id ?? null,
+      };
       await loadNowDashboard(nowSelection);
       setNavigationSnapshot(edgeResult?.navigation ?? nodeResult?.navigation ?? null);
-      setNavigationSelection(edgeResult?.selection ?? nodeResult?.selection ?? null);
-      setNavigationFocus(edgeResult?.focus ?? nodeResult?.focus ?? null);
+      setNavigationSelection(childSelection);
+      await loadNavigationFocus(childSelection);
       setNodeEditorNotice('Дочерний узел добавлен и связан с родителем.');
       setActiveTab('map');
       return true;

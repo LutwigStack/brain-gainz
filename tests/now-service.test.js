@@ -435,8 +435,72 @@ test('node editor duplicate and archive mutations return persisted refresh paylo
   assert.equal(archivedInNavigation, undefined);
   assert.notEqual(archived.selection, null);
   assert.notEqual(archived.selection.nodeId, snapshot.primaryRecommendation.nodeId);
-  assert.equal(archived.selection.nodeId, archived.navigation.defaultSelection.nodeId);
+  assert.equal(
+    archived.navigation.spheres[0].directions.some((direction) =>
+      direction.skills.some((skill) => skill.nodes.some((node) => node.id === archived.selection.nodeId)),
+    ),
+    true,
+  );
   assert.equal(archived.focus.node.id, archived.selection.nodeId);
+});
+
+test('archiving a node keeps fallback selection inside the same structure', async (t) => {
+  const { database, nowService, hierarchyStore } = await setupNowService();
+  t.after(() => database.close());
+
+  const workSphere = await hierarchyStore.createSphere({ name: 'Work', slug: 'work-selection-fallback' });
+  const workDirection = await hierarchyStore.createDirection({
+    sphere_id: workSphere.id,
+    name: 'Work map',
+    slug: 'work-map-selection-fallback',
+  });
+  const workSkill = await hierarchyStore.createSkill({
+    direction_id: workDirection.id,
+    name: 'Work graph',
+    slug: 'work-graph-selection-fallback',
+  });
+  const archivedWorkNode = await hierarchyStore.createNode({
+    skill_id: workSkill.id,
+    type: 'task',
+    title: 'Archive this work node',
+    slug: 'archive-this-work-node',
+  });
+  const remainingWorkNode = await hierarchyStore.createNode({
+    skill_id: workSkill.id,
+    type: 'task',
+    title: 'Stay in Work',
+    slug: 'stay-in-work-node',
+  });
+
+  const algebraSphere = await hierarchyStore.createSphere({ name: 'Algebra I', slug: 'algebra-selection-fallback' });
+  const algebraDirection = await hierarchyStore.createDirection({
+    sphere_id: algebraSphere.id,
+    name: 'Course map',
+    slug: 'course-map-selection-fallback',
+  });
+  const algebraSkill = await hierarchyStore.createSkill({
+    direction_id: algebraDirection.id,
+    name: 'Course graph',
+    slug: 'course-graph-selection-fallback',
+  });
+  const algebraNode = await hierarchyStore.createNode({
+    skill_id: algebraSkill.id,
+    type: 'task',
+    title: 'Algebra default candidate',
+    slug: 'algebra-default-candidate',
+  });
+  await hierarchyStore.createNodeAction({
+    node_id: algebraNode.id,
+    title: 'Recommended algebra action',
+    status: 'ready',
+  });
+
+  const archived = await nowService.archiveNodeEditor(archivedWorkNode.id);
+
+  assert.equal(archived.node.id, archivedWorkNode.id);
+  assert.equal(archived.navigation.defaultSelection.nodeId, algebraNode.id);
+  assert.equal(archived.selection.nodeId, remainingWorkNode.id);
+  assert.equal(archived.focus.node.sphere_id, workSphere.id);
 });
 
 test('archive node editor applies persisted patch and archive status in one mutation result', async (t) => {

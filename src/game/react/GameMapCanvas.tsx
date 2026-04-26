@@ -1,12 +1,14 @@
 ﻿import { Application } from 'pixi.js';
 import { useEffect, useEffectEvent, useMemo, useRef, useState, type MouseEvent } from 'react';
 
+import { getGraphEdgeSemantics } from '../../application/graph-edge-semantics';
 import { PixelSurface, PixelText } from '../../components/pixel';
 import type { NavigationNodeSummary, NavigationSnapshot, NodeFocusSnapshot } from '../../types/app-shell';
 import { BrainGainzScene } from '../brain-gainz-scene';
 import { createGameViewModel } from '../create-game-view-model';
-import { resolveNodeBox } from '../layers/map-layer';
-import type { GameBounds, GamePoint, GameSceneModel } from '../types';
+import { createQuadraticRoute, getPointToPolylineDistance } from '../edge-geometry';
+import { getNodeGateAnchor, resolveNodeBox } from '../layers/map-layer';
+import type { CanvasInteractionMode, GameBounds, GamePoint, GameSceneModel } from '../types';
 import { getViewportWorldBounds, screenToWorld, worldToScreen, type ViewportCamera } from '../viewport';
 
 interface GameMapCanvasProps {
@@ -17,7 +19,7 @@ interface GameMapCanvasProps {
   onCreateNodeAt?: (input: { x: number; y: number }) => Promise<boolean> | boolean;
   onCreateChildNodeAt?: (input: { parentNodeId: number; x: number; y: number }) => Promise<boolean> | boolean;
   onMoveNode?: (input: { nodeId: number; x: number; y: number }) => Promise<void> | void;
-  canDragNodes?: boolean;
+  interactionMode?: CanvasInteractionMode;
   previewNodePositions?: Record<number, GamePoint> | null;
   createMode?: boolean;
   snapToGrid?: boolean;
@@ -27,7 +29,7 @@ interface GameMapCanvasProps {
   visibleSphereId?: number | null;
   canvasMode?: 'free' | 'layers';
   visibleNodeIds?: number[] | null;
-  mapCommand?: { id: number; type: 'focus-node' | 'fit-graph' | 'reset-camera' } | null;
+  mapCommand?: { id: number; type: 'focus-node' | 'fit-graph' | 'center-layer' | 'reset-camera' } | null;
   onCreateEdge?: (input: {
     sourceNodeId: number;
     targetNodeId: number;
@@ -149,19 +151,6 @@ const filterModelToVisibleNodes = (
   };
 };
 
-const getPointToSegmentDistance = (point: GamePoint, start: GamePoint, end: GamePoint) => {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const lengthSquared = dx * dx + dy * dy;
-
-  if (lengthSquared === 0) {
-    return Math.hypot(point.x - start.x, point.y - start.y);
-  }
-
-  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
-  return Math.hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy));
-};
-
 const applyPreviewToModel = (
   model: GameSceneModel,
   previewNodePositions: Record<number, GamePoint> | null,
@@ -205,7 +194,7 @@ export const GameMapCanvas = ({
   onCreateChildNodeAt,
   onCreateEdge,
   onMoveNode,
-  canDragNodes = true,
+  interactionMode = 'free-edit',
   previewNodePositions = null,
   createMode = false,
   snapToGrid = true,
@@ -229,7 +218,7 @@ export const GameMapCanvas = ({
   const sceneRef = useRef<BrainGainzScene | null>(null);
   const modelRef = useRef(createGameViewModel(snapshot, focus, { visibleSphereId }));
   const viewportModeKeyRef = useRef<string>('');
-  const canDragNodesRef = useRef(canDragNodes);
+  const interactionModeRef = useRef(interactionMode);
   const createModeRef = useRef(createMode);
   const snapToGridRef = useRef(snapToGrid);
   const selectedEdgeIdRef = useRef(selectedEdgeId);
@@ -322,8 +311,8 @@ export const GameMapCanvas = ({
   });
 
   useEffect(() => {
-    canDragNodesRef.current = canDragNodes;
-  }, [canDragNodes]);
+    interactionModeRef.current = interactionMode;
+  }, [interactionMode]);
 
   useEffect(() => {
     createModeRef.current = createMode;
@@ -384,7 +373,7 @@ export const GameMapCanvas = ({
             onCreateEdge: onCreateEdgeEvent,
             onEdgeSelect: onSelectEdgeEvent,
             onEdgeContextMenu: onEdgeContextMenuEvent,
-            canDragNodes: canDragNodesRef.current,
+            interactionMode: interactionModeRef.current,
             createMode: createModeRef.current,
             snapToGrid: snapToGridRef.current,
             selectedEdgeId: selectedEdgeIdRef.current,
@@ -424,7 +413,11 @@ export const GameMapCanvas = ({
           y: event.clientY - rect.top,
         };
 
-        if (!event.shiftKey && event.deltaY !== 0) {
+        const absDeltaX = Math.abs(event.deltaX);
+        const absDeltaY = Math.abs(event.deltaY);
+        const shouldPan = event.shiftKey || absDeltaX > absDeltaY;
+
+        if (!shouldPan && event.deltaY !== 0) {
           event.preventDefault();
           const scaleDelta = event.deltaY > 0 ? 0.92 : 1.08;
           sceneRef.current.zoomAtScreenPoint(screenPoint, scaleDelta);
@@ -434,8 +427,8 @@ export const GameMapCanvas = ({
         if (event.deltaX !== 0 || event.deltaY !== 0) {
           event.preventDefault();
           sceneRef.current.panByScreenDelta({
-            x: -event.deltaX,
-            y: -event.deltaY,
+            x: event.shiftKey && event.deltaX === 0 ? -event.deltaY : -event.deltaX,
+            y: event.shiftKey && event.deltaX === 0 ? 0 : -event.deltaY,
           });
         }
       };
@@ -471,7 +464,7 @@ export const GameMapCanvas = ({
           onCreateEdge: onCreateEdgeEvent,
           onEdgeSelect: onSelectEdgeEvent,
           onEdgeContextMenu: onEdgeContextMenuEvent,
-          canDragNodes,
+          interactionMode,
           createMode,
           snapToGrid,
           selectedEdgeId,
@@ -484,7 +477,7 @@ export const GameMapCanvas = ({
         onViewportChange: handleViewportChange,
       },
     );
-  }, [canDragNodes, connectEdgeType, connectSourceNodeId, createMode, model, selectedEdgeId, shouldRenderOverview, snapToGrid, viewportModeKey]);
+  }, [connectEdgeType, connectSourceNodeId, createMode, interactionMode, model, selectedEdgeId, shouldRenderOverview, snapToGrid, viewportModeKey]);
 
   const minimap = useMemo(() => {
     if (!viewportCamera || hostSize.width <= 0 || hostSize.height <= 0) {
@@ -535,6 +528,7 @@ export const GameMapCanvas = ({
 
   const highlightedNode = model.nodes.find((node) => node.id === model.highlightedNodeId) ?? null;
   const isEmptyMap = model.nodes.length === 0;
+  const shouldShowZoomEditHint = Boolean(model.isLargeGraph && viewportCamera && viewportCamera.zoom < 0.24);
 
   const resolveCanvasHit = (clientX: number, clientY: number) => {
     if (!hostRef.current || !viewportCameraRef.current) {
@@ -556,13 +550,19 @@ export const GameMapCanvas = ({
           return null;
         }
 
+        const semantics = getGraphEdgeSemantics(edge.type);
+        const sourceAnchor = getNodeGateAnchor(source, 'output', shouldRenderOverview);
+        const targetAnchor = getNodeGateAnchor(target, 'input', shouldRenderOverview);
+        const route = createQuadraticRoute(
+          sourceAnchor,
+          targetAnchor,
+          edge.fromNodeId <= edge.toNodeId ? 1 : -1,
+          semantics.canvas.bendStrength,
+        ).map((point) => worldToScreen(point, viewportCameraRef.current!));
+
         return {
           edge,
-          distance: getPointToSegmentDistance(
-            screenPoint,
-            worldToScreen(source.position, viewportCameraRef.current!),
-            worldToScreen(target.position, viewportCameraRef.current!),
-          ),
+          distance: getPointToPolylineDistance(screenPoint, route),
         };
       })
       .filter((entry): entry is { edge: GameSceneModel['edges'][number]; distance: number } => entry != null)
@@ -632,6 +632,9 @@ export const GameMapCanvas = ({
         }
         break;
       case 'fit-graph':
+        sceneRef.current.fitToGraph();
+        break;
+      case 'center-layer':
         sceneRef.current.fitToGraph();
         break;
       case 'reset-camera':
@@ -744,7 +747,17 @@ export const GameMapCanvas = ({
         </div>
       ) : null}
 
-      {canvasMode === 'free' && minimap && !isEmptyMap && !shouldRenderOverview ? (
+      {shouldShowZoomEditHint ? (
+        <div className="pointer-events-none absolute left-2 top-2 z-10 sm:left-3 sm:top-3">
+          <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
+            <PixelText as="span" size="xs" color="textMuted" uppercase>
+              Приблизьте для редактирования
+            </PixelText>
+          </PixelSurface>
+        </div>
+      ) : null}
+
+      {minimap && !isEmptyMap && !shouldRenderOverview ? (
         <div className="pointer-events-none absolute bottom-3 right-3 z-10 hidden sm:block">
           <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="pointer-events-auto">
             <div className="flex items-center justify-between gap-3 pb-2">

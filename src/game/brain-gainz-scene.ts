@@ -1,14 +1,14 @@
 import { Application, Container, FederatedPointerEvent, Graphics } from 'pixi.js';
 
+import { resolveInteractionCapabilities } from './interaction-capabilities';
 import { snapPointToGrid } from './layout-helpers';
 import { EffectsLayer } from './layers/effects-layer';
 import { HeroLayer } from './layers/hero-layer';
-import { getNodeGateAnchor, MapLayer, resolveNodeBox, type NodeGate } from './layers/map-layer';
-import type { GamePoint, GameSceneModel } from './types';
+import { getNodeGateAnchor, MapLayer, resolveNodeBox, type ConnectPreviewState, type NodeGate } from './layers/map-layer';
+import type { CanvasInteractionMode, GamePoint, GameSceneModel } from './types';
 import {
   centerCameraOnPoint,
   DEFAULT_ZOOM,
-  fitCameraToBounds,
   panCameraByScreenDelta,
   screenToWorld,
   zoomCameraAtScreenPoint,
@@ -21,7 +21,8 @@ const CREATE_CURSOR = 'crosshair';
 const CONNECT_GATE_HIT_RADIUS = 28;
 const POINTER_THRESHOLD = 8;
 const NODE_FALLBACK_HIT_PADDING = 16;
-const NODE_FALLBACK_GATE_HIT_RADIUS = 22;
+const NODE_FALLBACK_GATE_HIT_RADIUS = 10.5;
+const MIN_GATE_INTERACTION_ZOOM = 0.24;
 
 interface SceneInteractionState {
   pointerId: number;
@@ -53,7 +54,7 @@ interface SceneCallbacks {
     edgeType: 'requires' | 'supports' | 'relates_to';
   }) => void | Promise<boolean>;
   onEdgeContextMenu?: (input: { edgeId: number; screenX: number; screenY: number }) => void;
-  canDragNodes?: boolean;
+  interactionMode?: CanvasInteractionMode;
   createMode?: boolean;
   snapToGrid?: boolean;
   selectedEdgeId?: number | null;
@@ -75,6 +76,7 @@ export class BrainGainzScene {
   private nodeDragInteraction: NodeDragState | null = null;
   private gateDragInteraction: GateDragState | null = null;
   private connectPreviewTarget: GamePoint | null = null;
+  private connectPreviewState: ConnectPreviewState = 'normal';
   private onViewportChange: ((camera: ViewportCamera) => void) | null = null;
 
   constructor(private readonly app: Application) {
@@ -106,6 +108,7 @@ export class BrainGainzScene {
     this.onViewportChange = options?.onViewportChange ?? this.onViewportChange;
     if (!callbacks.connectSourceNodeId) {
       this.connectPreviewTarget = null;
+      this.connectPreviewState = 'normal';
     }
 
     this.backdrop.clear();
@@ -113,10 +116,8 @@ export class BrainGainzScene {
     this.backdrop.fill({ color: 0x08101d, alpha: 1 });
 
     if (!options?.preserveViewport || !this.currentCamera) {
-      this.currentCamera = fitCameraToBounds(
-        callbacks.overviewMode && model.overviewBounds ? model.overviewBounds : model.bounds,
-        { width, height },
-      );
+      const initialBounds = callbacks.overviewMode && model.overviewBounds ? model.overviewBounds : model.bounds;
+      this.currentCamera = centerCameraOnPoint(initialBounds.center, { width, height }, this.currentCamera?.zoom ?? DEFAULT_ZOOM);
     }
 
     this.mapLayer.render(model, {
@@ -128,6 +129,7 @@ export class BrainGainzScene {
       connectSourceGate: 'output',
       connectPreviewTarget: this.connectPreviewTarget,
       connectEdgeType: callbacks.connectEdgeType ?? null,
+      connectPreviewState: this.connectPreviewState,
       overviewMode: callbacks.overviewMode ?? false,
     });
     this.effectsLayer.render(model, width, height);
@@ -150,12 +152,7 @@ export class BrainGainzScene {
       return null;
     }
 
-    this.currentCamera = fitCameraToBounds(this.currentModel.bounds, {
-      width: this.app.renderer.width,
-      height: this.app.renderer.height,
-    });
-    this.applyViewport();
-    return this.currentCamera;
+    return this.centerOnPoint(this.currentModel.bounds.center, this.currentCamera?.zoom ?? DEFAULT_ZOOM);
   }
 
   fitToOverview() {
@@ -163,12 +160,10 @@ export class BrainGainzScene {
       return null;
     }
 
-    this.currentCamera = fitCameraToBounds(this.currentModel.overviewBounds ?? this.currentModel.bounds, {
-      width: this.app.renderer.width,
-      height: this.app.renderer.height,
-    });
-    this.applyViewport();
-    return this.currentCamera;
+    return this.centerOnPoint(
+      (this.currentModel.overviewBounds ?? this.currentModel.bounds).center,
+      this.currentCamera?.zoom ?? DEFAULT_ZOOM,
+    );
   }
 
   resetCamera() {
@@ -176,16 +171,7 @@ export class BrainGainzScene {
       return null;
     }
 
-    this.currentCamera = centerCameraOnPoint(
-      this.currentModel.hub.position,
-      {
-        width: this.app.renderer.width,
-        height: this.app.renderer.height,
-      },
-      DEFAULT_ZOOM,
-    );
-    this.applyViewport();
-    return this.currentCamera;
+    return this.centerOnPoint(this.currentModel.hub.position, this.currentCamera?.zoom ?? DEFAULT_ZOOM);
   }
 
   centerOnPoint(point: GamePoint, zoom = this.currentCamera?.zoom ?? DEFAULT_ZOOM) {
@@ -292,7 +278,7 @@ export class BrainGainzScene {
 
   private updateBackdropCursor() {
     if (this.nodeDragInteraction || this.backgroundInteraction?.moved || this.gateDragInteraction) {
-      this.backdrop.cursor = PANNING_CURSOR;
+      this.backdrop.cursor = this.gateDragInteraction && this.connectPreviewState === 'forbidden' ? 'not-allowed' : PANNING_CURSOR;
       return;
     }
 
@@ -361,7 +347,7 @@ export class BrainGainzScene {
     }
 
     const point = { x: event.global.x, y: event.global.y };
-    if (this.currentCallbacks?.canDragNodes === false) {
+    if (!this.getInteractionCapabilities().canDragNodes) {
       this.currentCallbacks.onNodeSelect(nodeId, {
         screenX: point.x,
         screenY: point.y,
@@ -388,6 +374,15 @@ export class BrainGainzScene {
       return;
     }
 
+    if (!this.getInteractionCapabilities().canDragGates || !this.canInteractWithGatesAtCurrentZoom()) {
+      this.currentCallbacks?.onNodeSelect(nodeId, {
+        screenX: event.global.x,
+        screenY: event.global.y,
+      });
+      this.updateBackdropCursor();
+      return;
+    }
+
     const point = { x: event.global.x, y: event.global.y };
     this.gateDragInteraction = {
       nodeId,
@@ -398,7 +393,8 @@ export class BrainGainzScene {
       moved: false,
     };
     this.connectPreviewTarget = screenToWorld(point, this.currentCamera);
-    this.mapLayer.setConnectPreview(nodeId, gate, this.connectPreviewTarget, 'supports');
+    this.connectPreviewState = gate === 'input' ? 'forbidden' : 'normal';
+    this.mapLayer.setConnectPreview(nodeId, gate, this.connectPreviewTarget, 'supports', this.connectPreviewState);
     this.updateBackdropCursor();
   };
 
@@ -538,12 +534,14 @@ export class BrainGainzScene {
     this.nodeDragInteraction = null;
     this.gateDragInteraction = null;
     this.connectPreviewTarget = null;
+    this.connectPreviewState = 'normal';
     this.updateBackdropCursor();
     this.mapLayer.setConnectPreview(
       this.currentCallbacks?.connectSourceNodeId ?? null,
       'output',
       null,
       this.currentCallbacks?.connectEdgeType ?? null,
+      'normal',
     );
   };
 
@@ -572,8 +570,9 @@ export class BrainGainzScene {
       screenToWorld({ x: event.global.x, y: event.global.y }, this.currentCamera),
       interaction,
     );
+    const capabilities = this.getInteractionCapabilities();
 
-    if (target && this.currentCallbacks.onCreateEdge) {
+    if (target && capabilities.canCreateEdges && this.currentCallbacks.onCreateEdge) {
       const sourceNodeId = interaction.gate === 'output' ? interaction.nodeId : target.nodeId;
       const targetNodeId = interaction.gate === 'output' ? target.nodeId : interaction.nodeId;
       if (sourceNodeId !== targetNodeId) {
@@ -583,7 +582,11 @@ export class BrainGainzScene {
           edgeType: 'supports',
         });
       }
-    } else if (interaction.gate === 'output' && this.currentCallbacks.onCreateChildNodeAt) {
+    } else if (
+      interaction.gate === 'output' &&
+      capabilities.canCreateChildFromOutput &&
+      this.currentCallbacks.onCreateChildNodeAt
+    ) {
       await this.currentCallbacks.onCreateChildNodeAt({
         parentNodeId: interaction.nodeId,
         position: screenToWorld({ x: event.global.x, y: event.global.y }, this.currentCamera),
@@ -693,17 +696,23 @@ export class BrainGainzScene {
     }
 
     this.connectPreviewTarget = screenToWorld(screenPoint, this.currentCamera);
+    const target = this.findNearestCompatibleGate(this.connectPreviewTarget, this.gateDragInteraction);
+    this.connectPreviewState =
+      target != null ? 'compatible' : this.gateDragInteraction.gate === 'input' ? 'forbidden' : 'normal';
     this.mapLayer.setConnectPreview(
       this.gateDragInteraction.nodeId,
       this.gateDragInteraction.gate,
       this.connectPreviewTarget,
       'supports',
+      this.connectPreviewState,
     );
+    this.updateBackdropCursor();
   }
 
   private clearConnectPreview() {
     this.connectPreviewTarget = null;
-    this.mapLayer.setConnectPreview(null, 'output', null, null);
+    this.connectPreviewState = 'normal';
+    this.mapLayer.setConnectPreview(null, 'output', null, null, 'normal');
   }
 
   private findNearestCompatibleGate(worldPoint: GamePoint, interaction: GateDragState) {
@@ -728,6 +737,14 @@ export class BrainGainzScene {
     return nearest && nearest.distance <= hitRadius ? nearest : null;
   }
 
+  private getInteractionCapabilities() {
+    return resolveInteractionCapabilities(this.currentCallbacks?.interactionMode);
+  }
+
+  private canInteractWithGatesAtCurrentZoom() {
+    return (this.currentCallbacks?.overviewMode ?? false) || (this.currentCamera?.zoom ?? 1) >= MIN_GATE_INTERACTION_ZOOM;
+  }
+
   private findNodeHitAtScreenPoint(screenPoint: GamePoint): { nodeId: number; gate: NodeGate | null } | null {
     if (!this.currentCamera || !this.currentModel) {
       return null;
@@ -735,10 +752,7 @@ export class BrainGainzScene {
 
     const worldPoint = screenToWorld(screenPoint, this.currentCamera);
     const overviewMode = this.currentCallbacks?.overviewMode ?? false;
-    const gateHitRadius = Math.max(
-      18,
-      NODE_FALLBACK_GATE_HIT_RADIUS / Math.max(this.currentCamera.zoom, 0.2),
-    );
+    const gateHitRadius = NODE_FALLBACK_GATE_HIT_RADIUS;
     const nodeHitPadding = Math.max(
       NODE_FALLBACK_HIT_PADDING,
       NODE_FALLBACK_HIT_PADDING / Math.max(this.currentCamera.zoom, 0.2),
@@ -751,35 +765,6 @@ export class BrainGainzScene {
         position: (overviewMode ? node.overviewPosition : null) ?? node.position,
       }))
       .reverse();
-
-    const gateHit = renderNodes
-      .map((node) => {
-        const input = getNodeGateAnchor(node, 'input', overviewMode);
-        const output = getNodeGateAnchor(node, 'output', overviewMode);
-        const inputDistance = Math.hypot(worldPoint.x - input.x, worldPoint.y - input.y);
-        const outputDistance = Math.hypot(worldPoint.x - output.x, worldPoint.y - output.y);
-        const nearest =
-          inputDistance <= outputDistance
-            ? { gate: 'input' as const, distance: inputDistance }
-            : { gate: 'output' as const, distance: outputDistance };
-
-        return nearest.distance <= gateHitRadius
-          ? {
-              nodeId: node.id,
-              gate: nearest.gate,
-              distance: nearest.distance,
-            }
-          : null;
-      })
-      .filter((entry): entry is { nodeId: number; gate: NodeGate; distance: number } => entry != null)
-      .sort((left, right) => left.distance - right.distance)[0];
-
-    if (gateHit) {
-      return {
-        nodeId: gateHit.nodeId,
-        gate: gateHit.gate,
-      };
-    }
 
     const nodeHit = renderNodes
       .map((node) => {
@@ -799,6 +784,38 @@ export class BrainGainzScene {
       })
       .filter((entry): entry is { nodeId: number; distance: number } => entry != null)
       .sort((left, right) => left.distance - right.distance)[0];
+
+    const gateHit =
+      this.getInteractionCapabilities().canDragGates && this.canInteractWithGatesAtCurrentZoom()
+        ? renderNodes
+            .map((node) => {
+              const input = getNodeGateAnchor(node, 'input', overviewMode);
+              const output = getNodeGateAnchor(node, 'output', overviewMode);
+              const inputDistance = Math.hypot(worldPoint.x - input.x, worldPoint.y - input.y);
+              const outputDistance = Math.hypot(worldPoint.x - output.x, worldPoint.y - output.y);
+              const nearest =
+                inputDistance <= outputDistance
+                  ? { gate: 'input' as const, distance: inputDistance }
+                  : { gate: 'output' as const, distance: outputDistance };
+
+              return nearest.distance <= gateHitRadius
+                ? {
+                    nodeId: node.id,
+                    gate: nearest.gate,
+                    distance: nearest.distance,
+                  }
+                : null;
+            })
+            .filter((entry): entry is { nodeId: number; gate: NodeGate; distance: number } => entry != null)
+            .sort((left, right) => left.distance - right.distance)[0]
+        : null;
+
+    if (gateHit) {
+      return {
+        nodeId: gateHit.nodeId,
+        gate: gateHit.gate,
+      };
+    }
 
     return nodeHit
       ? {

@@ -118,3 +118,28 @@ test('algebra-style root can expose seven first-level sections', () => {
   assert.deepEqual(hierarchy.roots, [1]);
   assert.equal(hierarchy.entries.get(1)?.childIds.length, 7);
 });
+
+test('graph hierarchy orders roots and children lexicographically by title', () => {
+  const snapshot = makeSnapshot(
+    [
+      makeNode(1, 'Root'),
+      makeNode(2, 'VII. Рациональные дроби'),
+      makeNode(3, 'I. Системы линейных уравнений'),
+      makeNode(4, 'III. Теория определителей'),
+      makeNode(5, 'II. Матричная алгебра'),
+      makeNode(6, 'Beta'),
+      makeNode(7, 'Alpha'),
+    ],
+    [
+      { id: 1, source_node_id: 1, target_node_id: 2, edge_type: 'supports' },
+      { id: 2, source_node_id: 1, target_node_id: 3, edge_type: 'supports' },
+      { id: 3, source_node_id: 1, target_node_id: 4, edge_type: 'supports' },
+      { id: 4, source_node_id: 1, target_node_id: 5, edge_type: 'supports' },
+    ],
+  );
+
+  const hierarchy = buildGraphHierarchyIndex(snapshot, 1, 1);
+
+  assert.deepEqual(hierarchy.roots, [7, 6, 1]);
+  assert.deepEqual(hierarchy.entries.get(1)?.childIds, [3, 5, 4, 2]);
+});

@@ -35,6 +35,11 @@ import { GameMapCanvas } from '../game';
 import {
   getGraphEdgeSemantics,
 } from '../application/graph-edge-semantics';
+import {
+  resolveCanvasCreatePosition,
+  resolveCanvasCreateRoute,
+  type CanvasCreateMode,
+} from '../application/map-create-routing';
 import { resolveMapShortcutIntent } from '../application/map-shortcuts';
 import { buildGraphHierarchyIndex } from '../application/graph-hierarchy';
 import {
@@ -115,6 +120,7 @@ const riskLabel = (value: string) => riskLabels[value] ?? value;
 
 const linearAlgebraTemplateValue = 'template:linear-algebra';
 type MapCanvasMode = 'free' | 'layers';
+type LayerParentSelection = number | 'top' | null;
 
 interface CanvasContextMenuState {
   screenX: number;
@@ -132,6 +138,9 @@ interface InlineNodeEditorState {
   worldX: number;
   worldY: number;
   value: string;
+  createMode?: CanvasCreateMode;
+  sourceCanvasMode?: MapCanvasMode;
+  layerParentNodeIdAtStart?: number | null;
   nodeId?: number;
   skillId?: number;
   existingNodeCount?: number;
@@ -266,7 +275,7 @@ export const NavigationView = ({
   const [isEditorExpanded, setIsEditorExpanded] = useState(false);
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const [mapCanvasMode, setMapCanvasMode] = useState<MapCanvasMode>('free');
-  const [layerParentNodeId, setLayerParentNodeId] = useState<number | null>(null);
+  const [layerParentNodeId, setLayerParentNodeId] = useState<LayerParentSelection>(null);
   const [canvasContextMenu, setCanvasContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [newStructureName, setNewStructureName] = useState('');
   const [nodeCreateTitle, setNodeCreateTitle] = useState('');
@@ -278,9 +287,17 @@ export const NavigationView = ({
   const [isMapFocused, setIsMapFocused] = useState(false);
   const [mapCommand, setMapCommand] = useState<{
     id: number;
-    type: 'focus-node' | 'fit-graph' | 'reset-camera';
+    type: 'focus-node' | 'fit-graph' | 'center-layer' | 'reset-camera';
   } | null>(null);
   const hasInitializedTreeExpansion = useRef(false);
+
+  const clearMapTransientUi = () => {
+    setCanvasContextMenu(null);
+    setNodeCreateTitle('');
+    setInlineNodeEditor(null);
+    setFloatingMapPanel(null);
+    setSelectedEdgeId(null);
+  };
 
   const updateDraft = (patch: Partial<NodeEditorDraft>) => {
     if (!focus?.node) {
@@ -483,7 +500,7 @@ export const NavigationView = ({
     onSelectNode(entryNode);
   };
 
-  const runMapCommand = (type: 'focus-node' | 'fit-graph' | 'reset-camera') => {
+  const runMapCommand = (type: 'focus-node' | 'fit-graph' | 'center-layer' | 'reset-camera') => {
     setMapCommand({
       id: Date.now(),
       type,
@@ -628,7 +645,7 @@ export const NavigationView = ({
   };
 
   const startInlineCreate = (input: { screenX: number; screenY: number; worldX: number; worldY: number }) => {
-    if (!selectedSkill) {
+    if (!selectedSkill && !(mapCanvasMode === 'layers' && layerParentEntry)) {
       return;
     }
 
@@ -643,8 +660,11 @@ export const NavigationView = ({
       worldX: input.worldX,
       worldY: input.worldY,
       value: '',
-      skillId: selectedSkill.id,
-      existingNodeCount: selectedSkill.nodes.length,
+      createMode: mapCanvasMode === 'layers' ? 'layer-child' : 'free-node',
+      sourceCanvasMode: mapCanvasMode,
+      layerParentNodeIdAtStart: mapCanvasMode === 'layers' ? layerParentEntry?.node.id ?? null : null,
+      skillId: selectedSkill?.id,
+      existingNodeCount: selectedSkill?.nodes.length ?? 0,
     });
   };
 
@@ -657,14 +677,18 @@ export const NavigationView = ({
     const saved =
       inlineNodeEditor.mode === 'rename' && inlineNodeEditor.nodeId != null
         ? await onRenameNode({ nodeId: inlineNodeEditor.nodeId, title })
-        : inlineNodeEditor.mode === 'create' && inlineNodeEditor.skillId != null
-          ? await onCreateNodeAt({
-              skillId: inlineNodeEditor.skillId,
-              existingNodeCount: inlineNodeEditor.existingNodeCount ?? 0,
-              x: inlineNodeEditor.worldX,
-              y: inlineNodeEditor.worldY,
+        : inlineNodeEditor.mode === 'create'
+          ? await createNodeFromCanvasPoint(
+              {
+                worldX: inlineNodeEditor.worldX,
+                worldY: inlineNodeEditor.worldY,
+              },
               title,
-            })
+              inlineNodeEditor.createMode ?? 'free-node',
+              undefined,
+              inlineNodeEditor.sourceCanvasMode ?? mapCanvasMode,
+              inlineNodeEditor.layerParentNodeIdAtStart ?? null,
+            )
           : false;
 
     if (saved) {
@@ -693,8 +717,11 @@ export const NavigationView = ({
       : focus?.node
         ? structureHierarchy.entries.get(focus.node.id)?.parentId ?? null
         : structureHierarchy.roots[0] ?? null;
+  const isTopLayerOpen = layerParentNodeId === 'top';
   const effectiveLayerParentId =
-    layerParentNodeId != null && structureHierarchy.entries.has(layerParentNodeId)
+    isTopLayerOpen
+      ? null
+      : typeof layerParentNodeId === 'number' && structureHierarchy.entries.has(layerParentNodeId)
       ? layerParentNodeId
       : fallbackLayerParentId;
   const layerParentEntry =
@@ -749,51 +776,169 @@ export const NavigationView = ({
           .flatMap((direction) => direction.skills)
           .find((skill) => skill.id === contextNode.skill_id) ?? selectedSkill
       : selectedSkill;
+  const getSkillForNode = (node: NavigationNodeSummary) =>
+    spheres
+      .flatMap((sphere) => sphere.directions)
+      .flatMap((direction) => direction.skills)
+      .find((skill) => skill.id === node.skill_id) ?? selectedSkill;
+  const getLayerCreateParent = () =>
+    mapCanvasMode === 'layers' ? layerParentEntry?.node ?? null : null;
+  const cleanupMapCreateState = () => {
+    clearMapTransientUi();
+  };
+  const createNodeFromCanvasPoint = async (
+    input: { worldX: number; worldY: number },
+    title: string | undefined,
+    createMode: CanvasCreateMode,
+    fallbackSkill = selectedSkill,
+    sourceCanvasMode: MapCanvasMode = mapCanvasMode,
+    layerParentNodeIdAtStart: number | null = getLayerCreateParent()?.id ?? null,
+  ) => {
+    if (isMapMutating) {
+      return false;
+    }
+
+    const route = resolveCanvasCreateRoute({
+      surface: sourceCanvasMode,
+      createMode,
+      layerParentNodeId: layerParentNodeIdAtStart,
+    });
+    const layerCreateParent =
+      route.createMode === 'layer-child' && route.parentNodeId != null
+        ? structureHierarchy.entries.get(route.parentNodeId)?.node ?? null
+        : null;
+    const layerParentSkill = layerCreateParent ? getSkillForNode(layerCreateParent) : null;
+    const skill = layerParentSkill ?? fallbackSkill;
+    if (!skill) {
+      return false;
+    }
+    const persistedPosition = resolveCanvasCreatePosition({
+      route,
+      pointerPosition: { x: input.worldX, y: input.worldY },
+      parentPosition: layerCreateParent
+        ? {
+            x: layerCreateParent.x ?? input.worldX,
+            y: layerCreateParent.y ?? input.worldY,
+          }
+        : null,
+      siblingCount: layerCreateParent
+        ? structureHierarchy.entries.get(layerCreateParent.id)?.childIds.length ?? 0
+        : 0,
+      topLevelPositions: structureHierarchy.roots
+        .map((nodeId) => structureHierarchy.entries.get(nodeId)?.node)
+        .filter((node): node is NavigationNodeSummary => Boolean(node))
+        .map((node) => ({
+          x: node.x ?? input.worldX,
+          y: node.y ?? input.worldY,
+        })),
+    });
+
+    const created = layerCreateParent
+      ? await onCreateChildNodeAt({
+          parentNodeId: layerCreateParent.id,
+          skillId: skill.id,
+          existingNodeCount: skill.nodes.length,
+          x: persistedPosition.x,
+          y: persistedPosition.y,
+          title,
+        })
+      : await onCreateNodeAt({
+          skillId: skill.id,
+          existingNodeCount: skill.nodes.length,
+          x: persistedPosition.x,
+          y: persistedPosition.y,
+          title,
+        });
+
+    if (created) {
+      cleanupMapCreateState();
+      if (route.preserveLayerMode) {
+        setMapCanvasMode('layers');
+        setLayerParentNodeId(route.parentNodeId ?? 'top');
+        runMapCommand('center-layer');
+      } else {
+        setMapCanvasMode('free');
+      }
+    }
+
+    return created;
+  };
   const handleCreateNodeFromContext = async () => {
-    if (!canvasContextMenu || !contextSkill || isMapMutating) {
+    if (!canvasContextMenu || isMapMutating) {
       return;
     }
 
-    const created = await onCreateNodeAt({
-      skillId: contextSkill.id,
-      existingNodeCount: contextSkill.nodes.length,
-      x: canvasContextMenu.worldX,
-      y: canvasContextMenu.worldY,
-      title: nodeCreateTitle.trim() || undefined,
-    });
-
-    if (created) {
-      setCanvasContextMenu(null);
-      setNodeCreateTitle('');
-      setMapCanvasMode('free');
-    }
+    await createNodeFromCanvasPoint(
+      {
+        worldX: canvasContextMenu.worldX,
+        worldY: canvasContextMenu.worldY,
+      },
+      nodeCreateTitle.trim() || undefined,
+      mapCanvasMode === 'layers' ? 'layer-child' : 'free-node',
+      contextSkill,
+    );
   };
   const handleCreateChildNodeFromContext = async () => {
     if (!canvasContextMenu || !contextNode || !contextSkill || isMapMutating) {
       return;
     }
 
-    const parentX = contextNode.x ?? canvasContextMenu.worldX;
-    const parentY = contextNode.y ?? canvasContextMenu.worldY;
+    const createPosition = resolveCanvasCreatePosition({
+      route: {
+        createMode: 'layer-child',
+        parentNodeId: contextNode.id,
+        preserveLayerMode: true,
+      },
+      pointerPosition: { x: canvasContextMenu.worldX, y: canvasContextMenu.worldY },
+      parentPosition: {
+        x: contextNode.x ?? canvasContextMenu.worldX,
+        y: contextNode.y ?? canvasContextMenu.worldY,
+      },
+      siblingCount: contextNodeHierarchy?.childIds.length ?? 0,
+    });
     const created = await onCreateChildNodeAt({
       parentNodeId: contextNode.id,
       skillId: contextSkill.id,
       existingNodeCount: contextSkill.nodes.length,
-      x: parentX + 320,
-      y: parentY + Math.max(0, contextNodeHierarchy?.childIds.length ?? 0) * 120,
+      x: createPosition.x,
+      y: createPosition.y,
       title: nodeCreateTitle.trim() || undefined,
     });
 
     if (created) {
+      setCanvasContextMenu(null);
       setNodeCreateTitle('');
-      setMapCanvasMode('free');
+      setFloatingMapPanel(null);
+      setSelectedEdgeId(null);
+      if (mapCanvasMode === 'layers') {
+        setLayerParentNodeId(contextNode.id);
+        runMapCommand('center-layer');
+      }
     }
+  };
+  const layerCreateParent = getLayerCreateParent();
+  const canCreateNodeFromContext = Boolean(
+    contextSkill || (mapCanvasMode === 'layers' && layerCreateParent),
+  );
+  const contextCreateActionLabel =
+    mapCanvasMode === 'layers'
+      ? layerCreateParent
+        ? contextNode
+          ? 'Добавить рядом'
+          : 'Добавить в этот слой'
+        : 'Добавить раздел верхнего уровня'
+      : 'Создать узел здесь';
+  const openTopLayer = () => {
+    setMapCanvasMode('layers');
+    setLayerParentNodeId('top');
+    clearMapTransientUi();
+    runMapCommand('center-layer');
   };
   const openLayerAtNode = (nodeId: number) => {
     setMapCanvasMode('layers');
     setLayerParentNodeId(nodeId);
-    setCanvasContextMenu(null);
-    runMapCommand('fit-graph');
+    clearMapTransientUi();
+    runMapCommand('center-layer');
   };
   const toggleTreeNode = (nodeId: number) => {
     setExpandedTreeNodeIds((current) => {
@@ -820,9 +965,9 @@ export const NavigationView = ({
         if (hasChildren) {
           openLayerAtNode(entry.node.id);
         } else {
-          setLayerParentNodeId(entry.parentId ?? null);
-          setCanvasContextMenu(null);
-          runMapCommand('fit-graph');
+          setLayerParentNodeId(entry.parentId ?? 'top');
+          clearMapTransientUi();
+          runMapCommand('center-layer');
         }
       }
 
@@ -987,7 +1132,7 @@ export const NavigationView = ({
                       tone={mapCanvasMode === 'free' ? 'accent' : 'ghost'}
                       onClick={() => {
                         setMapCanvasMode('free');
-                        setCanvasContextMenu(null);
+                        clearMapTransientUi();
                       }}
                       disabled={!hasMapNodes}
                       style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
@@ -999,8 +1144,8 @@ export const NavigationView = ({
                       onClick={() => {
                         setMapCanvasMode('layers');
                         setLayerParentNodeId(fallbackLayerParentId);
-                        setCanvasContextMenu(null);
-                        runMapCommand('fit-graph');
+                        clearMapTransientUi();
+                        runMapCommand('center-layer');
                       }}
                       disabled={!hasMapNodes}
                       style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
@@ -1020,16 +1165,30 @@ export const NavigationView = ({
                     <PixelText as="span" readable size="sm">
                       {layerParentEntry?.node.title ?? selectedSphere?.name ?? 'Корень структуры'}
                     </PixelText>
+                    <PixelText as="span" size="xs" color="textMuted">
+                      {layerParentEntry
+                        ? 'Новые пункты добавляются сюда'
+                        : 'Новые пункты станут разделами верхнего уровня'}
+                    </PixelText>
                     <PixelButton
                       tone="ghost"
                       onClick={() => {
-                        setLayerParentNodeId(layerParentParentId);
-                        runMapCommand('fit-graph');
+                        setLayerParentNodeId(layerParentParentId ?? 'top');
+                        clearMapTransientUi();
+                        runMapCommand('center-layer');
                       }}
-                      disabled={!layerParentEntry || layerParentParentId == null}
+                      disabled={!layerParentEntry}
                       style={{ minHeight: 28, padding: '5px 8px', gap: 6 }}
                     >
                       <Target size={13} /> Уровень выше
+                    </PixelButton>
+                    <PixelButton
+                      tone={isTopLayerOpen ? 'accent' : 'ghost'}
+                      onClick={openTopLayer}
+                      disabled={!structureHierarchy.roots.length}
+                      style={{ minHeight: 28, padding: '5px 8px', gap: 6 }}
+                    >
+                      <MapIcon size={13} /> Все разделы
                     </PixelButton>
                   </div>
                   {layerChildIds.length > 0 ? (
@@ -1130,12 +1289,29 @@ export const NavigationView = ({
                         return false;
                       }
 
+                      const createPosition =
+                        mapCanvasMode === 'layers'
+                          ? resolveCanvasCreatePosition({
+                              route: {
+                                createMode: 'layer-child',
+                                parentNodeId: input.parentNodeId,
+                                preserveLayerMode: true,
+                              },
+                              pointerPosition: { x: input.x, y: input.y },
+                              parentPosition: {
+                                x: parentNode.x ?? input.x,
+                                y: parentNode.y ?? input.y,
+                              },
+                              siblingCount:
+                                structureHierarchy.entries.get(input.parentNodeId)?.childIds.length ?? 0,
+                            })
+                          : { x: input.x, y: input.y };
                       const created = await onCreateChildNodeAt({
                         parentNodeId: input.parentNodeId,
                         skillId: parentSkill.id,
                         existingNodeCount: parentSkill.nodes.length,
-                        x: input.x,
-                        y: input.y,
+                        x: createPosition.x,
+                        y: createPosition.y,
                         title: undefined,
                       });
                       if (created) {
@@ -1143,7 +1319,10 @@ export const NavigationView = ({
                         setInlineNodeEditor(null);
                         setFloatingMapPanel(null);
                         setSelectedEdgeId(null);
-                        setMapCanvasMode('free');
+                        if (mapCanvasMode === 'layers') {
+                          setLayerParentNodeId(input.parentNodeId);
+                          runMapCommand('center-layer');
+                        }
                       }
                       return created;
                     }}
@@ -1161,7 +1340,7 @@ export const NavigationView = ({
                     }}
                     mapCommand={mapCommand}
                     previewNodePositions={layerPreviewPositions}
-                    canDragNodes={mapCanvasMode === 'free'}
+                    interactionMode={mapCanvasMode === 'free' ? 'free-edit' : 'layer-edit'}
                     createMode={false}
                     snapToGrid={false}
                     selectedEdgeId={selectedEdgeId}
@@ -1174,9 +1353,7 @@ export const NavigationView = ({
                       setFloatingMapPanel(null);
                     }}
                     onCanvasDoubleClick={(input) => {
-                      if (mapCanvasMode === 'free') {
-                        startInlineCreate(input);
-                      }
+                      startInlineCreate(input);
                     }}
                     onNodeDoubleClick={(input) => {
                       void handleCanvasNodeSelect(input.node);
@@ -1398,7 +1575,7 @@ export const NavigationView = ({
                                 void handleCreateNodeFromContext();
                               }
                             }}
-                            disabled={!contextSkill || isMapMutating}
+                            disabled={!canCreateNodeFromContext || isMapMutating}
                             placeholder="Sound System"
                           />
                           {contextNode ? (
@@ -1410,18 +1587,23 @@ export const NavigationView = ({
                               disabled={!contextSkill || isMapMutating}
                               style={{ justifyContent: 'flex-start', minHeight: 30, padding: '6px 8px' }}
                             >
-                              Создать дочерний узел
+                              {mapCanvasMode === 'layers' ? 'Добавить внутрь' : 'Создать дочерний узел'}
                             </PixelButton>
+                          ) : null}
+                          {contextNode && mapCanvasMode === 'layers' ? (
+                            <PixelText as="span" size="xs" color="textMuted" style={{ margin: '2px 4px' }}>
+                              Или добавить рядом, в открытый слой
+                            </PixelText>
                           ) : null}
                           <PixelButton
                             tone="accent"
                           onClick={() => {
                             void handleCreateNodeFromContext();
                           }}
-                          disabled={!contextSkill || isMapMutating}
+                          disabled={!canCreateNodeFromContext || isMapMutating}
                           style={{ justifyContent: 'flex-start', minHeight: 30, padding: '6px 8px' }}
                         >
-                          Создать узел здесь
+                          {contextCreateActionLabel}
                         </PixelButton>
                         </>
                       ) : null}

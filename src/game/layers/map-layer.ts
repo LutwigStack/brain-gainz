@@ -1,6 +1,7 @@
 import { Container, FederatedPointerEvent, Graphics, Rectangle, Text } from 'pixi.js';
 
 import { getGraphEdgeSemantics } from '../../application/graph-edge-semantics';
+import { createQuadraticRoute } from '../edge-geometry';
 import type { GameNode, GamePoint, GameSceneModel } from '../types';
 import type { ViewportCamera } from '../viewport';
 
@@ -35,6 +36,7 @@ const NODE_GATE = {
   inset: 1,
 };
 const NODE_HIT_PADDING = 16;
+const MIN_GATE_VISIBLE_ZOOM = 0.24;
 
 interface MapLayerHandlers {
   onNodePointerDown?: (nodeId: number, event: FederatedPointerEvent) => void;
@@ -45,37 +47,12 @@ interface MapLayerHandlers {
   connectSourceGate?: NodeGate;
   connectPreviewTarget?: GamePoint | null;
   connectEdgeType?: 'requires' | 'supports' | 'relates_to' | null;
+  connectPreviewState?: ConnectPreviewState;
   overviewMode?: boolean;
 }
 
 export type NodeGate = 'input' | 'output';
-
-const createQuadraticRoute = (
-  from: GamePoint,
-  to: GamePoint,
-  bendDirection: number,
-  bendStrength: number,
-) => {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const distance = Math.hypot(dx, dy) || 1;
-  const midpoint = { x: from.x + dx / 2, y: from.y + dy / 2 };
-  const perpendicular = { x: -dy / distance, y: dx / distance };
-  const clampedBend = Math.min(42, Math.max(12, distance * bendStrength)) * bendDirection;
-  const control = {
-    x: midpoint.x + perpendicular.x * clampedBend,
-    y: midpoint.y + perpendicular.y * clampedBend,
-  };
-
-  return Array.from({ length: 15 }, (_, index) => {
-    const t = index / 14;
-    const inverse = 1 - t;
-    return {
-      x: inverse * inverse * from.x + 2 * inverse * t * control.x + t * t * to.x,
-      y: inverse * inverse * from.y + 2 * inverse * t * control.y + t * t * to.y,
-    };
-  });
-};
+export type ConnectPreviewState = 'normal' | 'compatible' | 'forbidden';
 
 const drawPolyline = (graphic: Graphics, points: GamePoint[]) => {
   if (points.length === 0) {
@@ -211,6 +188,7 @@ export class MapLayer extends Container {
   private connectSourceGate: NodeGate = 'output';
   private connectPreviewTarget: GamePoint | null = null;
   private connectEdgeType: 'requires' | 'supports' | 'relates_to' | null = null;
+  private connectPreviewState: ConnectPreviewState = 'normal';
   private overviewMode = false;
   private lastHandlers: MapLayerHandlers = {};
   private pulseTime = 0;
@@ -235,6 +213,7 @@ export class MapLayer extends Container {
     this.connectSourceGate = handlers.connectSourceGate ?? 'output';
     this.connectPreviewTarget = handlers.connectPreviewTarget ?? null;
     this.connectEdgeType = handlers.connectEdgeType ?? null;
+    this.connectPreviewState = handlers.connectPreviewState ?? 'normal';
     this.overviewMode = handlers.overviewMode ?? false;
     this.drawEdges(model, handlers);
     this.drawConnectPreview();
@@ -357,11 +336,13 @@ export class MapLayer extends Container {
     sourceGate: NodeGate,
     target: GamePoint | null,
     edgeType: 'requires' | 'supports' | 'relates_to' | null,
+    state: ConnectPreviewState = 'normal',
   ) {
     this.connectSourceNodeId = sourceNodeId;
     this.connectSourceGate = sourceGate;
     this.connectPreviewTarget = target;
     this.connectEdgeType = edgeType;
+    this.connectPreviewState = state;
     this.drawConnectPreview();
   }
 
@@ -542,7 +523,8 @@ export class MapLayer extends Container {
     }
 
     const semantics = getGraphEdgeSemantics(this.connectEdgeType);
-    const color = semantics.canvas.color;
+    const isForbidden = this.connectPreviewState === 'forbidden';
+    const color = isForbidden ? 0xfb7185 : semantics.canvas.color;
     const sourcePosition = this.getRenderPosition(source);
     const sourceNode = { ...source, position: sourcePosition };
     const sourceAnchor = getNodeGateAnchor(sourceNode, this.connectSourceGate, this.overviewMode);
@@ -553,15 +535,19 @@ export class MapLayer extends Container {
       semantics.canvas.bendStrength,
     );
 
-    if (semantics.canvas.pattern === 'glow') {
+    if (semantics.canvas.pattern === 'glow' && !isForbidden) {
       this.edgePreviewGraphics.setStrokeStyle({ width: 7, color, alpha: 0.12 });
       drawPolyline(this.edgePreviewGraphics, route);
     }
 
-    if (semantics.canvas.pattern === 'dotted') {
-      drawDottedPolyline(this.edgePreviewGraphics, route, color, 0.72, 2.2, 12);
+    if (semantics.canvas.pattern === 'dotted' || isForbidden) {
+      drawDottedPolyline(this.edgePreviewGraphics, route, color, isForbidden ? 0.84 : 0.72, 2.2, isForbidden ? 8 : 12);
     } else {
-      this.edgePreviewGraphics.setStrokeStyle({ width: 3, color, alpha: 0.68 });
+      this.edgePreviewGraphics.setStrokeStyle({
+        width: this.connectPreviewState === 'compatible' ? 4 : 3,
+        color,
+        alpha: this.connectPreviewState === 'compatible' ? 0.82 : 0.68,
+      });
       drawPolyline(this.edgePreviewGraphics, route);
     }
     drawArrowHead(
@@ -569,7 +555,7 @@ export class MapLayer extends Container {
       route[route.length - 2] ?? sourceAnchor,
       route[route.length - 1] ?? this.connectPreviewTarget,
       color,
-      0.9,
+      isForbidden ? 0.45 : 0.9,
       14,
     );
   }
@@ -638,16 +624,17 @@ export class MapLayer extends Container {
       width: isHighlighted ? 3.5 : isConnectSource ? 3 : 2,
       alpha: 0.96,
     });
+    const gateAlphaMultiplier = this.currentZoom < MIN_GATE_VISIBLE_ZOOM && !this.overviewMode ? 0.16 : 1;
     this.drawNodeGate(shell, box, 'input', {
       fill: 0x0b1220,
       stroke: 0x94a3b8,
-      alpha: node.state === 'locked' ? 0.56 : 0.9,
+      alpha: (node.state === 'locked' ? 0.56 : 0.9) * gateAlphaMultiplier,
       overviewMode: this.overviewMode,
     });
     this.drawNodeGate(shell, box, 'output', {
       fill: borderColor,
       stroke: biome?.accent ?? palette.stroke,
-      alpha: node.state === 'locked' ? 0.62 : 1,
+      alpha: (node.state === 'locked' ? 0.62 : 1) * gateAlphaMultiplier,
       overviewMode: this.overviewMode,
     });
     shell.position.set(node.position.x, node.position.y);
@@ -711,7 +698,7 @@ export class MapLayer extends Container {
 
   private resolvePointerGate(node: GameNode, event: FederatedPointerEvent): NodeGate | null {
     const worldPoint = this.world.toLocal(event.global);
-    const hitRadius = Math.max(18, 22 / Math.max(this.currentZoom, 0.2));
+    const hitRadius = (this.overviewMode ? NODE_GATE.overviewRadius : NODE_GATE.radius) + 5;
     const input = getNodeGateAnchor(node, 'input', this.overviewMode);
     const output = getNodeGateAnchor(node, 'output', this.overviewMode);
     const inputDistance = Math.hypot(worldPoint.x - input.x, worldPoint.y - input.y);
