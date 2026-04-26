@@ -225,6 +225,7 @@ export default function App() {
   const handleCreateStarterWorkspace = async () => {
     setNowCreatingStarter(true);
     setNowError(null);
+    setNavigationError(null);
 
     try {
       const snapshot = await db.createStarterWorkspace();
@@ -232,9 +233,17 @@ export default function App() {
       const nextSelection = chooseNowSelection(snapshot);
       setNowSelection(nextSelection);
       await loadNowFocus(nextSelection);
+      const navigation = await db.getNavigationSnapshot();
+      setNavigationSnapshot(navigation);
+      setNavigationSelection(nextSelection);
+      if (normalizedActiveTab === 'map') {
+        await loadNavigationFocus(nextSelection);
+      }
     } catch (error) {
       console.error('Failed to create starter workspace', error);
-      setNowError(error.message || 'Не удалось создать стартовый набор.');
+      const message = error.message || 'Не удалось создать стартовый набор.';
+      setNowError(message);
+      setNavigationError(message);
     } finally {
       setNowCreatingStarter(false);
     }
@@ -1003,7 +1012,13 @@ export default function App() {
               </div>
 
               <div className="flex min-w-0 items-center gap-2">
-                <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="hidden sm:block">
+                <PixelSurface
+                  frame="ghost"
+                  padding="xs"
+                  fullWidth={false}
+                  className="hidden sm:block"
+                  title={runtime.dataBoundaryLabel}
+                >
                   <PixelText as="span" readable size="xs" color={runtime.isLocalFirst ? 'success' : 'info'}>
                     {runtime.shellLabel} / {runtime.storageLabel}
                   </PixelText>

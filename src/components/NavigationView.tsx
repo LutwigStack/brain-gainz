@@ -816,9 +816,19 @@ export const NavigationView = ({
     const hasChildren = entry.childIds.length > 0;
     const isExpanded = expandedTreeNodeIds.has(nodeId);
     const selectTreeNode = () => {
+      if (mapCanvasMode === 'layers') {
+        if (hasChildren) {
+          openLayerAtNode(entry.node.id);
+        } else {
+          setLayerParentNodeId(entry.parentId ?? null);
+          setCanvasContextMenu(null);
+          runMapCommand('fit-graph');
+        }
+      }
+
       void handleCanvasNodeSelect(entry.node);
     };
-    const rowClassName = `w-full min-w-0 rounded border px-2 py-1.5 transition ${
+    const rowClassName = `box-border w-full min-w-0 rounded border px-2 py-1.5 transition ${
       isSelected
         ? 'border-[var(--pixel-accent)] bg-[rgba(94,234,212,0.14)] text-[var(--pixel-text)]'
         : 'border-[var(--pixel-line-soft)] bg-[rgba(8,16,29,0.48)] text-[var(--pixel-text-muted)] hover:border-[var(--pixel-line)] hover:text-[var(--pixel-text)]'
@@ -1012,7 +1022,10 @@ export const NavigationView = ({
                     </PixelText>
                     <PixelButton
                       tone="ghost"
-                      onClick={() => setLayerParentNodeId(layerParentParentId)}
+                      onClick={() => {
+                        setLayerParentNodeId(layerParentParentId);
+                        runMapCommand('fit-graph');
+                      }}
                       disabled={!layerParentEntry || layerParentParentId == null}
                       style={{ minHeight: 28, padding: '5px 8px', gap: 6 }}
                     >
@@ -1032,22 +1045,16 @@ export const NavigationView = ({
                             <PixelButton
                               tone={child.childIds.length ? 'ghost' : 'panel'}
                               onClick={() => {
+                                if (child.childIds.length) {
+                                  openLayerAtNode(child.node.id);
+                                }
+
                                 void handleCanvasNodeSelect(child.node);
                               }}
                               style={{ minHeight: 28, padding: '5px 8px', gap: 6 }}
                             >
                               {child.node.title}
                             </PixelButton>
-                            {child.childIds.length ? (
-                              <PixelButton
-                                tone="ghost"
-                                onClick={() => openLayerAtNode(child.node.id)}
-                                title={`Открыть слой: ${child.node.title}`}
-                                style={{ minHeight: 28, padding: '5px 7px', gap: 4 }}
-                              >
-                                <GitBranch size={13} /> Слой
-                              </PixelButton>
-                            ) : null}
                           </span>
                         );
                       })}
@@ -1438,7 +1445,7 @@ export const NavigationView = ({
         <div className="min-w-0 max-w-full self-start xl:sticky xl:top-3 xl:justify-self-end xl:w-[340px] 2xl:w-[360px]">
           <PixelStack gap="md">
             <PixelSurface frame="panel" padding="md">
-              {isFocusLoading ? (
+              {isFocusLoading && !focus?.node ? (
                 <PixelText as="p" readable color="textMuted" size="sm">
                   Загрузка…
                 </PixelText>
@@ -1459,10 +1466,17 @@ export const NavigationView = ({
                 </PixelSurface>
               ) : null}
 
-              {!isFocusLoading && focus?.node && editorDraft ? (
+              {focus?.node && editorDraft ? (
                 <PixelStack gap="md">
                   <PixelPanelHeader
-                    eyebrow="Инспектор"
+                    eyebrow={
+                      <span className="inline-flex items-center gap-2">
+                        Инспектор
+                        {isFocusLoading ? (
+                          <span className="text-[10px] uppercase text-[var(--pixel-text-dim)]">обновляю</span>
+                        ) : null}
+                      </span>
+                    }
                     title={editorDraft.title}
                     description={editorDraft.theme}
                     aside={
@@ -1820,7 +1834,10 @@ export const NavigationView = ({
                   Пока пусто.
                 </PixelText>
               ) : structureHierarchy.roots.length > 0 ? (
-                <div className="mt-3 grid max-h-[42dvh] min-w-0 gap-1 overflow-auto pr-1">
+                <div
+                  className="mt-3 grid max-h-[42dvh] min-w-0 gap-1 overflow-y-auto overflow-x-hidden pr-1"
+                  style={{ scrollbarGutter: 'stable' }}
+                >
                   {structureHierarchy.roots.map((nodeId) => renderStructureTreeNode(nodeId))}
                 </div>
               ) : (

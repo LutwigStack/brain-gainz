@@ -1323,9 +1323,11 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
   },
 
   async createStarterWorkspace() {
-    const existingNodes = await database.select('SELECT COUNT(*) AS count FROM nodes');
+    const existingStarterNodes = await database.select('SELECT id FROM nodes WHERE slug = ? LIMIT 1', [
+      STARTER_SLUGS.primaryNode,
+    ]);
 
-    if (countFromRows(existingNodes) > 0) {
+    if (existingStarterNodes.length > 0) {
       return this.getDashboard();
     }
 

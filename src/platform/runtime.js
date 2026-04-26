@@ -1,9 +1,19 @@
 import { Capacitor } from '@capacitor/core';
 
-const createRuntimeProfile = ({ kind, shellLabel, storageLabel, isLocalFirst, usesNativeSql, usesSafeAreaInsets, desktopOnlyCapabilities }) => ({
+const createRuntimeProfile = ({
   kind,
   shellLabel,
   storageLabel,
+  dataBoundaryLabel,
+  isLocalFirst,
+  usesNativeSql,
+  usesSafeAreaInsets,
+  desktopOnlyCapabilities,
+}) => ({
+  kind,
+  shellLabel,
+  storageLabel,
+  dataBoundaryLabel,
   isLocalFirst,
   usesNativeSql,
   usesSafeAreaInsets,
@@ -23,6 +33,7 @@ export const resolveRuntimeProfile = ({
       kind: 'capacitor-native',
       shellLabel: 'Мобильная оболочка',
       storageLabel: 'Веб-хранилище',
+      dataBoundaryLabel: 'Отдельное хранилище этой оболочки. Данные не синхронизируются с браузером или desktop.',
       isLocalFirst: false,
       usesNativeSql: false,
       usesSafeAreaInsets: true,
@@ -35,6 +46,7 @@ export const resolveRuntimeProfile = ({
       kind: 'tauri-desktop',
       shellLabel: 'Десктоп',
       storageLabel: 'Локальная SQLite',
+      dataBoundaryLabel: 'Отдельная desktop-база. Данные из браузерного режима сюда не синхронизируются.',
       isLocalFirst: true,
       usesNativeSql: true,
       usesSafeAreaInsets: false,
@@ -46,6 +58,7 @@ export const resolveRuntimeProfile = ({
     kind: 'web',
     shellLabel: 'Веб',
     storageLabel: 'Браузерное хранилище',
+    dataBoundaryLabel: 'Отдельное браузерное хранилище. Данные из desktop-режима сюда не синхронизируются.',
     isLocalFirst: false,
     usesNativeSql: false,
     usesSafeAreaInsets: false,

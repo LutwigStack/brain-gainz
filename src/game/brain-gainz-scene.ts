@@ -3,7 +3,7 @@ import { Application, Container, FederatedPointerEvent, Graphics } from 'pixi.js
 import { snapPointToGrid } from './layout-helpers';
 import { EffectsLayer } from './layers/effects-layer';
 import { HeroLayer } from './layers/hero-layer';
-import { getNodeGateAnchor, MapLayer, type NodeGate } from './layers/map-layer';
+import { getNodeGateAnchor, MapLayer, resolveNodeBox, type NodeGate } from './layers/map-layer';
 import type { GamePoint, GameSceneModel } from './types';
 import {
   centerCameraOnPoint,
@@ -20,6 +20,8 @@ const PANNING_CURSOR = 'grabbing';
 const CREATE_CURSOR = 'crosshair';
 const CONNECT_GATE_HIT_RADIUS = 28;
 const POINTER_THRESHOLD = 8;
+const NODE_FALLBACK_HIT_PADDING = 16;
+const NODE_FALLBACK_GATE_HIT_RADIUS = 22;
 
 interface SceneInteractionState {
   pointerId: number;
@@ -320,6 +322,17 @@ export class BrainGainzScene {
     }
 
     const point = { x: event.global.x, y: event.global.y };
+    const nodeHit = this.findNodeHitAtScreenPoint(point);
+    if (nodeHit) {
+      event.stopPropagation();
+      if (nodeHit.gate) {
+        this.handleNodeGatePointerDown(nodeHit.nodeId, nodeHit.gate, event);
+      } else {
+        this.handleNodePointerDown(nodeHit.nodeId, event);
+      }
+      return;
+    }
+
     if (this.backgroundInteraction?.pointerId === event.pointerId) {
       return;
     }
@@ -337,8 +350,7 @@ export class BrainGainzScene {
     if (
       event.button !== 0 ||
       !this.currentCamera ||
-      !this.currentModel ||
-      this.currentCallbacks?.canDragNodes === false
+      !this.currentModel
     ) {
       return;
     }
@@ -349,6 +361,15 @@ export class BrainGainzScene {
     }
 
     const point = { x: event.global.x, y: event.global.y };
+    if (this.currentCallbacks?.canDragNodes === false) {
+      this.currentCallbacks.onNodeSelect(nodeId, {
+        screenX: point.x,
+        screenY: point.y,
+      });
+      this.updateBackdropCursor();
+      return;
+    }
+
     const worldPoint = screenToWorld(point, this.currentCamera);
     this.nodeDragInteraction = {
       nodeId,
@@ -705,5 +726,85 @@ export class BrainGainzScene {
       .sort((left, right) => left.distance - right.distance)[0];
 
     return nearest && nearest.distance <= hitRadius ? nearest : null;
+  }
+
+  private findNodeHitAtScreenPoint(screenPoint: GamePoint): { nodeId: number; gate: NodeGate | null } | null {
+    if (!this.currentCamera || !this.currentModel) {
+      return null;
+    }
+
+    const worldPoint = screenToWorld(screenPoint, this.currentCamera);
+    const overviewMode = this.currentCallbacks?.overviewMode ?? false;
+    const gateHitRadius = Math.max(
+      18,
+      NODE_FALLBACK_GATE_HIT_RADIUS / Math.max(this.currentCamera.zoom, 0.2),
+    );
+    const nodeHitPadding = Math.max(
+      NODE_FALLBACK_HIT_PADDING,
+      NODE_FALLBACK_HIT_PADDING / Math.max(this.currentCamera.zoom, 0.2),
+    );
+
+    const renderNodes = this.currentModel.nodes
+      .filter((node) => !overviewMode || node.isOverviewVisible === true)
+      .map((node) => ({
+        ...node,
+        position: (overviewMode ? node.overviewPosition : null) ?? node.position,
+      }))
+      .reverse();
+
+    const gateHit = renderNodes
+      .map((node) => {
+        const input = getNodeGateAnchor(node, 'input', overviewMode);
+        const output = getNodeGateAnchor(node, 'output', overviewMode);
+        const inputDistance = Math.hypot(worldPoint.x - input.x, worldPoint.y - input.y);
+        const outputDistance = Math.hypot(worldPoint.x - output.x, worldPoint.y - output.y);
+        const nearest =
+          inputDistance <= outputDistance
+            ? { gate: 'input' as const, distance: inputDistance }
+            : { gate: 'output' as const, distance: outputDistance };
+
+        return nearest.distance <= gateHitRadius
+          ? {
+              nodeId: node.id,
+              gate: nearest.gate,
+              distance: nearest.distance,
+            }
+          : null;
+      })
+      .filter((entry): entry is { nodeId: number; gate: NodeGate; distance: number } => entry != null)
+      .sort((left, right) => left.distance - right.distance)[0];
+
+    if (gateHit) {
+      return {
+        nodeId: gateHit.nodeId,
+        gate: gateHit.gate,
+      };
+    }
+
+    const nodeHit = renderNodes
+      .map((node) => {
+        const box = resolveNodeBox(node, overviewMode);
+        const dx = Math.abs(worldPoint.x - node.position.x);
+        const dy = Math.abs(worldPoint.y - node.position.y);
+        const hit =
+          dx <= box.width / 2 + nodeHitPadding &&
+          dy <= box.height / 2 + nodeHitPadding;
+
+        return hit
+          ? {
+              nodeId: node.id,
+              distance: Math.hypot(dx, dy),
+            }
+          : null;
+      })
+      .filter((entry): entry is { nodeId: number; distance: number } => entry != null)
+      .sort((left, right) => left.distance - right.distance)[0];
+
+    return nodeHit
+      ? {
+          nodeId: nodeHit.nodeId,
+          gate: null,
+        }
+      : null;
   }
 }

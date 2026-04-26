@@ -1,4 +1,4 @@
-import { Container, FederatedPointerEvent, Graphics, Text } from 'pixi.js';
+import { Container, FederatedPointerEvent, Graphics, Rectangle, Text } from 'pixi.js';
 
 import { getGraphEdgeSemantics } from '../../application/graph-edge-semantics';
 import type { GameNode, GamePoint, GameSceneModel } from '../types';
@@ -34,6 +34,7 @@ const NODE_GATE = {
   rim: 2,
   inset: 1,
 };
+const NODE_HIT_PADDING = 16;
 
 interface MapLayerHandlers {
   onNodePointerDown?: (nodeId: number, event: FederatedPointerEvent) => void;
@@ -267,6 +268,8 @@ export class MapLayer extends Container {
         this.nodeContainer.addChild(pulse, shell, label);
       }
 
+      pulse.eventMode = 'none';
+      label.eventMode = 'none';
       shell.eventMode = 'static';
       shell.cursor = 'pointer';
       shell.removeAllListeners();
@@ -607,6 +610,12 @@ export class MapLayer extends Container {
     pulse.position.set(node.position.x, node.position.y);
 
     shell.clear();
+    shell.hitArea = new Rectangle(
+      -box.width / 2 - NODE_HIT_PADDING,
+      -box.height / 2 - NODE_HIT_PADDING,
+      box.width + NODE_HIT_PADDING * 2,
+      box.height + NODE_HIT_PADDING * 2,
+    );
     shell.roundRect(
       -box.width / 2 - 5,
       -box.height / 2 - 5,
@@ -702,7 +711,7 @@ export class MapLayer extends Container {
 
   private resolvePointerGate(node: GameNode, event: FederatedPointerEvent): NodeGate | null {
     const worldPoint = this.world.toLocal(event.global);
-    const hitRadius = Math.max(12, 15 / Math.max(this.currentZoom, 0.2));
+    const hitRadius = Math.max(18, 22 / Math.max(this.currentZoom, 0.2));
     const input = getNodeGateAnchor(node, 'input', this.overviewMode);
     const output = getNodeGateAnchor(node, 'output', this.overviewMode);
     const inputDistance = Math.hypot(worldPoint.x - input.x, worldPoint.y - input.y);
