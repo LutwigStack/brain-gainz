@@ -226,6 +226,7 @@ interface NavigationViewProps {
     | 'undo'
     | 'layout'
     | null;
+  branchFilterSkillId?: number | null;
 }
 
 export const NavigationView = ({
@@ -269,6 +270,7 @@ export const NavigationView = ({
   editorPendingAction,
   editorNotice,
   mapMutationPendingAction,
+  branchFilterSkillId = null,
 }: NavigationViewProps) => {
   const [editorOverride, setEditorOverride] = useState<Partial<NodeEditorDraft> | null>(null);
   const [editorOverrideNodeId, setEditorOverrideNodeId] = useState<number | null>(null);
@@ -313,14 +315,24 @@ export const NavigationView = ({
   };
 
   const spheres = snapshot?.spheres ?? [];
-  const selectedSphereId = focus?.node?.sphere_id ?? spheres[0]?.id ?? null;
+  const branchFilterSkill =
+    branchFilterSkillId == null
+      ? null
+      : spheres
+          .flatMap((sphere) =>
+            sphere.directions.flatMap((direction) =>
+              direction.skills.map((skill) => ({ sphere, direction, skill })),
+            ),
+          )
+          .find((entry) => entry.skill.id === branchFilterSkillId) ?? null;
+  const selectedSphereId = focus?.node?.sphere_id ?? branchFilterSkill?.sphere.id ?? spheres[0]?.id ?? null;
   const selectedSphere = spheres.find((sphere) => sphere.id === selectedSphereId) ?? spheres[0] ?? null;
-  const selectedDirectionId = focus?.node?.direction_id ?? selectedSphere?.directions[0]?.id ?? null;
+  const selectedDirectionId = focus?.node?.direction_id ?? branchFilterSkill?.direction.id ?? selectedSphere?.directions[0]?.id ?? null;
   const selectedDirection =
     selectedSphere?.directions.find((direction) => direction.id === selectedDirectionId) ??
     selectedSphere?.directions[0] ??
     null;
-  const selectedSkillId = focus?.node?.skill_id ?? selectedDirection?.skills[0]?.id ?? null;
+  const selectedSkillId = focus?.node?.skill_id ?? branchFilterSkill?.skill.id ?? selectedDirection?.skills[0]?.id ?? null;
   const selectedSkill =
     selectedDirection?.skills.find((skill) => skill.id === selectedSkillId) ??
     selectedDirection?.skills[0] ??
@@ -379,7 +391,8 @@ export const NavigationView = ({
     }
   }
   const graphEdges = snapshot?.edges ?? [];
-  const mapModel = createGameViewModel(snapshot, focus, { visibleSphereId: selectedSphereId });
+  const visibleSkillId = branchFilterSkill?.skill.id ?? null;
+  const mapModel = createGameViewModel(snapshot, focus, { visibleSphereId: selectedSphereId, visibleSkillId });
   const structureHierarchy = useMemo(
     () => buildGraphHierarchyIndex(snapshot, selectedSphereId, focus?.node?.id ?? null),
     [snapshot, selectedSphereId, focus?.node?.id],
@@ -1265,6 +1278,7 @@ export const NavigationView = ({
                     snapshot={snapshot}
                     focus={focus}
                     visibleSphereId={selectedSphereId}
+                    visibleSkillId={visibleSkillId}
                     canvasMode={mapCanvasMode}
                     visibleNodeIds={layerNodeIds}
                     onSelectNode={handleCanvasNodeSelect}

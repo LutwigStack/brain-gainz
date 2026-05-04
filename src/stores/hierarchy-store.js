@@ -91,18 +91,33 @@ const normalizeNodeArchiveState = (current, patch) => {
   return next;
 };
 
+const resolveDefaultCampaignId = async (database) => {
+  const rows = await database.select(
+    `
+      SELECT id
+      FROM campaigns
+      WHERE is_archived = 0
+      ORDER BY CASE WHEN type = 'developer_main' THEN 0 ELSE 1 END ASC, id ASC
+      LIMIT 1
+    `,
+  );
+  return rows[0]?.id ?? null;
+};
+
 export const createHierarchyStore = (database) => ({
-  createSphere(input) {
+  async createSphere(input) {
     const createdAt = input.created_at ?? createUtcTimestamp();
     const updatedAt = input.updated_at ?? createdAt;
+    const campaignId = input.campaign_id ?? (await resolveDefaultCampaignId(database));
 
     return insertAndFetch(
       database,
       `
-        INSERT INTO spheres (name, slug, description, sort_order, is_archived, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO spheres (campaign_id, name, slug, description, sort_order, is_archived, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
+        campaignId,
         input.name,
         input.slug,
         input.description ?? null,
@@ -146,11 +161,12 @@ export const createHierarchyStore = (database) => ({
     return insertAndFetch(
       database,
       `
-        INSERT INTO skills (direction_id, name, slug, description, sort_order, is_archived, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO skills (direction_id, primary_stat_id, name, slug, description, sort_order, is_archived, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         input.direction_id,
+        input.primary_stat_id ?? null,
         input.name,
         input.slug,
         input.description ?? null,

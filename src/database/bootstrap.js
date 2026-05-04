@@ -1,4 +1,5 @@
 import { ensureLegacySchema, seedLegacyDefaults } from './legacy-schema.js';
+import { runCampaignMigrations } from './campaign-migrations.js';
 import { runPr1Migrations } from './pr1-migrations.js';
 import { getRuntimeProfile } from '../platform/runtime.js';
 
@@ -34,6 +35,7 @@ export const bootstrapDatabase = async (database) => {
   await database.execute('PRAGMA foreign_keys = ON');
   await ensureLegacySchema(database);
   await runPr1Migrations(database);
+  await runCampaignMigrations(database);
   await seedLegacyDefaults(database);
   return database;
 };

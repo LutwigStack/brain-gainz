@@ -268,7 +268,7 @@ const createOverviewPositions = (nodes: GameNode[], hierarchy: ReturnType<typeof
 export const createGameViewModel = (
   snapshot: NavigationSnapshot | null,
   focus: NodeFocusSnapshot | null,
-  options: { visibleSphereId?: number | null } = {},
+  options: { visibleSphereId?: number | null; visibleSkillId?: number | null } = {},
 ): GameSceneModel => {
   if (!snapshot) {
     return {
@@ -311,6 +311,10 @@ export const createGameViewModel = (
 
     sphere.directions.forEach((direction, directionIndex) => {
       direction.skills.forEach((skill, skillIndex) => {
+        if (options.visibleSkillId != null && skill.id !== options.visibleSkillId) {
+          return;
+        }
+
         skill.nodes.forEach((node, nodeIndex) => {
           const fallbackPosition = createFallbackNodePosition(
             biome,

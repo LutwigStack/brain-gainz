@@ -1,6 +1,7 @@
 import { getDatabase, resetDatabaseForTests } from './database/bootstrap.js';
 import { createNowService } from './application/now-service.js';
 import { createDailySessionStore } from './stores/daily-session-store.js';
+import { createCampaignStore } from './stores/campaign-store.js';
 import { createHierarchyStore } from './stores/hierarchy-store.js';
 import { createLegacyCardStore } from './stores/legacy-card-store.js';
 import { createLegacyMappingStore } from './stores/legacy-mapping-store.js';
@@ -57,32 +58,48 @@ type StoresRegistry = {
   nodeNoteStore: unknown;
   reviewStateStore: unknown;
   nowService: {
-    getDashboard: () => Promise<NowDashboardSnapshot>;
-    createStarterWorkspace: () => Promise<NowDashboardSnapshot>;
-    createStructureWorkspace: (input: { name: string }) => Promise<NowDashboardSnapshot>;
-    createLinearAlgebraGraphWorkspace: () => Promise<NowDashboardSnapshot>;
-    startTodaySessionFromPrimaryRecommendation: () => Promise<unknown>;
-    startTodaySessionFromRecommendation: (actionId?: number | null) => Promise<unknown>;
-    getNodeFocus: (nodeId: number, actionId?: number | null) => Promise<NodeFocusSnapshot | null>;
-    getNavigationSnapshot: () => Promise<NavigationSnapshot>;
-    getNodeEditorRecord: (nodeId: number) => Promise<PersistedNodeRecord | null>;
-    createNodeEditor: (payload: NodeCreatePayload) => Promise<NodeEditorMutationResult | null>;
-    updateNodeEditor: (nodeId: number, payload: NodeUpdatePayload) => Promise<NodeEditorMutationResult | null>;
-    archiveNodeEditor: (nodeId: number, payload?: NodeArchivePayload) => Promise<NodeEditorMutationResult | null>;
-    duplicateNodeEditor: (nodeId: number, payload?: NodeDuplicatePayload) => Promise<NodeEditorMutationResult | null>;
-    createGraphEdge: (payload: GraphEdgeCreatePayload) => Promise<GraphEdgeMutationResult | null>;
-    updateGraphEdge: (edgeId: number, payload: GraphEdgeUpdatePayload) => Promise<GraphEdgeMutationResult | null>;
-    deleteGraphEdge: (edgeId: number) => Promise<GraphEdgeMutationResult | null>;
-    getJournalSnapshot: () => Promise<JournalSnapshot>;
-    createJournalFollowUpStep: (payload: JournalFollowUpPayload) => Promise<unknown>;
-    completeActionInTodaySession: (actionId: number) => Promise<unknown>;
-    deferActionInTodaySession: (actionId: number, note?: string) => Promise<unknown>;
-    blockActionInTodaySession: (actionId: number, payload?: { barrierType?: string | null; note?: string }) => Promise<unknown>;
-    shrinkActionInTodaySession: (actionId: number, payload?: { title?: string; note?: string }) => Promise<unknown>;
+    getDashboard: (campaignId?: number | null) => Promise<NowDashboardSnapshot>;
+    createStarterWorkspace: (campaignId?: number | null) => Promise<NowDashboardSnapshot>;
+    createStructureWorkspace: (campaignId: number | null, input: { name: string }) => Promise<NowDashboardSnapshot>;
+    createLinearAlgebraGraphWorkspace: (campaignId?: number | null) => Promise<NowDashboardSnapshot>;
+    startTodaySessionFromPrimaryRecommendation: (campaignId?: number | null) => Promise<unknown>;
+    startTodaySessionFromRecommendation: (campaignId?: number | null, actionId?: number | null) => Promise<unknown>;
+    getNodeFocus: (campaignId: number | null, nodeId: number, actionId?: number | null) => Promise<NodeFocusSnapshot | null>;
+    getNavigationSnapshot: (campaignId?: number | null) => Promise<NavigationSnapshot>;
+    getNodeEditorRecord: (campaignId: number | null, nodeId: number) => Promise<PersistedNodeRecord | null>;
+    createNodeEditor: (campaignId: number | null, payload: NodeCreatePayload) => Promise<NodeEditorMutationResult | null>;
+    updateNodeEditor: (campaignId: number | null, nodeId: number, payload: NodeUpdatePayload) => Promise<NodeEditorMutationResult | null>;
+    archiveNodeEditor: (campaignId: number | null, nodeId: number, payload?: NodeArchivePayload) => Promise<NodeEditorMutationResult | null>;
+    duplicateNodeEditor: (campaignId: number | null, nodeId: number, payload?: NodeDuplicatePayload) => Promise<NodeEditorMutationResult | null>;
+    createGraphEdge: (campaignId: number | null, payload: GraphEdgeCreatePayload) => Promise<GraphEdgeMutationResult | null>;
+    updateGraphEdge: (campaignId: number | null, edgeId: number, payload: GraphEdgeUpdatePayload) => Promise<GraphEdgeMutationResult | null>;
+    deleteGraphEdge: (campaignId: number | null, edgeId: number) => Promise<GraphEdgeMutationResult | null>;
+    getJournalSnapshot: (campaignId?: number | null) => Promise<JournalSnapshot>;
+    createJournalFollowUpStep: (campaignId: number | null, payload: JournalFollowUpPayload) => Promise<unknown>;
+    completeActionInTodaySession: (campaignId: number | null, actionId: number) => Promise<unknown>;
+    deferActionInTodaySession: (campaignId: number | null, actionId: number, note?: string) => Promise<unknown>;
+    blockActionInTodaySession: (campaignId: number | null, actionId: number, payload?: { barrierType?: string | null; note?: string }) => Promise<unknown>;
+    shrinkActionInTodaySession: (campaignId: number | null, actionId: number, payload?: { title?: string; note?: string }) => Promise<unknown>;
+    getWindRoseSnapshot: (campaignId?: number | null) => Promise<unknown>;
+  };
+  campaignStore: {
+    listCampaigns: () => Promise<unknown>;
+    openCampaign: (id: number) => Promise<unknown>;
+    createUserCampaign: (input: { name: string }) => Promise<unknown>;
+    archiveCampaign: (id: number) => Promise<unknown>;
+    restoreCampaign: (id: number) => Promise<unknown>;
   };
 };
 
 let storesPromise: Promise<StoresRegistry> | null = null;
+
+const requireCampaignId = (campaignId: number | null | undefined): number => {
+  if (!Number.isInteger(campaignId)) {
+    throw new Error('Campaign-scoped operation requires an active campaign.');
+  }
+
+  return campaignId as number;
+};
 
 const buildStores = async () => {
   const database = await getDatabase();
@@ -95,6 +112,7 @@ const buildStores = async () => {
     legacyMappingStore: createLegacyMappingStore(database),
     nodeNoteStore: createNodeNoteStore(database),
     reviewStateStore: createReviewStateStore(database),
+    campaignStore: null,
     nowService: null,
   };
 };
@@ -104,6 +122,7 @@ const buildStoresWithServices = async () => {
 
   return {
     ...stores,
+    campaignStore: createCampaignStore(stores.database, stores.hierarchyStore),
     nowService: createNowService(stores),
   } as StoresRegistry;
 };
@@ -166,22 +185,49 @@ export const getHierarchyStore = async () => {
 
 export const getNodeRecord = async (id: number): Promise<PersistedNodeRecord | null> => {
   const { nowService } = await getStores();
-  return nowService.getNodeEditorRecord(id);
+  return nowService.getNodeEditorRecord(null, id);
+};
+
+export const getCampaigns = async () => {
+  const { campaignStore } = await getStores();
+  return campaignStore.listCampaigns();
+};
+
+export const openCampaign = async (id: number) => {
+  const { campaignStore } = await getStores();
+  return campaignStore.openCampaign(id);
+};
+
+export const createUserCampaign = async (input: { name: string }) => {
+  const { campaignStore } = await getStores();
+  return campaignStore.createUserCampaign(input);
+};
+
+export const archiveCampaign = async (id: number) => {
+  const { campaignStore } = await getStores();
+  return campaignStore.archiveCampaign(id);
+};
+
+export const restoreCampaign = async (id: number) => {
+  const { campaignStore } = await getStores();
+  return campaignStore.restoreCampaign(id);
 };
 
 export const createNodeRecord = async (
   payload: NodeCreatePayload,
+  campaignId: number | null = null,
 ): Promise<NodeEditorMutationResult | null> => {
   const { nowService } = await getStores();
-  return nowService.createNodeEditor(payload);
+  return nowService.createNodeEditor(requireCampaignId(campaignId), payload);
 };
 
 export const updateNodeRecord = async (
   id: number,
   payload: NodeUpdatePayload,
+  campaignId: number | null = null,
 ): Promise<NodeEditorMutationResult | null> => {
   const { nowService } = await getStores();
-  return nowService.updateNodeEditor(id, payload);
+  return nowService.updateNodeEditor(requireCampaignId(campaignId), id, payload);
 };
 
 export const applyNodeLayout = async (
@@ -194,37 +240,41 @@ export const applyNodeLayout = async (
 export const archiveNodeRecord = async (
   id: number,
   payload: NodeArchivePayload = {},
+  campaignId: number | null = null,
 ): Promise<NodeEditorMutationResult | null> => {
   const { nowService } = await getStores();
-  return nowService.archiveNodeEditor(id, payload);
+  return nowService.archiveNodeEditor(requireCampaignId(campaignId), id, payload);
 };
 
 export const duplicateNodeRecord = async (
   id: number,
   payload: NodeDuplicatePayload = {},
+  campaignId: number | null = null,
 ): Promise<NodeEditorMutationResult | null> => {
   const { nowService } = await getStores();
-  return nowService.duplicateNodeEditor(id, payload);
+  return nowService.duplicateNodeEditor(requireCampaignId(campaignId), id, payload);
 };
 
 export const createGraphEdge = async (
   payload: GraphEdgeCreatePayload,
+  campaignId: number | null = null,
 ): Promise<GraphEdgeMutationResult | null> => {
   const { nowService } = await getStores();
-  return nowService.createGraphEdge(payload);
+  return nowService.createGraphEdge(requireCampaignId(campaignId), payload);
 };
 
 export const updateGraphEdge = async (
   id: number,
   payload: GraphEdgeUpdatePayload,
+  campaignId: number | null = null,
 ): Promise<GraphEdgeMutationResult | null> => {
   const { nowService } = await getStores();
-  return nowService.updateGraphEdge(id, payload);
+  return nowService.updateGraphEdge(requireCampaignId(campaignId), id, payload);
 };
 
-export const deleteGraphEdge = async (id: number): Promise<GraphEdgeMutationResult | null> => {
+export const deleteGraphEdge = async (id: number, campaignId: number | null = null): Promise<GraphEdgeMutationResult | null> => {
   const { nowService } = await getStores();
-  return nowService.deleteGraphEdge(id);
+  return nowService.deleteGraphEdge(requireCampaignId(campaignId), id);
 };
 
 export const getReviewStateStore = async () => {
@@ -247,80 +297,87 @@ export const getNodeNoteStore = async () => {
   return nodeNoteStore;
 };
 
-export const getNowDashboard = async (): Promise<NowDashboardSnapshot> => {
+export const getNowDashboard = async (campaignId: number | null = null): Promise<NowDashboardSnapshot> => {
   const { nowService } = await getStores();
-  return nowService.getDashboard();
+  return nowService.getDashboard(requireCampaignId(campaignId));
 };
 
-export const createStarterWorkspace = async (): Promise<NowDashboardSnapshot> => {
+export const createStarterWorkspace = async (campaignId: number | null = null): Promise<NowDashboardSnapshot> => {
   const { nowService } = await getStores();
-  return nowService.createStarterWorkspace();
+  return nowService.createStarterWorkspace(requireCampaignId(campaignId));
 };
 
-export const createStructureWorkspace = async (input: { name: string }): Promise<NowDashboardSnapshot> => {
+export const createStructureWorkspace = async (input: { name: string }, campaignId: number | null = null): Promise<NowDashboardSnapshot> => {
   const { nowService } = await getStores();
-  return nowService.createStructureWorkspace(input);
+  return nowService.createStructureWorkspace(requireCampaignId(campaignId), input);
 };
 
-export const createLinearAlgebraGraphWorkspace = async (): Promise<NowDashboardSnapshot> => {
+export const createLinearAlgebraGraphWorkspace = async (campaignId: number | null = null): Promise<NowDashboardSnapshot> => {
   const { nowService } = await getStores();
-  return nowService.createLinearAlgebraGraphWorkspace();
+  return nowService.createLinearAlgebraGraphWorkspace(requireCampaignId(campaignId));
 };
 
-export const startTodaySessionFromPrimaryRecommendation = async () => {
+export const startTodaySessionFromPrimaryRecommendation = async (campaignId: number | null = null) => {
   const { nowService } = await getStores();
-  return nowService.startTodaySessionFromPrimaryRecommendation();
+  return nowService.startTodaySessionFromPrimaryRecommendation(requireCampaignId(campaignId));
 };
 
-export const startTodaySessionFromRecommendation = async (actionId: number | null = null) => {
+export const startTodaySessionFromRecommendation = async (actionId: number | null = null, campaignId: number | null = null) => {
   const { nowService } = await getStores();
-  return nowService.startTodaySessionFromRecommendation(actionId);
+  return nowService.startTodaySessionFromRecommendation(requireCampaignId(campaignId), actionId);
 };
 
-export const getNowNodeFocus = async (nodeId: number, actionId: number | null = null): Promise<NodeFocusSnapshot | null> => {
+export const getNowNodeFocus = async (nodeId: number, actionId: number | null = null, campaignId: number | null = null): Promise<NodeFocusSnapshot | null> => {
   const { nowService } = await getStores();
-  return nowService.getNodeFocus(nodeId, actionId);
+  return nowService.getNodeFocus(requireCampaignId(campaignId), nodeId, actionId);
 };
 
-export const getNavigationSnapshot = async (): Promise<NavigationSnapshot> => {
+export const getNavigationSnapshot = async (campaignId: number | null = null): Promise<NavigationSnapshot> => {
   const { nowService } = await getStores();
-  return nowService.getNavigationSnapshot();
+  return nowService.getNavigationSnapshot(requireCampaignId(campaignId));
 };
 
-export const getJournalSnapshot = async (): Promise<JournalSnapshot> => {
+export const getJournalSnapshot = async (campaignId: number | null = null): Promise<JournalSnapshot> => {
   const { nowService } = await getStores();
-  return nowService.getJournalSnapshot();
+  return nowService.getJournalSnapshot(requireCampaignId(campaignId));
 };
 
-export const createJournalFollowUpStep = async (payload: JournalFollowUpPayload) => {
+export const getWindRoseSnapshot = async (campaignId: number | null = null) => {
   const { nowService } = await getStores();
-  return nowService.createJournalFollowUpStep(payload);
+  return nowService.getWindRoseSnapshot(requireCampaignId(campaignId));
 };
 
-export const completeNowActionInTodaySession = async (actionId: number) => {
+export const createJournalFollowUpStep = async (payload: JournalFollowUpPayload, campaignId: number | null = null) => {
   const { nowService } = await getStores();
-  return nowService.completeActionInTodaySession(actionId);
+  return nowService.createJournalFollowUpStep(requireCampaignId(campaignId), payload);
 };
 
-export const deferNowActionInTodaySession = async (actionId: number, note = '') => {
+export const completeNowActionInTodaySession = async (actionId: number, campaignId: number | null = null) => {
   const { nowService } = await getStores();
-  return nowService.deferActionInTodaySession(actionId, note);
+  return nowService.completeActionInTodaySession(requireCampaignId(campaignId), actionId);
+};
+
+export const deferNowActionInTodaySession = async (actionId: number, note = '', campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.deferActionInTodaySession(requireCampaignId(campaignId), actionId, note);
 };
 
 export const blockNowActionInTodaySession = async (
   actionId: number,
   payload: { barrierType?: string | null; note?: string } = {},
+  campaignId: number | null = null,
 ) => {
   const { nowService } = await getStores();
-  return nowService.blockActionInTodaySession(actionId, payload);
+  return nowService.blockActionInTodaySession(requireCampaignId(campaignId), actionId, payload);
 };
 
 export const shrinkNowActionInTodaySession = async (
   actionId: number,
   payload: { title?: string; note?: string } = {},
+  campaignId: number | null = null,
 ) => {
   const { nowService } = await getStores();
-  return nowService.shrinkActionInTodaySession(actionId, payload);
+  return nowService.shrinkActionInTodaySession(requireCampaignId(campaignId), actionId, payload);
 };
 
 export const __resetDbForTests = () => {

@@ -298,6 +298,243 @@ const todayDate = (date = new Date()) => [
 const currentTimestamp = () => new Date().toISOString();
 
 const activeActionStatuses = ['todo', 'ready', 'doing'];
+const NODE_COMPLETION_GRANT_REASON = 'node_completion';
+
+const resolveCampaignId = async (database, campaignId = null) => {
+  if (campaignId != null) {
+    const rows = await database.select('SELECT id FROM campaigns WHERE id = ? AND is_archived = 0 LIMIT 1', [
+      campaignId,
+    ]);
+
+    if (rows[0]?.id != null) {
+      return rows[0].id;
+    }
+  }
+
+  const lastOpened = await database.select(
+    `
+      SELECT id
+      FROM campaigns
+      WHERE is_archived = 0
+      ORDER BY last_opened_at DESC, CASE WHEN type = 'developer_main' THEN 0 ELSE 1 END ASC, id ASC
+      LIMIT 1
+    `,
+  );
+
+  return lastOpened[0]?.id ?? null;
+};
+
+const nodeCompletionXp = (node) => {
+  if (node?.type === 'milestone' || node?.type === 'check') {
+    return 50;
+  }
+
+  if (node?.importance === 'high') {
+    return 25;
+  }
+
+  return 10;
+};
+
+const findNodeCampaignId = async (database, nodeId) => {
+  const rows = await database.select(
+    `
+      SELECT spheres.campaign_id
+      FROM nodes
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE nodes.id = ?
+      LIMIT 1
+    `,
+    [nodeId],
+  );
+
+  return rows[0]?.campaign_id ?? null;
+};
+
+const findSkillCampaignId = async (database, skillId) => {
+  const rows = await database.select(
+    `
+      SELECT spheres.campaign_id
+      FROM skills
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE skills.id = ?
+      LIMIT 1
+    `,
+    [skillId],
+  );
+
+  return rows[0]?.campaign_id ?? null;
+};
+
+const assertSkillInCampaign = async (database, skillId, campaignId) => {
+  const skillCampaignId = await findSkillCampaignId(database, skillId);
+
+  if (skillCampaignId !== campaignId) {
+    throw new Error('Навык не принадлежит выбранной кампании.');
+  }
+};
+
+const loadEdgeBoundary = async (database, edgeId) => {
+  const rows = await database.select(
+    `
+      SELECT
+        node_dependencies.*,
+        source_spheres.campaign_id AS source_campaign_id,
+        target_spheres.campaign_id AS target_campaign_id
+      FROM node_dependencies
+      JOIN nodes source_nodes ON source_nodes.id = node_dependencies.blocked_node_id
+      JOIN skills source_skills ON source_skills.id = source_nodes.skill_id
+      JOIN directions source_directions ON source_directions.id = source_skills.direction_id
+      JOIN spheres source_spheres ON source_spheres.id = source_directions.sphere_id
+      JOIN nodes target_nodes ON target_nodes.id = node_dependencies.blocking_node_id
+      JOIN skills target_skills ON target_skills.id = target_nodes.skill_id
+      JOIN directions target_directions ON target_directions.id = target_skills.direction_id
+      JOIN spheres target_spheres ON target_spheres.id = target_directions.sphere_id
+      WHERE node_dependencies.id = ?
+      LIMIT 1
+    `,
+    [edgeId],
+  );
+
+  return rows[0] ?? null;
+};
+
+const assertEdgeInCampaign = (edge, campaignId) => {
+  if (!edge) {
+    return;
+  }
+
+  if (edge.source_campaign_id !== campaignId || edge.target_campaign_id !== campaignId) {
+    throw new Error('Связь не принадлежит выбранной кампании.');
+  }
+};
+
+const assertEdgeEndpointsInCampaign = async (database, input, campaignId) => {
+  const [sourceCampaignId, targetCampaignId] = await Promise.all([
+    findNodeCampaignId(database, input.blocked_node_id),
+    findNodeCampaignId(database, input.blocking_node_id),
+  ]);
+
+  if (sourceCampaignId !== campaignId || targetCampaignId !== campaignId) {
+    throw new Error('Связь можно изменять только внутри выбранной кампании.');
+  }
+};
+
+const syncNodeCompletionXpGrant = async (database, nodeId, nextStatus, timestamp = currentTimestamp()) => {
+  const rows = await database.select(
+    `
+      SELECT
+        nodes.id,
+        nodes.type,
+        nodes.importance,
+        nodes.skill_id AS branch_id,
+        skills.primary_stat_id,
+        spheres.campaign_id
+      FROM nodes
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE nodes.id = ?
+      LIMIT 1
+    `,
+    [nodeId],
+  );
+  const node = rows[0] ?? null;
+
+  if (!node?.campaign_id) {
+    return { status: 'missing-campaign' };
+  }
+
+  if (nextStatus !== 'done') {
+    await database.execute(
+      `
+        UPDATE stat_xp_grants
+        SET active = 0,
+            reversed_at = COALESCE(reversed_at, ?)
+        WHERE campaign_id = ?
+          AND node_id = ?
+          AND grant_reason = ?
+          AND active = 1
+      `,
+      [timestamp, node.campaign_id, nodeId, NODE_COMPLETION_GRANT_REASON],
+    );
+    return { status: 'deactivated' };
+  }
+
+  if (!node.primary_stat_id) {
+    return { status: 'missing-stat' };
+  }
+
+  const existing = await database.select(
+    `
+      SELECT id
+      FROM stat_xp_grants
+      WHERE campaign_id = ?
+        AND node_id = ?
+        AND grant_reason = ?
+      LIMIT 1
+    `,
+    [node.campaign_id, nodeId, NODE_COMPLETION_GRANT_REASON],
+  );
+
+  if (existing[0]?.id != null) {
+    await database.execute(
+      `
+        UPDATE stat_xp_grants
+        SET branch_id = ?,
+            stat_id = ?,
+            xp_amount = ?,
+            active = 1,
+            reversed_at = NULL
+        WHERE id = ?
+      `,
+      [node.branch_id, node.primary_stat_id, nodeCompletionXp(node), existing[0].id],
+    );
+    return { status: 'reactivated' };
+  }
+
+  await database.execute(
+    `
+      INSERT INTO stat_xp_grants (
+        campaign_id,
+        node_id,
+        branch_id,
+        stat_id,
+        grant_reason,
+        xp_amount,
+        active,
+        created_at,
+        reversed_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, NULL)
+    `,
+    [
+      node.campaign_id,
+      nodeId,
+      node.branch_id,
+      node.primary_stat_id,
+      NODE_COMPLETION_GRANT_REASON,
+      nodeCompletionXp(node),
+      timestamp,
+    ],
+  );
+
+  return { status: 'created' };
+};
+
+const buildXpWarning = (xpGrantResult) => {
+  if (xpGrantResult?.status !== 'missing-stat') {
+    return null;
+  }
+
+  return {
+    code: 'missing-primary-stat',
+    message: 'XP не начислен: у ветки не выбран стат.',
+  };
+};
 
 const isOlderThanDays = (value, days) => {
   if (!value) {
@@ -374,79 +611,128 @@ const STARTER_LOCALIZATION = {
   },
 };
 
-const localizeStarterWorkspace = async (database) => {
+const updateSessionEventNote = (database, campaignId, nextNote, previousNote) =>
+  database.execute(
+    `
+      UPDATE daily_session_events
+      SET note = ?
+      WHERE note = ?
+        AND session_id IN (SELECT id FROM daily_sessions WHERE campaign_id = ?)
+    `,
+    [nextNote, previousNote, campaignId],
+  );
+
+const updateSessionSummaryNote = (database, campaignId, nextNote, previousNote) =>
+  database.execute(
+    'UPDATE daily_sessions SET summary_note = ? WHERE summary_note = ? AND campaign_id = ?',
+    [nextNote, previousNote, campaignId],
+  );
+
+const localizeStarterWorkspace = async (database, campaignId) => {
   const updatedAt = currentTimestamp();
 
   await database.execute(
-    'UPDATE spheres SET name = ?, description = ?, updated_at = ? WHERE slug = ?',
-    [STARTER_LOCALIZATION.sphere.name, STARTER_LOCALIZATION.sphere.description, updatedAt, STARTER_SLUGS.sphere],
+    'UPDATE spheres SET name = ?, description = ?, updated_at = ? WHERE slug = ? AND campaign_id = ?',
+    [STARTER_LOCALIZATION.sphere.name, STARTER_LOCALIZATION.sphere.description, updatedAt, STARTER_SLUGS.sphere, campaignId],
   );
 
   await database.execute(
-    'UPDATE directions SET name = ?, description = ?, updated_at = ? WHERE slug = ?',
-    [STARTER_LOCALIZATION.direction.name, STARTER_LOCALIZATION.direction.description, updatedAt, STARTER_SLUGS.direction],
+    `
+      UPDATE directions
+      SET name = ?, description = ?, updated_at = ?
+      WHERE slug = ?
+        AND sphere_id IN (SELECT id FROM spheres WHERE campaign_id = ?)
+    `,
+    [STARTER_LOCALIZATION.direction.name, STARTER_LOCALIZATION.direction.description, updatedAt, STARTER_SLUGS.direction, campaignId],
   );
 
   await database.execute(
-    'UPDATE skills SET name = ?, description = ?, updated_at = ? WHERE slug = ?',
-    [STARTER_LOCALIZATION.skill.name, STARTER_LOCALIZATION.skill.description, updatedAt, STARTER_SLUGS.skill],
+    `
+      UPDATE skills
+      SET name = ?, description = ?, updated_at = ?
+      WHERE slug = ?
+        AND direction_id IN (
+          SELECT directions.id
+          FROM directions
+          JOIN spheres ON spheres.id = directions.sphere_id
+          WHERE spheres.campaign_id = ?
+        )
+    `,
+    [STARTER_LOCALIZATION.skill.name, STARTER_LOCALIZATION.skill.description, updatedAt, STARTER_SLUGS.skill, campaignId],
   );
 
   for (const [slug, copy] of Object.entries(STARTER_LOCALIZATION.nodes)) {
-    await database.execute('UPDATE nodes SET title = ?, summary = ?, updated_at = ? WHERE slug = ?', [
-      copy.title,
-      copy.summary,
-      updatedAt,
-      slug,
-    ]);
+    await database.execute(
+      `
+        UPDATE nodes
+        SET title = ?, summary = ?, updated_at = ?
+        WHERE slug = ?
+          AND skill_id IN (
+            SELECT skills.id
+            FROM skills
+            JOIN directions ON directions.id = skills.direction_id
+            JOIN spheres ON spheres.id = directions.sphere_id
+            WHERE spheres.campaign_id = ?
+          )
+      `,
+      [copy.title, copy.summary, updatedAt, slug, campaignId],
+    );
 
     await database.execute(
       `
         UPDATE node_actions
         SET title = ?, details = ?, updated_at = ?
-        WHERE node_id = (SELECT id FROM nodes WHERE slug = ? LIMIT 1)
+        WHERE node_id IN (
+            SELECT nodes.id
+            FROM nodes
+            JOIN skills ON skills.id = nodes.skill_id
+            JOIN directions ON directions.id = skills.direction_id
+            JOIN spheres ON spheres.id = directions.sphere_id
+            WHERE nodes.slug = ?
+              AND spheres.campaign_id = ?
+          )
           AND is_minimum_step = 1
       `,
-      [copy.actionTitle, copy.actionDetails, updatedAt, slug],
+      [copy.actionTitle, copy.actionDetails, updatedAt, slug, campaignId],
     );
   }
 
-  await database.execute('UPDATE daily_sessions SET summary_note = ? WHERE summary_note = ?', [
+  await updateSessionSummaryNote(database, campaignId,
     'Запущено с первой рекомендации экрана «Сейчас».',
     'Started from the first Now recommendation.',
-  ]);
-  await database.execute('UPDATE daily_session_events SET note = ? WHERE note = ?', [
+  );
+  await updateSessionEventNote(database, campaignId,
     'Выбрано из первой рекомендации экрана «Сейчас».',
     'Selected from the first Now surface.',
-  ]);
-  await database.execute('UPDATE daily_session_events SET note = ? WHERE note = ?', [
+  );
+  await updateSessionEventNote(database, campaignId,
     'Завершено из потока экрана «Сейчас».',
     'Completed from the Now session flow.',
-  ]);
-  await database.execute('UPDATE daily_session_events SET note = ? WHERE note = ?', [
+  );
+  await updateSessionEventNote(database, campaignId,
     'Все видимые шаги текущего узла завершены.',
     'All visible actions on the current node are complete.',
-  ]);
-  await database.execute('UPDATE daily_session_events SET note = ? WHERE note = ?', [
+  );
+  await updateSessionEventNote(database, campaignId,
     'Главный шаг завершен из потока «Сейчас».',
     'Primary action completed from the Now flow.',
-  ]);
-  await database.execute('UPDATE daily_session_events SET note = ? WHERE note = ?', [
+  );
+  await updateSessionEventNote(database, campaignId,
     'Шаг отложен до следующего прохода.',
     'Deferred from the Now session flow.',
-  ]);
-  await database.execute('UPDATE daily_session_events SET note = ? WHERE note = ?', [
+  );
+  await updateSessionEventNote(database, campaignId,
     'Шаг заблокирован из потока «Сейчас».',
     'Blocked from the Now session flow.',
-  ]);
-  await database.execute('UPDATE daily_sessions SET summary_note = ? WHERE summary_note = ?', [
+  );
+  await updateSessionSummaryNote(database, campaignId,
     'Текущий шаг отложен до следующего прохода.',
     'Current action deferred for a later pass.',
-  ]);
-  await database.execute('UPDATE daily_sessions SET summary_note = ? WHERE summary_note = ?', [
+  );
+  await updateSessionSummaryNote(database, campaignId,
     'Текущий шаг уперся в барьер.',
     'Current action blocked by a barrier.',
-  ]);
+  );
 };
 
 
@@ -581,14 +867,71 @@ const rankCandidates = (rows) =>
     .filter((candidate) => candidate.unresolvedDependencies === 0)
     .sort((left, right) => right.score - left.score || left.actionId - right.actionId);
 
-const loadMetrics = async (database) => {
+const loadMetrics = async (database, campaignId) => {
   const metricQueries = [
-    ['spheres', 'SELECT COUNT(*) AS count FROM spheres'],
-    ['directions', 'SELECT COUNT(*) AS count FROM directions'],
-    ['skills', 'SELECT COUNT(*) AS count FROM skills'],
-    ['nodes', 'SELECT COUNT(*) AS count FROM nodes WHERE is_archived = 0'],
-    ['actions', "SELECT COUNT(*) AS count FROM node_actions WHERE status IN ('todo', 'ready', 'doing')"],
-    ['dueReviews', "SELECT COUNT(*) AS count FROM review_states WHERE current_risk = 'high' OR (next_due_at IS NOT NULL AND next_due_at <= ?)", [currentTimestamp()]],
+    ['spheres', 'SELECT COUNT(*) AS count FROM spheres WHERE campaign_id = ?', [campaignId]],
+    [
+      'directions',
+      `
+        SELECT COUNT(*) AS count
+        FROM directions
+        JOIN spheres ON spheres.id = directions.sphere_id
+        WHERE spheres.campaign_id = ?
+      `,
+      [campaignId],
+    ],
+    [
+      'skills',
+      `
+        SELECT COUNT(*) AS count
+        FROM skills
+        JOIN directions ON directions.id = skills.direction_id
+        JOIN spheres ON spheres.id = directions.sphere_id
+        WHERE spheres.campaign_id = ?
+      `,
+      [campaignId],
+    ],
+    [
+      'nodes',
+      `
+        SELECT COUNT(*) AS count
+        FROM nodes
+        JOIN skills ON skills.id = nodes.skill_id
+        JOIN directions ON directions.id = skills.direction_id
+        JOIN spheres ON spheres.id = directions.sphere_id
+        WHERE spheres.campaign_id = ?
+          AND nodes.is_archived = 0
+      `,
+      [campaignId],
+    ],
+    [
+      'actions',
+      `
+        SELECT COUNT(*) AS count
+        FROM node_actions
+        JOIN nodes ON nodes.id = node_actions.node_id
+        JOIN skills ON skills.id = nodes.skill_id
+        JOIN directions ON directions.id = skills.direction_id
+        JOIN spheres ON spheres.id = directions.sphere_id
+        WHERE spheres.campaign_id = ?
+          AND node_actions.status IN ('todo', 'ready', 'doing')
+      `,
+      [campaignId],
+    ],
+    [
+      'dueReviews',
+      `
+        SELECT COUNT(*) AS count
+        FROM review_states
+        JOIN nodes ON nodes.id = review_states.node_id
+        JOIN skills ON skills.id = nodes.skill_id
+        JOIN directions ON directions.id = skills.direction_id
+        JOIN spheres ON spheres.id = directions.sphere_id
+        WHERE spheres.campaign_id = ?
+          AND (review_states.current_risk = 'high' OR (review_states.next_due_at IS NOT NULL AND review_states.next_due_at <= ?))
+      `,
+      [campaignId, currentTimestamp()],
+    ],
   ];
 
   const results = await Promise.all(
@@ -598,16 +941,17 @@ const loadMetrics = async (database) => {
   return Object.fromEntries(results);
 };
 
-const loadTodaySession = async (database, dailySessionStore) => {
+const loadTodaySession = async (database, dailySessionStore, campaignId) => {
   const rows = await database.select(
     `
       SELECT *
       FROM daily_sessions
       WHERE session_date = ?
+        AND campaign_id = ?
       ORDER BY id DESC
       LIMIT 1
     `,
-    [todayDate()],
+    [todayDate(), campaignId],
   );
 
   const session = rows[0] ?? null;
@@ -624,30 +968,46 @@ const loadTodaySession = async (database, dailySessionStore) => {
   };
 };
 
-const loadActionRecord = async (database, actionId) => {
-  const rows = await database.select('SELECT * FROM node_actions WHERE id = ?', [actionId]);
+const loadActionRecord = async (database, actionId, campaignId = null) => {
+  const rows = await database.select(
+    `
+      SELECT node_actions.*
+      FROM node_actions
+      JOIN nodes ON nodes.id = node_actions.node_id
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE node_actions.id = ?
+        AND (? IS NULL OR spheres.campaign_id = ?)
+      LIMIT 1
+    `,
+    [actionId, campaignId, campaignId],
+  );
   return rows[0] ?? null;
 };
 
-const loadNodeMetadata = async (database, nodeId) => {
+const loadNodeMetadata = async (database, nodeId, campaignId = null) => {
   const rows = await database.select(
     `
       SELECT
         nodes.*,
         skills.name AS skill_name,
         skills.id AS skill_id,
+        skills.primary_stat_id,
         directions.name AS direction_name,
         directions.id AS direction_id,
         spheres.name AS sphere_name
         ,spheres.id AS sphere_id
+        ,spheres.campaign_id AS campaign_id
       FROM nodes
       JOIN skills ON skills.id = nodes.skill_id
       JOIN directions ON directions.id = skills.direction_id
       JOIN spheres ON spheres.id = directions.sphere_id
       WHERE nodes.id = ?
+        AND (? IS NULL OR spheres.campaign_id = ?)
       LIMIT 1
     `,
-    [nodeId],
+    [nodeId, campaignId, campaignId],
   );
 
   return rows[0] ?? null;
@@ -705,14 +1065,14 @@ const loadReviewState = async (database, nodeId) => {
   return rows[0] ?? null;
 };
 
-const loadNodeFocus = async (database, dailySessionStore, nodeId, actionId = null) => {
+const loadNodeFocus = async (database, dailySessionStore, nodeId, actionId = null, campaignId = null) => {
   const [node, actions, dependencies, dependents, reviewState, todaySession] = await Promise.all([
-    loadNodeMetadata(database, nodeId),
+    loadNodeMetadata(database, nodeId, campaignId),
     loadNodeActions(database, nodeId),
     loadDependencies(database, nodeId),
     loadDependents(database, nodeId),
     loadReviewState(database, nodeId),
-    loadTodaySession(database, dailySessionStore),
+    loadTodaySession(database, dailySessionStore, campaignId),
   ]);
 
   if (!node) {
@@ -747,7 +1107,7 @@ const loadNodeFocus = async (database, dailySessionStore, nodeId, actionId = nul
   };
 };
 
-const loadHierarchyTree = async (database) => {
+const loadHierarchyTree = async (database, campaignId) => {
   const [spheres, directions, skills, nodes] = await Promise.all([
     database.select(
       `
@@ -761,9 +1121,11 @@ const loadHierarchyTree = async (database) => {
         LEFT JOIN nodes ON nodes.skill_id = skills.id AND nodes.is_archived = 0
         LEFT JOIN node_actions actions ON actions.node_id = nodes.id
         WHERE spheres.is_archived = 0
+          AND spheres.campaign_id = ?
         GROUP BY spheres.id
         ORDER BY spheres.sort_order ASC, spheres.id ASC
       `,
+      [campaignId],
     ),
     database.select(
       `
@@ -775,10 +1137,13 @@ const loadHierarchyTree = async (database) => {
         LEFT JOIN skills ON skills.direction_id = directions.id
         LEFT JOIN nodes ON nodes.skill_id = skills.id AND nodes.is_archived = 0
         LEFT JOIN node_actions actions ON actions.node_id = nodes.id
+        JOIN spheres ON spheres.id = directions.sphere_id
         WHERE directions.is_archived = 0
+          AND spheres.campaign_id = ?
         GROUP BY directions.id
         ORDER BY directions.sort_order ASC, directions.id ASC
       `,
+      [campaignId],
     ),
     database.select(
       `
@@ -787,12 +1152,16 @@ const loadHierarchyTree = async (database) => {
           COUNT(DISTINCT nodes.id) AS node_count,
           COUNT(DISTINCT CASE WHEN actions.status IN ('todo', 'ready', 'doing') THEN actions.id END) AS open_action_count
         FROM skills
+        JOIN directions ON directions.id = skills.direction_id
+        JOIN spheres ON spheres.id = directions.sphere_id
         LEFT JOIN nodes ON nodes.skill_id = skills.id AND nodes.is_archived = 0
         LEFT JOIN node_actions actions ON actions.node_id = nodes.id
         WHERE skills.is_archived = 0
+          AND spheres.campaign_id = ?
         GROUP BY skills.id
         ORDER BY skills.sort_order ASC, skills.id ASC
       `,
+      [campaignId],
     ),
     database.select(
       `
@@ -803,6 +1172,7 @@ const loadHierarchyTree = async (database) => {
           spheres.name AS sphere_name,
           review_states.current_risk,
           review_states.next_due_at,
+          skills.primary_stat_id,
           (
             SELECT COUNT(*)
             FROM node_actions actions
@@ -831,8 +1201,10 @@ const loadHierarchyTree = async (database) => {
         JOIN spheres ON spheres.id = directions.sphere_id
         LEFT JOIN review_states ON review_states.node_id = nodes.id
         WHERE nodes.is_archived = 0
+          AND spheres.campaign_id = ?
         ORDER BY nodes.updated_at DESC, nodes.id ASC
       `,
+      [campaignId],
     ),
   ]);
 
@@ -852,7 +1224,7 @@ const loadHierarchyTree = async (database) => {
   }));
 };
 
-const loadActiveGraphEdges = (database) =>
+const loadActiveGraphEdges = (database, campaignId) =>
   database.select(
     `
       SELECT
@@ -863,17 +1235,26 @@ const loadActiveGraphEdges = (database) =>
       FROM node_dependencies dependencies
       JOIN nodes source_nodes ON source_nodes.id = dependencies.blocked_node_id
       JOIN nodes target_nodes ON target_nodes.id = dependencies.blocking_node_id
+      JOIN skills source_skills ON source_skills.id = source_nodes.skill_id
+      JOIN directions source_directions ON source_directions.id = source_skills.direction_id
+      JOIN spheres source_spheres ON source_spheres.id = source_directions.sphere_id
+      JOIN skills target_skills ON target_skills.id = target_nodes.skill_id
+      JOIN directions target_directions ON target_directions.id = target_skills.direction_id
+      JOIN spheres target_spheres ON target_spheres.id = target_directions.sphere_id
       WHERE source_nodes.is_archived = 0
         AND target_nodes.is_archived = 0
+        AND source_spheres.campaign_id = ?
+        AND target_spheres.campaign_id = ?
       ORDER BY dependencies.id ASC
     `,
+    [campaignId, campaignId],
   );
 
-const buildNavigationSnapshot = async (database) => {
+const buildNavigationSnapshot = async (database, campaignId) => {
   const [tree, dashboard, edges] = await Promise.all([
-    loadHierarchyTree(database),
-    createNowServiceContext(database).getDashboard(),
-    loadActiveGraphEdges(database),
+    loadHierarchyTree(database, campaignId),
+    createNowServiceContext(database, campaignId).getDashboard(),
+    loadActiveGraphEdges(database, campaignId),
   ]);
   const firstNode =
     dashboard.primaryRecommendation != null
@@ -892,12 +1273,12 @@ const buildNavigationSnapshot = async (database) => {
   };
 };
 
-const createNowServiceContext = (database) => ({
+const createNowServiceContext = (database, campaignId) => ({
   getDashboard: async () => {
     const [metrics, rawCandidates, todaySession] = await Promise.all([
-      loadMetrics(database),
-      loadCandidateRows(database),
-      loadTodaySession(database, { getEventsForSession: (sessionId) => database.select('SELECT * FROM daily_session_events WHERE session_id = ? ORDER BY id ASC', [sessionId]) }),
+      loadMetrics(database, campaignId),
+      loadCandidateRows(database, campaignId),
+      loadTodaySession(database, { getEventsForSession: (sessionId) => database.select('SELECT * FROM daily_session_events WHERE session_id = ? ORDER BY id ASC', [sessionId]) }, campaignId),
     ]);
 
     const rankedCandidates = rankCandidates(rawCandidates);
@@ -911,11 +1292,11 @@ const createNowServiceContext = (database) => ({
   },
 });
 
-const ensureActiveSession = async (service, actionId) => {
-  let session = await loadTodaySession(service.database, service.dailySessionStore);
+const ensureActiveSession = async (service, campaignId, actionId) => {
+  let session = await loadTodaySession(service.database, service.dailySessionStore, campaignId);
 
   if (!session || session.status !== 'active') {
-    session = await service.startTodaySessionFromRecommendation(actionId);
+    session = await service.startTodaySessionFromRecommendation(campaignId, actionId);
   }
 
   return session;
@@ -929,9 +1310,10 @@ const finalizeSessionOutcome = async (service, sessionId, timestamp, summaryNote
     updated_at: timestamp,
   });
 
-const refreshOutcomeResult = async (service, nodeId, actionId = null) => ({
-  dashboard: await service.getDashboard(),
-  focus: await service.getNodeFocus(nodeId, actionId),
+const refreshOutcomeResult = async (service, campaignId, nodeId, actionId = null, xpGrantResult = null) => ({
+  dashboard: await service.getDashboard(campaignId),
+  focus: await service.getNodeFocus(campaignId, nodeId, actionId),
+  xpWarning: buildXpWarning(xpGrantResult),
 });
 
 const navigationContainsNode = (navigation, nodeId) =>
@@ -993,11 +1375,11 @@ const resolveNavigationSelectionAfterNodeMutation = (navigation, node, actionId 
   return findFirstNavigationSelectionInSphere(navigation, sphereId) ?? navigation.defaultSelection;
 };
 
-const refreshEditorMutationResult = async (service, nodeId, actionId = null) => {
+const refreshEditorMutationResult = async (service, campaignId, nodeId, actionId = null) => {
   const [node, dashboard, navigation] = await Promise.all([
-    service.getNodeEditorRecord(nodeId),
-    service.getDashboard(),
-    service.getNavigationSnapshot(),
+    service.getNodeEditorRecord(campaignId, nodeId),
+    service.getDashboard(campaignId),
+    service.getNavigationSnapshot(campaignId),
   ]);
 
   if (!node) {
@@ -1006,7 +1388,7 @@ const refreshEditorMutationResult = async (service, nodeId, actionId = null) => 
 
   const selection = resolveNavigationSelectionAfterNodeMutation(navigation, node, actionId);
   const focus =
-    selection != null ? await service.getNodeFocus(selection.nodeId, selection.actionId ?? null) : null;
+    selection != null ? await service.getNodeFocus(campaignId, selection.nodeId, selection.actionId ?? null) : null;
 
   return {
     node,
@@ -1017,14 +1399,14 @@ const refreshEditorMutationResult = async (service, nodeId, actionId = null) => 
   };
 };
 
-const refreshGraphMutationResult = async (service, edge, preferredNodeId = null) => {
-  const navigation = await service.getNavigationSnapshot();
+const refreshGraphMutationResult = async (service, campaignId, edge, preferredNodeId = null) => {
+  const navigation = await service.getNavigationSnapshot(campaignId);
   const selection =
     preferredNodeId != null && navigationContainsNode(navigation, preferredNodeId)
       ? { nodeId: preferredNodeId, actionId: null }
       : navigation.defaultSelection;
   const focus =
-    selection != null ? await service.getNodeFocus(selection.nodeId, selection.actionId ?? null) : null;
+    selection != null ? await service.getNodeFocus(campaignId, selection.nodeId, selection.actionId ?? null) : null;
 
   return {
     edge,
@@ -1034,7 +1416,7 @@ const refreshGraphMutationResult = async (service, edge, preferredNodeId = null)
   };
 };
 
-const loadCandidateRows = (database) =>
+const loadCandidateRows = (database, campaignId) =>
   database.select(
     `
       SELECT
@@ -1053,6 +1435,7 @@ const loadCandidateRows = (database) =>
         nodes.importance,
         nodes.last_touched_at,
         skills.name AS skill_name,
+        skills.primary_stat_id,
         directions.name AS direction_name,
         spheres.name AS sphere_name,
         review_states.current_risk,
@@ -1080,10 +1463,12 @@ const loadCandidateRows = (database) =>
       JOIN spheres ON spheres.id = directions.sphere_id
       LEFT JOIN review_states ON review_states.node_id = nodes.id
       WHERE nodes.is_archived = 0
+        AND spheres.campaign_id = ?
         AND nodes.status IN ('active', 'paused')
         AND actions.status IN ('todo', 'ready', 'doing')
       ORDER BY actions.id ASC
     `,
+    [campaignId],
   );
 
 const loadPersistentBarrierNotes = async (nodeNoteStore, nodeId) => nodeNoteStore.listBarrierNotesForNode(nodeId, { openOnly: true });
@@ -1102,7 +1487,7 @@ const mapNoteKindToJournalEventType = (noteKind) => {
   return noteKind;
 };
 
-const buildJournalSnapshotFromNotes = async (database, nodeNoteStore) => {
+const buildJournalSnapshotFromNotes = async (database, nodeNoteStore, campaignId) => {
   const [barrierNotes, errorNotes] = await Promise.all([
     nodeNoteStore.listRecentBarrierNotes(40),
     nodeNoteStore.listRecentErrorNotes(40),
@@ -1133,9 +1518,36 @@ const buildJournalSnapshotFromNotes = async (database, nodeNoteStore) => {
     return enriched;
   };
 
+  const belongsToCampaign = async (row) => {
+    const [node] = await database.select(
+      `
+        SELECT nodes.id
+        FROM nodes
+        JOIN skills ON skills.id = nodes.skill_id
+        JOIN directions ON directions.id = skills.direction_id
+        JOIN spheres ON spheres.id = directions.sphere_id
+        WHERE nodes.id = ?
+          AND spheres.campaign_id = ?
+        LIMIT 1
+      `,
+      [row.node_id, campaignId],
+    );
+    return node != null;
+  };
+
+  const scopedBarrierNotes = [];
+  for (const row of barrierNotes) {
+    if (await belongsToCampaign(row)) scopedBarrierNotes.push(row);
+  }
+
+  const scopedErrorNotes = [];
+  for (const row of errorNotes) {
+    if (await belongsToCampaign(row)) scopedErrorNotes.push(row);
+  }
+
   const [barrierEntries, errorEntries] = await Promise.all([
-    enrichRows(barrierNotes, 'barrier'),
-    enrichRows(errorNotes, 'error'),
+    enrichRows(scopedBarrierNotes, 'barrier'),
+    enrichRows(scopedErrorNotes, 'error'),
   ]);
 
   const adjustmentEntries = errorEntries.filter((entry) => ['shrunk', 'deferred', 'error', 'follow_up'].includes(entry.eventType));
@@ -1187,18 +1599,131 @@ const getNextActionSortOrder = async (database, nodeId) => {
   return Number(rows[0]?.next_sort_order ?? 0);
 };
 
-export const createNowService = ({ database, hierarchyStore, reviewStateStore, dailySessionStore, nodeNoteStore }) => {
-  let starterLocalizationPromise = null;
+const findFirstCampaignStatId = async (database, campaignId) => {
+  const rows = await database.select(
+    `
+      SELECT id
+      FROM campaign_stats
+      WHERE campaign_id = ?
+        AND is_archived = 0
+      ORDER BY sort_order ASC, id ASC
+      LIMIT 1
+    `,
+    [campaignId],
+  );
+  return rows[0]?.id ?? null;
+};
 
-  const ensureStarterLocalization = async () => {
-    if (!starterLocalizationPromise) {
-      starterLocalizationPromise = localizeStarterWorkspace(database).catch((error) => {
-        starterLocalizationPromise = null;
-        throw error;
-      });
+const levelFromXp = (xp) => {
+  if (xp >= 700) return 5 + Math.floor((xp - 700) / 300);
+  if (xp >= 450) return 4;
+  if (xp >= 250) return 3;
+  if (xp >= 100) return 2;
+  return 1;
+};
+
+const nextLevelXp = (level) => {
+  if (level <= 1) return 100;
+  if (level === 2) return 250;
+  if (level === 3) return 450;
+  if (level === 4) return 700;
+  return 700 + (level - 4) * 300;
+};
+
+const buildWindRoseSnapshot = async (database, campaignId) => {
+  const [stats, branches] = await Promise.all([
+    database.select(
+      `
+        SELECT
+          campaign_stats.*,
+          COALESCE(SUM(CASE WHEN grants.active = 1 THEN grants.xp_amount ELSE 0 END), 0) AS xp
+        FROM campaign_stats
+        LEFT JOIN stat_xp_grants grants ON grants.stat_id = campaign_stats.id
+        WHERE campaign_stats.campaign_id = ?
+          AND campaign_stats.is_archived = 0
+        GROUP BY campaign_stats.id
+        ORDER BY campaign_stats.sort_order ASC, campaign_stats.id ASC
+      `,
+      [campaignId],
+    ),
+    database.select(
+      `
+        SELECT
+          skills.id,
+          skills.name,
+          skills.primary_stat_id,
+          COUNT(DISTINCT nodes.id) AS node_count,
+          COUNT(DISTINCT CASE WHEN nodes.status = 'done' THEN nodes.id END) AS done_node_count,
+          (
+            SELECT nodes_inner.id
+            FROM nodes nodes_inner
+            WHERE nodes_inner.skill_id = skills.id
+              AND nodes_inner.is_archived = 0
+            ORDER BY
+              CASE WHEN nodes_inner.status IN ('active', 'paused') THEN 0 ELSE 1 END ASC,
+              nodes_inner.updated_at DESC,
+              nodes_inner.id ASC
+            LIMIT 1
+          ) AS focus_node_id,
+          (
+            SELECT actions.id
+            FROM node_actions actions
+            JOIN nodes nodes_inner ON nodes_inner.id = actions.node_id
+            WHERE nodes_inner.skill_id = skills.id
+              AND nodes_inner.is_archived = 0
+              AND actions.status IN ('todo', 'ready', 'doing')
+            ORDER BY actions.sort_order ASC, actions.id ASC
+            LIMIT 1
+          ) AS next_action_id
+        FROM skills
+        JOIN directions ON directions.id = skills.direction_id
+        JOIN spheres ON spheres.id = directions.sphere_id
+        LEFT JOIN nodes ON nodes.skill_id = skills.id AND nodes.is_archived = 0
+        WHERE spheres.campaign_id = ?
+          AND skills.is_archived = 0
+        GROUP BY skills.id
+        ORDER BY skills.sort_order ASC, skills.id ASC
+      `,
+      [campaignId],
+    ),
+  ]);
+
+  return {
+    campaignId,
+    stats: stats.map((stat) => {
+      const xp = Number(stat.xp ?? 0);
+      const level = levelFromXp(xp);
+      const nextXp = nextLevelXp(level);
+      return {
+        ...stat,
+        xp,
+        level,
+        nextLevelXp: nextXp,
+        progressToNext: nextXp <= 0 ? 0 : Math.min(100, Math.round((xp / nextXp) * 100)),
+        branches: branches.filter((branch) => branch.primary_stat_id === stat.id),
+      };
+    }),
+    unassignedBranches: branches.filter((branch) => branch.primary_stat_id == null),
+  };
+};
+
+export const createNowService = ({ database, hierarchyStore, reviewStateStore, dailySessionStore, nodeNoteStore }) => {
+  const starterLocalizationPromises = new Map();
+
+  const ensureStarterLocalization = async (campaignId) => {
+    if (!campaignId) {
+      return;
     }
 
-    return starterLocalizationPromise;
+    if (!starterLocalizationPromises.has(campaignId)) {
+      const promise = localizeStarterWorkspace(database, campaignId).catch((error) => {
+        starterLocalizationPromises.delete(campaignId);
+        throw error;
+      });
+      starterLocalizationPromises.set(campaignId, promise);
+    }
+
+    return starterLocalizationPromises.get(campaignId);
   };
 
   return {
@@ -1208,13 +1733,14 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     dailySessionStore,
     nodeNoteStore,
 
-  async getDashboard() {
-    await ensureStarterLocalization();
+  async getDashboard(campaignId = null) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await ensureStarterLocalization(resolvedCampaignId);
 
     const [metrics, rawCandidates, todaySession] = await Promise.all([
-      loadMetrics(database),
-      loadCandidateRows(database),
-      loadTodaySession(database, dailySessionStore),
+      loadMetrics(database, resolvedCampaignId),
+      loadCandidateRows(database, resolvedCampaignId),
+      loadTodaySession(database, dailySessionStore, resolvedCampaignId),
     ]);
 
     const rankedCandidates = rankCandidates(rawCandidates);
@@ -1227,10 +1753,16 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     };
   },
 
-  async getNodeFocus(nodeId, actionId = null) {
-    await ensureStarterLocalization();
+  async getNodeFocus(campaignId, nodeId, actionId = null) {
+    if (arguments.length <= 2) {
+      actionId = nodeId ?? null;
+      nodeId = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await ensureStarterLocalization(resolvedCampaignId);
 
-    const focus = await loadNodeFocus(database, dailySessionStore, nodeId, actionId);
+    const focus = await loadNodeFocus(database, dailySessionStore, nodeId, actionId, resolvedCampaignId);
 
     if (!focus) {
       return null;
@@ -1248,92 +1780,198 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     };
   },
 
-  async getNavigationSnapshot() {
-    await ensureStarterLocalization();
+  async getNavigationSnapshot(campaignId = null) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await ensureStarterLocalization(resolvedCampaignId);
 
-    return buildNavigationSnapshot(database);
+    return buildNavigationSnapshot(database, resolvedCampaignId);
   },
 
-  async getNodeEditorRecord(nodeId) {
-    return hierarchyStore.getNodeById(nodeId);
+  async getNodeEditorRecord(campaignId, nodeId) {
+    if (arguments.length === 1) {
+      nodeId = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    return loadNodeMetadata(database, nodeId, resolvedCampaignId);
   },
 
-  async createNodeEditor(payload) {
+  async createNodeEditor(campaignId, payload) {
+    if (arguments.length === 1) {
+      payload = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertSkillInCampaign(database, payload.skill_id, resolvedCampaignId);
     const node = await hierarchyStore.createNode(payload);
 
     if (!node) {
       return null;
     }
 
-    return refreshEditorMutationResult(this, node.id);
+    const nodeCampaignId = await findNodeCampaignId(database, node.id);
+    if (nodeCampaignId !== resolvedCampaignId) {
+      throw new Error('Новый узел создан вне выбранной кампании.');
+    }
+
+    return refreshEditorMutationResult(this, resolvedCampaignId, node.id);
   },
 
-  async updateNodeEditor(nodeId, payload) {
+  async updateNodeEditor(campaignId, nodeId, payload) {
+    if (arguments.length === 2) {
+      payload = nodeId;
+      nodeId = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const before = await loadNodeMetadata(database, nodeId, resolvedCampaignId);
+    if (!before) {
+      return null;
+    }
     const node = await hierarchyStore.updateNode(nodeId, payload);
 
     if (!node) {
       return null;
     }
 
-    return refreshEditorMutationResult(this, node.id);
+    if (before.status !== node.status && (before.status === 'done' || node.status === 'done')) {
+      await syncNodeCompletionXpGrant(database, node.id, node.status);
+    }
+
+    return refreshEditorMutationResult(this, resolvedCampaignId, node.id);
   },
 
-  async archiveNodeEditor(nodeId, payload = {}) {
+  async archiveNodeEditor(campaignId, nodeId, payload = {}) {
+    if (arguments.length <= 2) {
+      payload = nodeId ?? {};
+      nodeId = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const before = await loadNodeMetadata(database, nodeId, resolvedCampaignId);
+    if (!before) {
+      return null;
+    }
     const node = await hierarchyStore.archiveNode(nodeId, payload);
 
     if (!node) {
       return null;
     }
 
-    return refreshEditorMutationResult(this, node.id);
+    return refreshEditorMutationResult(this, resolvedCampaignId, node.id);
   },
 
-  async duplicateNodeEditor(nodeId, payload = {}) {
+  async duplicateNodeEditor(campaignId, nodeId, payload = {}) {
+    if (arguments.length <= 2) {
+      payload = nodeId ?? {};
+      nodeId = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const before = await loadNodeMetadata(database, nodeId, resolvedCampaignId);
+    if (!before) {
+      return null;
+    }
+    await assertSkillInCampaign(database, payload.skill_id ?? before.skill_id, resolvedCampaignId);
     const node = await hierarchyStore.duplicateNode(nodeId, payload);
 
     if (!node) {
       return null;
     }
 
-    return refreshEditorMutationResult(this, node.id);
+    return refreshEditorMutationResult(this, resolvedCampaignId, node.id);
   },
 
-  async createGraphEdge(payload) {
+  async createGraphEdge(campaignId, payload) {
+    if (arguments.length === 1) {
+      payload = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const [sourceCampaignId, targetCampaignId] = await Promise.all([
+      findNodeCampaignId(database, payload.blocked_node_id),
+      findNodeCampaignId(database, payload.blocking_node_id),
+    ]);
+
+    if (sourceCampaignId !== resolvedCampaignId || targetCampaignId !== resolvedCampaignId) {
+      throw new Error('Связь можно создать только внутри выбранной кампании.');
+    }
+
     const edge = await hierarchyStore.addNodeDependency(payload);
 
     if (!edge) {
       return null;
     }
 
-    return refreshGraphMutationResult(this, edge, payload?.blocked_node_id ?? edge.blocked_node_id);
+    return refreshGraphMutationResult(this, resolvedCampaignId, edge, payload?.blocked_node_id ?? edge.blocked_node_id);
   },
 
-  async updateGraphEdge(edgeId, payload) {
+  async updateGraphEdge(campaignId, edgeId, payload) {
+    if (arguments.length === 2) {
+      payload = edgeId;
+      edgeId = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const current = await loadEdgeBoundary(database, edgeId);
+    if (!current) {
+      return null;
+    }
+    assertEdgeInCampaign(current, resolvedCampaignId);
+    await assertEdgeEndpointsInCampaign(
+      database,
+      {
+        blocked_node_id: payload.blocked_node_id ?? current.blocked_node_id,
+        blocking_node_id: payload.blocking_node_id ?? current.blocking_node_id,
+      },
+      resolvedCampaignId,
+    );
     const edge = await hierarchyStore.updateNodeDependency(edgeId, payload);
 
     if (!edge) {
       return null;
     }
 
-    return refreshGraphMutationResult(this, edge, edge.blocked_node_id);
+    return refreshGraphMutationResult(this, resolvedCampaignId, edge, edge.blocked_node_id);
   },
 
-  async deleteGraphEdge(edgeId) {
+  async deleteGraphEdge(campaignId, edgeId) {
+    if (arguments.length === 1) {
+      edgeId = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const current = await loadEdgeBoundary(database, edgeId);
+    if (!current) {
+      return null;
+    }
+    assertEdgeInCampaign(current, resolvedCampaignId);
     const edge = await hierarchyStore.deleteNodeDependency(edgeId);
 
     if (!edge) {
       return null;
     }
 
-    return refreshGraphMutationResult(this, edge, edge.blocked_node_id);
+    return refreshGraphMutationResult(this, resolvedCampaignId, edge, edge.blocked_node_id);
   },
 
-  async getJournalSnapshot() {
-    return buildJournalSnapshotFromNotes(database, nodeNoteStore);
+  async getJournalSnapshot(campaignId = null) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    return buildJournalSnapshotFromNotes(database, nodeNoteStore, resolvedCampaignId);
   },
 
-  async createJournalFollowUpStep({ nodeId, title = '', note = '', barrierType = null } = {}) {
-    const node = await loadNodeMetadata(database, nodeId);
+  async getWindRoseSnapshot(campaignId = null) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    return buildWindRoseSnapshot(database, resolvedCampaignId);
+  },
+
+  async createJournalFollowUpStep(campaignId, { nodeId, title = '', note = '', barrierType = null } = {}) {
+    if (arguments.length === 1) {
+      ({ nodeId, title = '', note = '', barrierType = null } = campaignId ?? {});
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const node = await loadNodeMetadata(database, nodeId, resolvedCampaignId);
 
     if (!node) {
       return null;
@@ -1367,22 +2005,34 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     });
 
     return {
-      dashboard: await this.getDashboard(),
-      focus: await this.getNodeFocus(nodeId, action.id),
+      dashboard: await this.getDashboard(resolvedCampaignId),
+      focus: await this.getNodeFocus(resolvedCampaignId, nodeId, action.id),
       createdAction: action,
     };
   },
 
-  async createStarterWorkspace() {
-    const existingStarterNodes = await database.select('SELECT id FROM nodes WHERE slug = ? LIMIT 1', [
-      STARTER_SLUGS.primaryNode,
-    ]);
+  async createStarterWorkspace(campaignId = null) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const existingStarterNodes = await database.select(
+      `
+        SELECT nodes.id
+        FROM nodes
+        JOIN skills ON skills.id = nodes.skill_id
+        JOIN directions ON directions.id = skills.direction_id
+        JOIN spheres ON spheres.id = directions.sphere_id
+        WHERE nodes.slug = ?
+          AND spheres.campaign_id = ?
+        LIMIT 1
+      `,
+      [STARTER_SLUGS.primaryNode, resolvedCampaignId],
+    );
 
     if (existingStarterNodes.length > 0) {
-      return this.getDashboard();
+      return this.getDashboard(resolvedCampaignId);
     }
 
     const sphere = await hierarchyStore.createSphere({
+      campaign_id: resolvedCampaignId,
       name: 'Работа',
       slug: STARTER_SLUGS.sphere,
       description: 'Стартовый контур новой системы.',
@@ -1393,8 +2043,10 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       slug: STARTER_SLUGS.direction,
       description: 'Ближайший продуктовый цикл.',
     });
+    const primaryStatId = await findFirstCampaignStatId(database, resolvedCampaignId);
     const skill = await hierarchyStore.createSkill({
       direction_id: direction.id,
+      primary_stat_id: primaryStatId,
       name: 'Продуктовый цикл',
       slug: STARTER_SLUGS.skill,
       description: 'Новый рабочий контур поверх старого приложения.',
@@ -1467,10 +2119,15 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       is_minimum_step: 1,
     });
 
-    return this.getDashboard();
+    return this.getDashboard(resolvedCampaignId);
   },
 
-  async createStructureWorkspace({ name }) {
+  async createStructureWorkspace(campaignId = null, { name } = {}) {
+    if (arguments.length === 1 && typeof campaignId === 'object') {
+      ({ name } = campaignId ?? {});
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
     const title = String(name ?? '').trim();
     if (!title) {
       throw new Error('Название структуры обязательно.');
@@ -1485,6 +2142,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     const rootSlug = `${sphereSlug}-root`;
 
     const sphere = await hierarchyStore.createSphere({
+      campaign_id: resolvedCampaignId,
       name: title,
       slug: sphereSlug,
       description: 'Пользовательская учебная структура.',
@@ -1499,8 +2157,10 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       created_at: timestamp,
       updated_at: timestamp,
     });
+    const primaryStatId = await findFirstCampaignStatId(database, resolvedCampaignId);
     const skill = await hierarchyStore.createSkill({
       direction_id: direction.id,
+      primary_stat_id: primaryStatId,
       name: 'Граф курса',
       slug: skillSlug,
       description: 'Узлы и связи, созданные через карту.',
@@ -1532,18 +2192,21 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       is_minimum_step: 1,
     });
 
-    return this.getDashboard();
+    return this.getDashboard(resolvedCampaignId);
   },
 
-  async createLinearAlgebraGraphWorkspace() {
+  async createLinearAlgebraGraphWorkspace(campaignId = null) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
     const timestamp = currentTimestamp();
 
-    const existingSphere = await database.select('SELECT * FROM spheres WHERE slug = ? LIMIT 1', [
+    const existingSphere = await database.select('SELECT * FROM spheres WHERE slug = ? AND campaign_id = ? LIMIT 1', [
       LINEAR_ALGEBRA_GRAPH_SLUGS.sphere,
+      resolvedCampaignId,
     ]);
     const sphere =
       existingSphere[0] ??
       (await hierarchyStore.createSphere({
+        campaign_id: resolvedCampaignId,
         name: 'Алгебра I',
         slug: LINEAR_ALGEBRA_GRAPH_SLUGS.sphere,
         description: 'Иерархический граф курса линейной алгебры.',
@@ -1552,14 +2215,15 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     await database.execute(
       `
         UPDATE spheres
-        SET name = ?, description = ?, is_archived = 0, updated_at = ?
+        SET campaign_id = ?, name = ?, description = ?, is_archived = 0, updated_at = ?
         WHERE id = ?
       `,
-      [sphere.name, 'Иерархический граф курса линейной алгебры.', timestamp, sphere.id],
+      [resolvedCampaignId, sphere.name, 'Иерархический граф курса линейной алгебры.', timestamp, sphere.id],
     );
 
-    const existingDirection = await database.select('SELECT * FROM directions WHERE slug = ? LIMIT 1', [
+    const existingDirection = await database.select('SELECT * FROM directions WHERE slug = ? AND sphere_id = ? LIMIT 1', [
       LINEAR_ALGEBRA_GRAPH_SLUGS.direction,
+      sphere.id,
     ]);
     const direction =
       existingDirection[0] ??
@@ -1585,13 +2249,16 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       ],
     );
 
-    const existingSkill = await database.select('SELECT * FROM skills WHERE slug = ? LIMIT 1', [
+    const existingSkill = await database.select('SELECT * FROM skills WHERE slug = ? AND direction_id = ? LIMIT 1', [
       LINEAR_ALGEBRA_GRAPH_SLUGS.skill,
+      direction.id,
     ]);
+    const primaryStatId = await findFirstCampaignStatId(database, resolvedCampaignId);
     const skill =
       existingSkill[0] ??
       (await hierarchyStore.createSkill({
         direction_id: direction.id,
+        primary_stat_id: primaryStatId,
         name: 'Карта курса',
         slug: LINEAR_ALGEBRA_GRAPH_SLUGS.skill,
         description: 'Скелет учебного графа без внутренних материалов.',
@@ -1600,16 +2267,16 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     await database.execute(
       `
         UPDATE skills
-        SET direction_id = ?, name = ?, description = ?, is_archived = 0, updated_at = ?
+        SET direction_id = ?, primary_stat_id = COALESCE(primary_stat_id, ?), name = ?, description = ?, is_archived = 0, updated_at = ?
         WHERE id = ?
       `,
-      [direction.id, 'Карта курса', 'Скелет учебного графа без внутренних материалов.', timestamp, skill.id],
+      [direction.id, primaryStatId, 'Карта курса', 'Скелет учебного графа без внутренних материалов.', timestamp, skill.id],
     );
 
     const nodesByKey = new Map();
 
     for (const [index, item] of LINEAR_ALGEBRA_GRAPH_NODES.entries()) {
-      const existingNode = await database.select('SELECT * FROM nodes WHERE slug = ? LIMIT 1', [item.slug]);
+      const existingNode = await database.select('SELECT * FROM nodes WHERE slug = ? AND skill_id = ? LIMIT 1', [item.slug, skill.id]);
       const existing = existingNode[0] ?? null;
       let node = existing;
 
@@ -1707,15 +2374,20 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       });
     }
 
-    return this.getDashboard();
+    return this.getDashboard(resolvedCampaignId);
   },
 
-  async startTodaySessionFromPrimaryRecommendation() {
-    return this.startTodaySessionFromRecommendation();
+  async startTodaySessionFromPrimaryRecommendation(campaignId = null) {
+    return this.startTodaySessionFromRecommendation(campaignId, null);
   },
 
-  async startTodaySessionFromRecommendation(actionId = null) {
-    const dashboard = await this.getDashboard();
+  async startTodaySessionFromRecommendation(campaignId = null, actionId = null) {
+    if (arguments.length === 1) {
+      actionId = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const dashboard = await this.getDashboard(resolvedCampaignId);
     const candidates = [dashboard.primaryRecommendation, ...dashboard.queue].filter(Boolean);
     const targetRecommendation = candidates.find((candidate) => candidate.actionId === actionId) ?? dashboard.primaryRecommendation;
 
@@ -1743,6 +2415,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     });
 
     const session = await dailySessionStore.createSession({
+      campaign_id: resolvedCampaignId,
       session_date: todayDate(),
       status: 'active',
       primary_node_id: targetRecommendation.nodeId,
@@ -1759,19 +2432,25 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       note: 'Выбрано из первой рекомендации экрана «Сейчас».',
     });
 
-    return loadTodaySession(database, dailySessionStore);
+    return loadTodaySession(database, dailySessionStore, resolvedCampaignId);
   },
 
-  async completeActionInTodaySession(actionId) {
-    const action = await loadActionRecord(database, actionId);
+  async completeActionInTodaySession(campaignId, actionId) {
+    if (arguments.length === 1) {
+      actionId = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const action = await loadActionRecord(database, actionId, resolvedCampaignId);
 
     if (!action) {
       return null;
     }
 
-    let session = await ensureActiveSession(this, actionId);
+    let session = await ensureActiveSession(this, resolvedCampaignId, actionId);
 
     const timestamp = currentTimestamp();
+    let xpGrantResult = null;
 
     if (action.status !== 'done') {
       await hierarchyStore.updateNodeAction(actionId, {
@@ -1813,6 +2492,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
         last_touched_at: timestamp,
         updated_at: timestamp,
       });
+      xpGrantResult = await syncNodeCompletionXpGrant(database, action.node_id, 'done', timestamp);
     }
 
     if (session.status === 'active') {
@@ -1826,17 +2506,23 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       );
     }
 
-    return refreshOutcomeResult(this, action.node_id, action.id);
+    return refreshOutcomeResult(this, resolvedCampaignId, action.node_id, action.id, xpGrantResult);
   },
 
-  async deferActionInTodaySession(actionId, note = '') {
-    const action = await loadActionRecord(database, actionId);
+  async deferActionInTodaySession(campaignId, actionId, note = '') {
+    if (arguments.length <= 2) {
+      note = actionId ?? '';
+      actionId = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const action = await loadActionRecord(database, actionId, resolvedCampaignId);
 
     if (!action) {
       return null;
     }
 
-    const session = await ensureActiveSession(this, actionId);
+    const session = await ensureActiveSession(this, resolvedCampaignId, actionId);
     const timestamp = currentTimestamp();
 
     await hierarchyStore.updateNodeAction(actionId, {
@@ -1850,6 +2536,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       last_touched_at: timestamp,
       updated_at: timestamp,
     });
+    await syncNodeCompletionXpGrant(database, action.node_id, 'active', timestamp);
 
     const event = await dailySessionStore.addSessionEvent({
       session_id: session.id,
@@ -1872,17 +2559,23 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       await finalizeSessionOutcome(this, session.id, timestamp, 'Текущий шаг отложен до следующего прохода.');
     }
 
-    return refreshOutcomeResult(this, action.node_id, action.id);
+    return refreshOutcomeResult(this, resolvedCampaignId, action.node_id, action.id);
   },
 
-  async blockActionInTodaySession(actionId, { barrierType = null, note = '' } = {}) {
-    const action = await loadActionRecord(database, actionId);
+  async blockActionInTodaySession(campaignId, actionId, { barrierType = null, note = '' } = {}) {
+    if (arguments.length <= 2) {
+      ({ barrierType = null, note = '' } = actionId ?? {});
+      actionId = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const action = await loadActionRecord(database, actionId, resolvedCampaignId);
 
     if (!action) {
       return null;
     }
 
-    const session = await ensureActiveSession(this, actionId);
+    const session = await ensureActiveSession(this, resolvedCampaignId, actionId);
     const timestamp = currentTimestamp();
     const normalizedBarrier = BARRIER_TYPES.includes(barrierType) ? barrierType : null;
     const eventNote = [normalizedBarrier ? `Барьер: ${normalizedBarrier}.` : null, note?.trim() || null]
@@ -1900,6 +2593,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       last_touched_at: timestamp,
       updated_at: timestamp,
     });
+    await syncNodeCompletionXpGrant(database, action.node_id, 'paused', timestamp);
 
     const event = await dailySessionStore.addSessionEvent({
       session_id: session.id,
@@ -1922,17 +2616,23 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       await finalizeSessionOutcome(this, session.id, timestamp, eventNote || 'Текущий шаг уперся в барьер.');
     }
 
-    return refreshOutcomeResult(this, action.node_id, action.id);
+    return refreshOutcomeResult(this, resolvedCampaignId, action.node_id, action.id);
   },
 
-  async shrinkActionInTodaySession(actionId, { title = '', note = '' } = {}) {
-    const action = await loadActionRecord(database, actionId);
+  async shrinkActionInTodaySession(campaignId, actionId, { title = '', note = '' } = {}) {
+    if (arguments.length <= 2) {
+      ({ title = '', note = '' } = actionId ?? {});
+      actionId = campaignId;
+      campaignId = null;
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const action = await loadActionRecord(database, actionId, resolvedCampaignId);
 
     if (!action) {
       return null;
     }
 
-    const session = await ensureActiveSession(this, actionId);
+    const session = await ensureActiveSession(this, resolvedCampaignId, actionId);
     const timestamp = currentTimestamp();
     const smallerStepTitle = title?.trim() || `Smaller step: ${action.title}`;
     const smallerStep = await hierarchyStore.createNodeAction({
@@ -1961,6 +2661,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       last_touched_at: timestamp,
       updated_at: timestamp,
     });
+    await syncNodeCompletionXpGrant(database, action.node_id, 'active', timestamp);
 
     const event = await dailySessionStore.addSessionEvent({
       session_id: session.id,
@@ -1988,7 +2689,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       await finalizeSessionOutcome(this, session.id, timestamp, `Текущий шаг упрощен до меньшего: ${smallerStepTitle}.`);
     }
 
-    return refreshOutcomeResult(this, action.node_id, smallerStep.id);
+    return refreshOutcomeResult(this, resolvedCampaignId, action.node_id, smallerStep.id);
   },
   };
 };

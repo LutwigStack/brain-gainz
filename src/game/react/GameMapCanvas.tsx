@@ -27,6 +27,7 @@ interface GameMapCanvasProps {
   connectSourceNodeId?: number | null;
   connectEdgeType?: 'requires' | 'supports' | 'relates_to' | null;
   visibleSphereId?: number | null;
+  visibleSkillId?: number | null;
   canvasMode?: 'free' | 'layers';
   visibleNodeIds?: number[] | null;
   mapCommand?: { id: number; type: 'focus-node' | 'fit-graph' | 'center-layer' | 'reset-camera' } | null;
@@ -202,6 +203,7 @@ export const GameMapCanvas = ({
   connectSourceNodeId = null,
   connectEdgeType = null,
   visibleSphereId = null,
+  visibleSkillId = null,
   canvasMode = 'free',
   visibleNodeIds = null,
   mapCommand = null,
@@ -216,7 +218,7 @@ export const GameMapCanvas = ({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
   const sceneRef = useRef<BrainGainzScene | null>(null);
-  const modelRef = useRef(createGameViewModel(snapshot, focus, { visibleSphereId }));
+  const modelRef = useRef(createGameViewModel(snapshot, focus, { visibleSphereId, visibleSkillId }));
   const viewportModeKeyRef = useRef<string>('');
   const interactionModeRef = useRef(interactionMode);
   const createModeRef = useRef(createMode);
@@ -287,12 +289,12 @@ export const GameMapCanvas = ({
   const model = useMemo(
     () =>
       filterModelToVisibleNodes(
-        applyPreviewToModel(createGameViewModel(snapshot, focus, { visibleSphereId }), previewNodePositions),
+        applyPreviewToModel(createGameViewModel(snapshot, focus, { visibleSphereId, visibleSkillId }), previewNodePositions),
         visibleNodeIds,
       ),
-    [focus, previewNodePositions, snapshot, visibleNodeIds, visibleSphereId],
+    [focus, previewNodePositions, snapshot, visibleNodeIds, visibleSphereId, visibleSkillId],
   );
-  const viewportModeKey = `${visibleSphereId ?? 'all'}:${canvasMode}:${visibleNodeIds?.join(',') ?? 'all'}`;
+  const viewportModeKey = `${visibleSphereId ?? 'all'}:${visibleSkillId ?? 'all'}:${canvasMode}:${visibleNodeIds?.join(',') ?? 'all'}`;
   const shouldRenderOverview = false;
   const onSelectNodeEvent = useEffectEvent((nodeId: number, input?: { screenX: number; screenY: number }) => {
     const node = findNodeById(snapshot, nodeId);

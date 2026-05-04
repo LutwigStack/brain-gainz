@@ -119,6 +119,7 @@ interface NowViewProps {
   isLoading: boolean;
   isFocusLoading: boolean;
   error: string | null;
+  notice?: string | null;
   isCreatingStarter: boolean;
   onCreateStarterWorkspace: () => void;
   onSelectRecommendation: (recommendation: RecommendationCandidate) => void;
@@ -132,6 +133,7 @@ export const NowView = ({
   isLoading,
   isFocusLoading,
   error,
+  notice = null,
   isCreatingStarter,
   onCreateStarterWorkspace,
   onSelectRecommendation,
@@ -213,6 +215,14 @@ export const NowView = ({
             <PixelSurface frame="accent" padding="md">
               <PixelText as="p" readable size="sm">
                 {error}
+              </PixelText>
+            </PixelSurface>
+          ) : null}
+
+          {notice ? (
+            <PixelSurface frame="ghost" padding="sm">
+              <PixelText as="p" readable size="sm" color="textMuted">
+                {notice}
               </PixelText>
             </PixelSurface>
           ) : null}

@@ -3,7 +3,9 @@ import {
   Brain,
   Compass,
   Download,
+  Globe2,
   Map,
+  Radar,
   Settings,
   Sparkles,
   X,
@@ -18,6 +20,7 @@ import {
   PixelSurface,
   PixelText,
 } from './components/pixel';
+import { CampaignMenu } from './components/CampaignMenu';
 import {
   canDuplicateNodeEditorDraft,
   buildNodeEditorDuplicatePayload,
@@ -34,11 +37,20 @@ const NowView = lazy(() =>
 const NavigationView = lazy(() =>
   import('./components/NavigationView').then((module) => ({ default: module.NavigationView })),
 );
+const WindRoseView = lazy(() =>
+  import('./components/WindRoseView').then((module) => ({ default: module.WindRoseView })),
+);
 
 export default function App() {
   const runtime = getRuntimeProfile();
   const [activeTab, setActiveTab] = useState('now');
-  const normalizedActiveTab = activeTab === 'now' || activeTab === 'map' ? activeTab : 'map';
+  const normalizedActiveTab = activeTab === 'now' || activeTab === 'map' || activeTab === 'wind' ? activeTab : 'now';
+  const [campaigns, setCampaigns] = useState(null);
+  const [campaignsLoading, setCampaignsLoading] = useState(false);
+  const [campaignMutationPending, setCampaignMutationPending] = useState(false);
+  const [campaignError, setCampaignError] = useState(null);
+  const [selectedCampaign, setSelectedCampaign] = useState(null);
+  const [newCampaignName, setNewCampaignName] = useState('');
   const [activeSubject, setActiveSubject] = useState(null);
   const [words, setWords] = useState([]);
   const [groqApiKey, setGroqApiKey] = useState(localStorage.getItem('braingainz_groq_key') || '');
@@ -48,6 +60,7 @@ export default function App() {
   const [nowSnapshot, setNowSnapshot] = useState(null);
   const [nowLoading, setNowLoading] = useState(false);
   const [nowError, setNowError] = useState(null);
+  const [nowNotice, setNowNotice] = useState(null);
   const [nowCreatingStarter, setNowCreatingStarter] = useState(false);
   const [nowFocus, setNowFocus] = useState(null);
   const [nowFocusLoading, setNowFocusLoading] = useState(false);
@@ -58,6 +71,7 @@ export default function App() {
   const [navigationFocus, setNavigationFocus] = useState(null);
   const [navigationFocusLoading, setNavigationFocusLoading] = useState(false);
   const [navigationSelection, setNavigationSelection] = useState(null);
+  const [navigationBranchFilterId, setNavigationBranchFilterId] = useState(null);
   const [mapStartingSession, setMapStartingSession] = useState(false);
   const [mapCompletingAction, setMapCompletingAction] = useState(false);
   const [mapActiveOutcomeAction, setMapActiveOutcomeAction] = useState(null);
@@ -67,12 +81,18 @@ export default function App() {
   const [nodeEditorPendingAction, setNodeEditorPendingAction] = useState(null);
   const [nodeEditorNotice, setNodeEditorNotice] = useState(null);
   const [mapMutationPendingAction, setMapMutationPendingAction] = useState(null);
+  const [windRoseSnapshot, setWindRoseSnapshot] = useState(null);
+  const [windRoseLoading, setWindRoseLoading] = useState(false);
+  const [windRoseError, setWindRoseError] = useState(null);
+  const [selectedWindStatId, setSelectedWindStatId] = useState(null);
   const mapUndoStackRef = useRef([]);
+  const selectedCampaignId = selectedCampaign?.id ?? null;
 
   useEffect(() => {
     const init = async () => {
       try {
         await db.initDb();
+        await loadCampaigns();
         const subjects = await db.getSubjects();
 
         if (subjects.length > 0) {
@@ -87,6 +107,21 @@ export default function App() {
 
     void init();
   }, []);
+
+  const loadCampaigns = async () => {
+    setCampaignsLoading(true);
+    setCampaignError(null);
+
+    try {
+      const snapshot = await db.getCampaigns();
+      setCampaigns(snapshot);
+    } catch (error) {
+      console.error('Failed to load campaigns', error);
+      setCampaignError(error.message || 'Не удалось загрузить кампании.');
+    } finally {
+      setCampaignsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!activeSubject) {
@@ -140,7 +175,7 @@ export default function App() {
     setNowFocusLoading(true);
 
     try {
-      const focus = await db.getNowNodeFocus(selection.nodeId, selection.actionId);
+      const focus = await db.getNowNodeFocus(selection.nodeId, selection.actionId, selectedCampaignId);
       setNowFocus(focus);
     } catch (error) {
       console.error('Failed to load Now focus', error);
@@ -159,7 +194,7 @@ export default function App() {
     setNavigationFocusLoading(true);
 
     try {
-      const focus = await db.getNowNodeFocus(selection.nodeId, selection.actionId ?? null);
+      const focus = await db.getNowNodeFocus(selection.nodeId, selection.actionId ?? null, selectedCampaignId);
       setNavigationFocus(focus);
     } catch (error) {
       console.error('Failed to load navigation focus', error);
@@ -169,12 +204,34 @@ export default function App() {
     }
   };
 
+  const findFirstNodeSelectionInSkill = (snapshot, skillId) => {
+    if (!snapshot || skillId == null) {
+      return null;
+    }
+
+    for (const sphere of snapshot.spheres ?? []) {
+      for (const direction of sphere.directions ?? []) {
+        const skill = direction.skills?.find((entry) => entry.id === skillId);
+        const node = skill?.nodes?.[0] ?? null;
+        if (node) {
+          return {
+            nodeId: node.id,
+            actionId: node.next_action_id ?? null,
+          };
+        }
+      }
+    }
+
+    return null;
+  };
+
   const loadNowDashboard = async (preferredSelection = nowSelection) => {
     setNowLoading(true);
     setNowError(null);
+    setNowNotice(null);
 
     try {
-      const snapshot = await db.getNowDashboard();
+      const snapshot = await db.getNowDashboard(selectedCampaignId);
       setNowSnapshot(snapshot);
       const nextSelection = chooseNowSelection(snapshot, preferredSelection);
       setNowSelection(nextSelection);
@@ -194,9 +251,14 @@ export default function App() {
     setNodeEditorNotice(null);
 
     try {
-      const snapshot = await db.getNavigationSnapshot();
+      const snapshot = await db.getNavigationSnapshot(selectedCampaignId);
       setNavigationSnapshot(snapshot);
-      const nextSelection = preferredSelection ?? snapshot.defaultSelection ?? null;
+      const nextBranchFilterId = preferredSelection?.skillId ?? navigationBranchFilterId ?? null;
+      const nextSelection =
+        preferredSelection?.nodeId
+          ? preferredSelection
+          : findFirstNodeSelectionInSkill(snapshot, nextBranchFilterId) ?? snapshot.defaultSelection ?? null;
+      setNavigationBranchFilterId(nextBranchFilterId);
       setNavigationSelection(nextSelection);
       await loadNavigationFocus(nextSelection);
     } catch (error) {
@@ -208,7 +270,126 @@ export default function App() {
     }
   };
 
+  const loadWindRose = async () => {
+    setWindRoseLoading(true);
+    setWindRoseError(null);
+
+    try {
+      const snapshot = await db.getWindRoseSnapshot(selectedCampaignId);
+      setWindRoseSnapshot(snapshot);
+      setSelectedWindStatId((current) => current ?? snapshot?.stats?.[0]?.id ?? null);
+    } catch (error) {
+      console.error('Failed to load wind rose', error);
+      setWindRoseError(error.message || 'Не удалось загрузить розу ветров.');
+    } finally {
+      setWindRoseLoading(false);
+    }
+  };
+
+  const resetCampaignWorkspaceState = () => {
+    setNowSnapshot(null);
+    setNowFocus(null);
+    setNowSelection(null);
+    setNowNotice(null);
+    setNavigationSnapshot(null);
+    setNavigationFocus(null);
+    setNavigationSelection(null);
+    setNavigationBranchFilterId(null);
+    setWindRoseSnapshot(null);
+    setSelectedWindStatId(null);
+    mapUndoStackRef.current = [];
+  };
+
+  const handleOpenCampaign = async (campaign) => {
+    setCampaignMutationPending(true);
+    setCampaignError(null);
+
+    try {
+      const opened = await db.openCampaign(campaign.id);
+      if (!opened) {
+        await loadCampaigns();
+        return;
+      }
+
+      setSelectedCampaign(opened);
+      localStorage.setItem('braingainz_last_campaign_id', String(opened.id));
+      resetCampaignWorkspaceState();
+      setActiveTab('now');
+      await loadCampaigns();
+    } catch (error) {
+      console.error('Failed to open campaign', error);
+      setCampaignError(error.message || 'Не удалось открыть кампанию.');
+    } finally {
+      setCampaignMutationPending(false);
+    }
+  };
+
+  const handleBackToCampaigns = () => {
+    setSelectedCampaign(null);
+    resetCampaignWorkspaceState();
+    void loadCampaigns();
+  };
+
+  const handleCreateCampaign = async () => {
+    if (!newCampaignName.trim()) {
+      return;
+    }
+
+    setCampaignMutationPending(true);
+    setCampaignError(null);
+
+    try {
+      const campaign = await db.createUserCampaign({ name: newCampaignName });
+      setNewCampaignName('');
+      await loadCampaigns();
+      if (campaign) {
+        await handleOpenCampaign(campaign);
+      }
+    } catch (error) {
+      console.error('Failed to create campaign', error);
+      setCampaignError(error.message || 'Не удалось создать кампанию.');
+    } finally {
+      setCampaignMutationPending(false);
+    }
+  };
+
+  const handleArchiveCampaign = async (campaign) => {
+    setCampaignMutationPending(true);
+    setCampaignError(null);
+
+    try {
+      await db.archiveCampaign(campaign.id);
+      if (selectedCampaign?.id === campaign.id) {
+        handleBackToCampaigns();
+      }
+      await loadCampaigns();
+    } catch (error) {
+      console.error('Failed to archive campaign', error);
+      setCampaignError(error.message || 'Не удалось архивировать кампанию.');
+    } finally {
+      setCampaignMutationPending(false);
+    }
+  };
+
+  const handleRestoreCampaign = async (campaign) => {
+    setCampaignMutationPending(true);
+    setCampaignError(null);
+
+    try {
+      await db.restoreCampaign(campaign.id);
+      await loadCampaigns();
+    } catch (error) {
+      console.error('Failed to restore campaign', error);
+      setCampaignError(error.message || 'Не удалось восстановить кампанию.');
+    } finally {
+      setCampaignMutationPending(false);
+    }
+  };
+
   useEffect(() => {
+    if (!selectedCampaignId) {
+      return;
+    }
     if (normalizedActiveTab === 'now') {
       void loadNowDashboard();
     }
@@ -216,11 +397,24 @@ export default function App() {
   }, [normalizedActiveTab]);
 
   useEffect(() => {
+    if (!selectedCampaignId) {
+      return;
+    }
     if (normalizedActiveTab === 'map') {
       void loadNavigationSnapshot();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedActiveTab]);
+  }, [normalizedActiveTab, selectedCampaignId]);
+
+  useEffect(() => {
+    if (!selectedCampaignId) {
+      return;
+    }
+    if (normalizedActiveTab === 'wind') {
+      void loadWindRose();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedActiveTab, selectedCampaignId]);
 
   const handleCreateStarterWorkspace = async () => {
     setNowCreatingStarter(true);
@@ -228,12 +422,12 @@ export default function App() {
     setNavigationError(null);
 
     try {
-      const snapshot = await db.createStarterWorkspace();
+      const snapshot = await db.createStarterWorkspace(selectedCampaignId);
       setNowSnapshot(snapshot);
       const nextSelection = chooseNowSelection(snapshot);
       setNowSelection(nextSelection);
       await loadNowFocus(nextSelection);
-      const navigation = await db.getNavigationSnapshot();
+      const navigation = await db.getNavigationSnapshot(selectedCampaignId);
       setNavigationSnapshot(navigation);
       setNavigationSelection(nextSelection);
       if (normalizedActiveTab === 'map') {
@@ -255,9 +449,9 @@ export default function App() {
     setNavigationError(null);
 
     try {
-      const snapshot = await db.createLinearAlgebraGraphWorkspace();
+      const snapshot = await db.createLinearAlgebraGraphWorkspace(selectedCampaignId);
       setNowSnapshot(snapshot);
-      const navigation = await db.getNavigationSnapshot();
+      const navigation = await db.getNavigationSnapshot(selectedCampaignId);
       const rootNode = navigation.spheres
         .flatMap((sphere) => sphere.directions)
         .flatMap((direction) => direction.skills)
@@ -288,9 +482,9 @@ export default function App() {
     setNavigationError(null);
 
     try {
-      const snapshot = await db.createStructureWorkspace({ name });
+      const snapshot = await db.createStructureWorkspace({ name }, selectedCampaignId);
       setNowSnapshot(snapshot);
-      const navigation = await db.getNavigationSnapshot();
+      const navigation = await db.getNavigationSnapshot(selectedCampaignId);
       const createdSphere = navigation.spheres.find((sphere) => sphere.name === name) ?? null;
       const rootNode =
         createdSphere?.directions
@@ -323,6 +517,9 @@ export default function App() {
 
     setNowSnapshot(result.dashboard);
     setNowFocus(result.focus);
+    const xpWarningMessage = result.xpWarning?.message ?? null;
+    setNowNotice(xpWarningMessage);
+    setNodeEditorNotice(xpWarningMessage);
 
     const nextSelection = result.focus?.selectedAction
       ? { nodeId: result.focus.node.id, actionId: result.focus.selectedAction.id }
@@ -374,6 +571,9 @@ export default function App() {
     };
 
     setNavigationSelection(selection);
+    if (navigationBranchFilterId != null) {
+      setNavigationBranchFilterId(node.skill_id ?? null);
+    }
     setNavigationError(null);
     setNodeEditorNotice(null);
     await loadNavigationFocus(selection);
@@ -422,7 +622,7 @@ export default function App() {
       return null;
     }
 
-    return db.updateNodeRecord(navigationFocus.node.id, buildNodeEditorUpdatePayload(navigationFocus, draft));
+    return db.updateNodeRecord(navigationFocus.node.id, buildNodeEditorUpdatePayload(navigationFocus, draft), selectedCampaignId);
   };
 
   const handleSaveNodeEditor = async (draft) => {
@@ -463,6 +663,7 @@ export default function App() {
       const result = await db.duplicateNodeRecord(
         navigationFocus.node.id,
         buildNodeEditorDuplicatePayload(draft),
+        selectedCampaignId,
       );
       await applyNodeEditorMutationResult(
         result,
@@ -493,6 +694,7 @@ export default function App() {
       const result = await db.archiveNodeRecord(
         navigationFocus.node.id,
         buildNodeEditorUpdatePayload(navigationFocus, draft),
+        selectedCampaignId,
       );
       await applyNodeEditorMutationResult(
         result,
@@ -527,6 +729,7 @@ export default function App() {
           position: { x, y },
           title,
         }),
+        selectedCampaignId,
       );
       if (result?.node?.id) {
         pushMapUndo({ type: 'archive-node', nodeId: result.node.id });
@@ -561,6 +764,7 @@ export default function App() {
           position: { x, y },
           title,
         }),
+        selectedCampaignId,
       );
       const createdNodeId = nodeResult?.focus?.node?.id;
 
@@ -576,6 +780,7 @@ export default function App() {
           targetNodeId: createdNodeId,
           edgeType: 'supports',
         }),
+        selectedCampaignId,
       );
       pushMapUndo({
         type: 'create-child',
@@ -615,7 +820,7 @@ export default function App() {
     setNodeEditorNotice(null);
 
     try {
-      const result = await db.updateNodeRecord(nodeId, { x, y });
+      const result = await db.updateNodeRecord(nodeId, { x, y }, selectedCampaignId);
       if (previousNode) {
         pushMapUndo({
           type: 'move-node',
@@ -650,6 +855,7 @@ export default function App() {
           targetNodeId,
           edgeType,
         }),
+        selectedCampaignId,
       );
       if (result?.edge?.id) {
         pushMapUndo({ type: 'delete-edge', edgeId: result.edge.id });
@@ -682,7 +888,7 @@ export default function App() {
     setNodeEditorNotice(null);
 
     try {
-      const result = await db.deleteGraphEdge(edgeId);
+      const result = await db.deleteGraphEdge(edgeId, selectedCampaignId);
       if (previousEdge) {
         pushMapUndo({
           type: 'create-edge',
@@ -719,7 +925,7 @@ export default function App() {
     setNodeEditorNotice(null);
 
     try {
-      const result = await db.updateNodeRecord(nodeId, { title });
+      const result = await db.updateNodeRecord(nodeId, { title }, selectedCampaignId);
       if (previousNode) {
         pushMapUndo({ type: 'rename-node', nodeId, title: previousNode.title });
       }
@@ -746,7 +952,7 @@ export default function App() {
     setNodeEditorNotice(null);
 
     try {
-      const result = await db.archiveNodeRecord(nodeId, {});
+      const result = await db.archiveNodeRecord(nodeId, {}, selectedCampaignId);
       pushMapUndo({ type: 'restore-node', nodeId });
       await applyNodeEditorMutationResult(result, 'Узел отправлен в архив.');
       setActiveTab('map');
@@ -771,7 +977,7 @@ export default function App() {
     setNodeEditorNotice(null);
 
     try {
-      const result = await db.duplicateNodeRecord(nodeId, { x, y });
+      const result = await db.duplicateNodeRecord(nodeId, { x, y }, selectedCampaignId);
       if (result?.node?.id) {
         pushMapUndo({ type: 'archive-node', nodeId: result.node.id });
       }
@@ -806,15 +1012,15 @@ export default function App() {
 
     try {
       if (entry.type === 'archive-node') {
-        await db.archiveNodeRecord(entry.nodeId, {});
+        await db.archiveNodeRecord(entry.nodeId, {}, selectedCampaignId);
       } else if (entry.type === 'restore-node') {
-        await db.updateNodeRecord(entry.nodeId, { is_archived: 0 });
+        await db.updateNodeRecord(entry.nodeId, { is_archived: 0 }, selectedCampaignId);
       } else if (entry.type === 'move-node') {
-        await db.updateNodeRecord(entry.nodeId, { x: entry.x, y: entry.y });
+        await db.updateNodeRecord(entry.nodeId, { x: entry.x, y: entry.y }, selectedCampaignId);
       } else if (entry.type === 'rename-node') {
-        await db.updateNodeRecord(entry.nodeId, { title: entry.title });
+        await db.updateNodeRecord(entry.nodeId, { title: entry.title }, selectedCampaignId);
       } else if (entry.type === 'delete-edge' && entry.edgeId != null) {
-        await db.deleteGraphEdge(entry.edgeId);
+        await db.deleteGraphEdge(entry.edgeId, selectedCampaignId);
       } else if (entry.type === 'create-edge') {
         await db.createGraphEdge(
           buildGraphEdgeCreatePayload({
@@ -822,12 +1028,13 @@ export default function App() {
             targetNodeId: entry.targetNodeId,
             edgeType: entry.edgeType,
           }),
+          selectedCampaignId,
         );
       } else if (entry.type === 'create-child') {
         if (entry.edgeId != null) {
-          await db.deleteGraphEdge(entry.edgeId);
+          await db.deleteGraphEdge(entry.edgeId, selectedCampaignId);
         }
-        await db.archiveNodeRecord(entry.nodeId, {});
+        await db.archiveNodeRecord(entry.nodeId, {}, selectedCampaignId);
       }
 
       await loadNowDashboard(nowSelection);
@@ -854,7 +1061,7 @@ export default function App() {
     setNavigationError(null);
 
     try {
-      await db.startTodaySessionFromRecommendation(navigationSelection.actionId);
+      await db.startTodaySessionFromRecommendation(navigationSelection.actionId, selectedCampaignId);
       await loadNowDashboard(navigationSelection);
       await loadNavigationSnapshot(navigationSelection);
     } catch (error) {
@@ -893,7 +1100,7 @@ export default function App() {
     setNavigationError(null);
 
     try {
-      const result = await db.completeNowActionInTodaySession(navigationSelection.actionId);
+      const result = await db.completeNowActionInTodaySession(navigationSelection.actionId, selectedCampaignId);
       await applyOutcomeResult(result);
     } catch (error) {
       console.error('Failed to complete navigation action', error);
@@ -905,7 +1112,7 @@ export default function App() {
 
   const handleDeferNavigationAction = async () => {
     await runNavigationOutcome('defer', () =>
-      db.deferNowActionInTodaySession(navigationSelection.actionId, mapOutcomeNote),
+      db.deferNowActionInTodaySession(navigationSelection.actionId, mapOutcomeNote, selectedCampaignId),
     );
   };
 
@@ -914,7 +1121,7 @@ export default function App() {
       db.blockNowActionInTodaySession(navigationSelection.actionId, {
         barrierType: mapBarrierType,
         note: mapOutcomeNote,
-      }),
+      }, selectedCampaignId),
     );
   };
 
@@ -923,7 +1130,7 @@ export default function App() {
       db.shrinkNowActionInTodaySession(navigationSelection.actionId, {
         title: mapShrinkTitle,
         note: mapOutcomeNote,
-      }),
+      }, selectedCampaignId),
     );
   };
 
@@ -939,6 +1146,7 @@ export default function App() {
           note: payload.note,
           barrierType: payload.barrierType,
         }),
+        selectedCampaignId,
       );
       await applyOutcomeResult(result);
       setActiveTab('map');
@@ -995,6 +1203,24 @@ export default function App() {
                   aria-label="Основные разделы BrainGainz"
                 >
                   <PixelButton
+                    tone={!selectedCampaign ? 'accent' : 'ghost'}
+                    onClick={handleBackToCampaigns}
+                    aria-pressed={!selectedCampaign}
+                    aria-current={!selectedCampaign ? 'page' : undefined}
+                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                  >
+                    <Globe2 size={14} /> Кампании
+                  </PixelButton>
+                  {selectedCampaign ? (
+                    <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="hidden md:block">
+                      <PixelText as="span" readable size="xs" color="textMuted">
+                        {selectedCampaign.name}
+                      </PixelText>
+                    </PixelSurface>
+                  ) : null}
+                  {selectedCampaign ? (
+                    <>
+                  <PixelButton
                     tone={normalizedActiveTab === 'now' ? 'accent' : 'ghost'}
                     onClick={() => setActiveTab('now')}
                     aria-pressed={normalizedActiveTab === 'now'}
@@ -1012,6 +1238,17 @@ export default function App() {
                   >
                     <Map size={14} /> Карта
                   </PixelButton>
+                  <PixelButton
+                    tone={normalizedActiveTab === 'wind' ? 'accent' : 'ghost'}
+                    onClick={() => setActiveTab('wind')}
+                    aria-pressed={normalizedActiveTab === 'wind'}
+                    aria-current={normalizedActiveTab === 'wind' ? 'page' : undefined}
+                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                  >
+                    <Radar size={14} /> Роза ветров
+                  </PixelButton>
+                    </>
+                  ) : null}
                 </div>
               </div>
 
@@ -1168,13 +1405,29 @@ export default function App() {
         className="w-full min-w-0 flex-grow px-3 pb-4 pt-1 sm:px-4 sm:pb-6 sm:pt-1"
       >
         <Suspense fallback={screenFallback}>
-        {normalizedActiveTab === 'now' && (
+        {!selectedCampaign && (
+          <CampaignMenu
+            campaigns={campaigns}
+            isLoading={campaignsLoading}
+            isMutating={campaignMutationPending}
+            newCampaignName={newCampaignName}
+            error={campaignError}
+            onNewCampaignNameChange={setNewCampaignName}
+            onOpenCampaign={handleOpenCampaign}
+            onCreateCampaign={handleCreateCampaign}
+            onArchiveCampaign={handleArchiveCampaign}
+            onRestoreCampaign={handleRestoreCampaign}
+          />
+        )}
+
+        {selectedCampaign && normalizedActiveTab === 'now' && (
           <NowView
             snapshot={nowSnapshot}
             focus={nowFocus}
             isLoading={nowLoading}
             isFocusLoading={nowFocusLoading}
             error={nowError}
+            notice={nowNotice}
             isCreatingStarter={nowCreatingStarter}
             onCreateStarterWorkspace={handleCreateStarterWorkspace}
             onSelectRecommendation={handleSelectNowRecommendation}
@@ -1186,7 +1439,7 @@ export default function App() {
           />
         )}
 
-        {normalizedActiveTab === 'map' && (
+        {selectedCampaign && normalizedActiveTab === 'map' && (
           <NavigationView
             snapshot={navigationSnapshot}
             focus={navigationFocus}
@@ -1227,6 +1480,7 @@ export default function App() {
             editorPendingAction={nodeEditorPendingAction}
             editorNotice={nodeEditorNotice}
             mapMutationPendingAction={mapMutationPendingAction}
+            branchFilterSkillId={navigationBranchFilterId}
             onCreateFollowUp={() =>
               handleCreateJournalFollowUp({
                 nodeId: navigationFocus?.node?.id,
@@ -1235,6 +1489,25 @@ export default function App() {
                 barrierType: mapBarrierType,
               })
             }
+          />
+        )}
+
+        {selectedCampaign && normalizedActiveTab === 'wind' && (
+          <WindRoseView
+            snapshot={windRoseSnapshot}
+            isLoading={windRoseLoading}
+            error={windRoseError}
+            selectedStatId={selectedWindStatId}
+            onSelectStat={setSelectedWindStatId}
+            onOpenBranch={async (branch) => {
+              const selection = branch.focus_node_id
+                ? { nodeId: branch.focus_node_id, actionId: branch.next_action_id ?? null, skillId: branch.id }
+                : { skillId: branch.id };
+              setNavigationBranchFilterId(branch.id);
+              setActiveTab('map');
+              await loadNavigationSnapshot(selection);
+            }}
+            onRefresh={loadWindRose}
           />
         )}
         </Suspense>

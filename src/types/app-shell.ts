@@ -45,6 +45,26 @@ export interface RecommendationSelection {
   actionId: number | null;
 }
 
+export interface CampaignSummary {
+  id: number;
+  type: 'developer_main' | 'user';
+  slug: string;
+  name: string;
+  icon?: string | null;
+  color?: string | null;
+  is_archived: number;
+  last_opened_at?: string | null;
+  structure_count?: number;
+  node_count?: number;
+  total_xp?: number;
+}
+
+export interface CampaignListSnapshot {
+  active: CampaignSummary[];
+  archived: CampaignSummary[];
+  lastOpened: CampaignSummary | null;
+}
+
 export interface RecommendationCandidate extends RecommendationSelection {
   actionTitle: string;
   sphereName: string;
@@ -225,6 +245,12 @@ export interface NodeEditorMutationResult {
   dashboard: NowDashboardSnapshot;
   navigation: NavigationSnapshot;
   selection: RecommendationSelection | null;
+  xpWarning?: XpWarning | null;
+}
+
+export interface XpWarning {
+  code: 'missing-primary-stat';
+  message: string;
 }
 
 export interface NodeDependencySummary {
@@ -296,6 +322,7 @@ export interface NavigationSkill {
   id: number;
   direction_id: number;
   name: string;
+  primary_stat_id?: number | null;
   node_count: number;
   open_action_count: number;
   nodes: NavigationNodeSummary[];

@@ -9,6 +9,7 @@ export const createDailySessionStore = (database) => ({
       database,
       `
         INSERT INTO daily_sessions (
+          campaign_id,
           session_date,
           status,
           primary_node_id,
@@ -19,9 +20,10 @@ export const createDailySessionStore = (database) => ({
           created_at,
           updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
+        input.campaign_id ?? null,
         input.session_date,
         input.status ?? 'planned',
         input.primary_node_id ?? null,
