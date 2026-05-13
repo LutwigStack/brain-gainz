@@ -34,6 +34,20 @@ const ensureColumn = async (database, tableName, columnName, definition) => {
   }
 };
 
+const guardedRollback = async (database, error) => {
+  try {
+    await database.execute('ROLLBACK');
+  } catch (rollbackError) {
+    if (
+      error != null &&
+      (typeof error === 'object' || typeof error === 'function') &&
+      !/no transaction|cannot rollback/i.test(String(rollbackError?.message ?? rollbackError))
+    ) {
+      error.rollbackError = rollbackError;
+    }
+  }
+};
+
 const ensureCampaignScopedSphereSlugs = async (database, fallbackCampaignId) => {
   const rows = await database.select(
     "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'spheres' LIMIT 1",
@@ -97,7 +111,7 @@ const ensureCampaignScopedSphereSlugs = async (database, fallbackCampaignId) => 
     await database.execute('CREATE INDEX IF NOT EXISTS idx_spheres_campaign_id ON spheres (campaign_id)');
     await database.execute('COMMIT');
   } catch (error) {
-    await database.execute('ROLLBACK');
+    await guardedRollback(database, error);
     throw error;
   } finally {
     await database.execute('PRAGMA legacy_alter_table = OFF');
@@ -326,6 +340,80 @@ const backfillLegacyMasteryEvents = async (database) => {
         AND nodes.is_archived = 0
     `,
     [timestamp],
+  );
+};
+
+const repairAssessmentIdempotencyBoundaries = async (database) => {
+  await database.execute(
+    `
+      UPDATE mastery_events
+      SET idempotency_key = CASE
+            WHEN source_type = 'legacy_node_completion'
+              THEN 'legacy-node-completion:' || campaign_id || ':' || node_id
+            WHEN source_type = 'assessment'
+              THEN 'assessment-mastery:' || campaign_id || ':' || node_id || ':' || COALESCE(source_id, id) || ':' || COALESCE(mastery_level, 'unknown')
+            ELSE 'legacy-mastery-event:' || campaign_id || ':' || id
+          END
+      WHERE idempotency_key IS NULL
+         OR TRIM(idempotency_key) = ''
+    `,
+  );
+
+  await database.execute(
+    `
+      DELETE FROM mastery_events
+      WHERE idempotency_key IS NOT NULL
+        AND TRIM(idempotency_key) != ''
+        AND id NOT IN (
+          SELECT MIN(id)
+          FROM mastery_events
+          WHERE idempotency_key IS NOT NULL
+            AND TRIM(idempotency_key) != ''
+          GROUP BY campaign_id, idempotency_key
+        )
+    `,
+  );
+
+  await database.execute(
+    `
+      UPDATE assessment_attempts
+      SET idempotency_key = 'legacy-assessment-attempt:' || campaign_id || ':' || id
+      WHERE idempotency_key IS NULL
+         OR TRIM(idempotency_key) = ''
+    `,
+  );
+
+  await database.execute(
+    `
+      DELETE FROM assessment_attempts
+      WHERE idempotency_key IS NOT NULL
+        AND TRIM(idempotency_key) != ''
+        AND id NOT IN (
+          SELECT MIN(id)
+          FROM assessment_attempts
+          WHERE idempotency_key IS NOT NULL
+            AND TRIM(idempotency_key) != ''
+          GROUP BY campaign_id, idempotency_key
+        )
+    `,
+  );
+
+  await database.execute(
+    `
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_mastery_events_campaign_idempotency
+      ON mastery_events (campaign_id, idempotency_key)
+      WHERE idempotency_key IS NOT NULL
+        AND TRIM(idempotency_key) != ''
+    `,
+  );
+
+  await database.execute(
+    `
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_assessment_attempts_campaign_idempotency
+      ON assessment_attempts (campaign_id, idempotency_key)
+      WHERE idempotency_key IS NOT NULL
+        AND TRIM(idempotency_key) != ''
+    `,
   );
 };
 
@@ -579,6 +667,7 @@ export const runCampaignMigrations = async (database) => {
   await database.execute('CREATE INDEX IF NOT EXISTS idx_mastery_events_campaign_node ON mastery_events (campaign_id, node_id, active)');
   await database.execute('CREATE INDEX IF NOT EXISTS idx_mastery_events_source ON mastery_events (campaign_id, source_type, source_id)');
   await database.execute('CREATE INDEX IF NOT EXISTS idx_assessment_attempts_campaign_node ON assessment_attempts (campaign_id, node_id)');
+  await repairAssessmentIdempotencyBoundaries(database);
 
   const developerCampaign = await ensureDeveloperMainCampaign(database);
   await seedStatsForCampaign(database, developerCampaign, DEVELOPER_MAIN_STATS);

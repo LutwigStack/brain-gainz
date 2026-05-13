@@ -112,6 +112,11 @@ test('bootstrap repairs legacy assessment mastery tables for verified attempts',
   `);
   await bootstrapDatabase(database);
 
+  const masteryIndexes = await database.select('PRAGMA index_list(mastery_events)');
+  const assessmentIndexes = await database.select('PRAGMA index_list(assessment_attempts)');
+  assert.ok(masteryIndexes.some((index) => index.name === 'idx_mastery_events_campaign_idempotency'));
+  assert.ok(assessmentIndexes.some((index) => index.name === 'idx_assessment_attempts_campaign_idempotency'));
+
   const hierarchyStore = createHierarchyStore(database);
   const nodeNoteStore = createNodeNoteStore(database);
   const reviewStateStore = createReviewStateStore(database);
@@ -139,6 +144,145 @@ test('bootstrap repairs legacy assessment mastery tables for verified attempts',
 
   assert.equal(result.attempt.passed, 1);
   assert.ok(result.masteryEvent);
+
+  await database.execute("UPDATE nodes SET status = 'done' WHERE id = ?", [node.id]);
+  await bootstrapDatabase(database);
+  await bootstrapDatabase(database);
+
+  const legacyMasteryEvents = await database.select(
+    `
+      SELECT COUNT(*) AS count
+      FROM mastery_events
+      WHERE campaign_id = ?
+        AND node_id = ?
+        AND source_type = 'legacy_node_completion'
+    `,
+    [campaign.id, node.id],
+  );
+  assert.equal(Number(legacyMasteryEvents[0].count), 1);
+});
+
+test('bootstrap dedupes legacy idempotency keys before creating unique boundaries', async (t) => {
+  const database = createSqliteTestDatabase();
+  t.after(() => database.close());
+
+  await database.execute(`
+    CREATE TABLE mastery_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL,
+      node_id INTEGER NOT NULL,
+      mastery_level TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      source_id INTEGER,
+      idempotency_key TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await database.execute(`
+    CREATE TABLE assessment_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL,
+      node_id INTEGER NOT NULL,
+      task_id TEXT NOT NULL,
+      answer_type TEXT NOT NULL,
+      submitted_answer TEXT,
+      check_method TEXT NOT NULL,
+      passed INTEGER NOT NULL DEFAULT 0,
+      idempotency_key TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await database.execute(
+    `
+      INSERT INTO mastery_events (
+        campaign_id,
+        node_id,
+        mastery_level,
+        source_type,
+        source_id,
+        idempotency_key,
+        active,
+        created_at
+      )
+      VALUES
+        (99, 1, 'confirmed', 'legacy_node_completion', 1, 'legacy-node-completion:99:1', 1, '2026-01-01T00:00:00.000Z'),
+        (99, 1, 'confirmed', 'legacy_node_completion', 1, 'legacy-node-completion:99:1', 1, '2026-01-01T00:00:01.000Z')
+    `,
+  );
+  await database.execute(
+    `
+      INSERT INTO assessment_attempts (
+        campaign_id,
+        node_id,
+        task_id,
+        answer_type,
+        submitted_answer,
+        check_method,
+        passed,
+        idempotency_key,
+        created_at
+      )
+      VALUES
+        (99, 1, 'legacy-task', 'text', 'answer', 'strict', 0, 'legacy-attempt-key', '2026-01-01T00:00:00.000Z'),
+        (99, 1, 'legacy-task', 'text', 'answer', 'strict', 0, 'legacy-attempt-key', '2026-01-01T00:00:01.000Z')
+    `,
+  );
+
+  await bootstrapDatabase(database);
+
+  const masteryRows = await database.select(
+    'SELECT COUNT(*) AS count FROM mastery_events WHERE campaign_id = 99 AND idempotency_key = ?',
+    ['legacy-node-completion:99:1'],
+  );
+  const assessmentRows = await database.select(
+    'SELECT COUNT(*) AS count FROM assessment_attempts WHERE campaign_id = 99 AND idempotency_key = ?',
+    ['legacy-attempt-key'],
+  );
+  assert.equal(Number(masteryRows[0].count), 1);
+  assert.equal(Number(assessmentRows[0].count), 1);
+
+  await assert.rejects(
+    () =>
+      database.execute(
+        `
+          INSERT INTO mastery_events (
+            campaign_id,
+            node_id,
+            mastery_level,
+            source_type,
+            source_id,
+            idempotency_key,
+            active,
+            created_at
+          )
+          VALUES (99, 1, 'confirmed', 'legacy_node_completion', 1, 'legacy-node-completion:99:1', 1, ?)
+        `,
+        [new Date().toISOString()],
+      ),
+    /UNIQUE/i,
+  );
+  await assert.rejects(
+    () =>
+      database.execute(
+        `
+          INSERT INTO assessment_attempts (
+            campaign_id,
+            node_id,
+            task_id,
+            answer_type,
+            submitted_answer,
+            check_method,
+            passed,
+            idempotency_key,
+            created_at
+          )
+          VALUES (99, 1, 'legacy-task', 'text', 'answer', 'strict', 0, 'legacy-attempt-key', ?)
+        `,
+        [new Date().toISOString()],
+      ),
+    /UNIQUE/i,
+  );
 });
 
 test('specialization completion sets campaign victory and continuation starts a new active specialization', async (t) => {
