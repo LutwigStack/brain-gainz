@@ -270,6 +270,65 @@ const assignMissingPrimaryStats = async (database) => {
   }
 };
 
+const repairCampaignModeForCurrentSpecializations = async (database) => {
+  await database.execute(
+    `
+      UPDATE campaigns
+      SET mode = 'career'
+      WHERE current_specialization_id IS NOT NULL
+        AND COALESCE(mode, 'free') = 'free'
+        AND EXISTS (
+          SELECT 1
+          FROM career_specializations
+          WHERE career_specializations.id = campaigns.current_specialization_id
+            AND career_specializations.campaign_id = campaigns.id
+            AND career_specializations.status IN ('active', 'completed')
+        )
+    `,
+  );
+};
+
+const backfillLegacyMasteryEvents = async (database) => {
+  const timestamp = createUtcTimestamp();
+
+  await database.execute(
+    `
+      INSERT OR IGNORE INTO mastery_events (
+        campaign_id,
+        node_id,
+        specialization_id,
+        knowledge_node_id,
+        mastery_level,
+        source_type,
+        source_id,
+        idempotency_key,
+        active,
+        created_at,
+        reversed_at
+      )
+      SELECT
+        spheres.campaign_id,
+        nodes.id,
+        NULL,
+        nodes.knowledge_node_id,
+        'confirmed',
+        'legacy_node_completion',
+        nodes.id,
+        'legacy-node-completion:' || spheres.campaign_id || ':' || nodes.id,
+        1,
+        COALESCE(nodes.updated_at, ?),
+        NULL
+      FROM nodes
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE nodes.status = 'done'
+        AND nodes.is_archived = 0
+    `,
+    [timestamp],
+  );
+};
+
 export const runCampaignMigrations = async (database) => {
   await database.execute(`
     CREATE TABLE IF NOT EXISTS campaigns (
@@ -279,12 +338,19 @@ export const runCampaignMigrations = async (database) => {
       name TEXT NOT NULL,
       icon TEXT,
       color TEXT,
+      mode TEXT NOT NULL DEFAULT 'free',
+      career_status TEXT NOT NULL DEFAULT 'active' CHECK (career_status IN ('active', 'victory')),
+      current_specialization_id INTEGER,
       is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       last_opened_at TEXT
     )
   `);
+
+  await ensureColumn(database, 'campaigns', 'mode', "TEXT NOT NULL DEFAULT 'free'");
+  await ensureColumn(database, 'campaigns', 'career_status', "TEXT NOT NULL DEFAULT 'active'");
+  await ensureColumn(database, 'campaigns', 'current_specialization_id', 'INTEGER');
 
   await database.execute(`
     CREATE TABLE IF NOT EXISTS campaign_stats (
@@ -323,17 +389,196 @@ export const runCampaignMigrations = async (database) => {
     )
   `);
 
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS knowledge_nodes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      domain TEXT,
+      summary TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS career_specializations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      key TEXT NOT NULL,
+      domain TEXT,
+      length TEXT NOT NULL DEFAULT 'medium',
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'paused', 'archived')),
+      started_at TEXT,
+      completed_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (campaign_id) REFERENCES campaigns (id),
+      UNIQUE (campaign_id, key)
+    )
+  `);
+
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS specialization_route_nodes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      specialization_id INTEGER NOT NULL,
+      node_id INTEGER,
+      knowledge_node_id INTEGER,
+      required_mastery_level TEXT NOT NULL DEFAULT 'confirmed'
+        CHECK (required_mastery_level IN ('seen', 'understood', 'remembered', 'applied', 'confirmed', 'retained')),
+      route_label TEXT,
+      route_order INTEGER,
+      route_stage TEXT,
+      is_required INTEGER NOT NULL DEFAULT 1 CHECK (is_required IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (specialization_id) REFERENCES career_specializations (id),
+      FOREIGN KEY (node_id) REFERENCES nodes (id),
+      FOREIGN KEY (knowledge_node_id) REFERENCES knowledge_nodes (id),
+      CHECK (node_id IS NOT NULL OR knowledge_node_id IS NOT NULL)
+    )
+  `);
+
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS specialization_route_edges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      specialization_id INTEGER NOT NULL,
+      source_route_node_id INTEGER NOT NULL,
+      target_route_node_id INTEGER NOT NULL,
+      edge_type TEXT NOT NULL DEFAULT 'requires' CHECK (edge_type IN ('requires', 'supports', 'relates_to')),
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (specialization_id) REFERENCES career_specializations (id),
+      FOREIGN KEY (source_route_node_id) REFERENCES specialization_route_nodes (id),
+      FOREIGN KEY (target_route_node_id) REFERENCES specialization_route_nodes (id),
+      UNIQUE (specialization_id, source_route_node_id, target_route_node_id, edge_type),
+      CHECK (source_route_node_id != target_route_node_id)
+    )
+  `);
+
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS mastery_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL,
+      node_id INTEGER NOT NULL,
+      specialization_id INTEGER,
+      knowledge_node_id INTEGER,
+      mastery_level TEXT NOT NULL CHECK (mastery_level IN ('seen', 'understood', 'remembered', 'applied', 'confirmed', 'retained')),
+      source_type TEXT NOT NULL CHECK (source_type IN ('legacy_node_completion', 'assessment', 'self_marked', 'manual')),
+      source_id INTEGER,
+      idempotency_key TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+      created_at TEXT NOT NULL,
+      reversed_at TEXT,
+      FOREIGN KEY (campaign_id) REFERENCES campaigns (id),
+      FOREIGN KEY (node_id) REFERENCES nodes (id),
+      FOREIGN KEY (specialization_id) REFERENCES career_specializations (id),
+      FOREIGN KEY (knowledge_node_id) REFERENCES knowledge_nodes (id),
+      UNIQUE (campaign_id, idempotency_key)
+    )
+  `);
+
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS assessment_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL,
+      specialization_id INTEGER,
+      node_id INTEGER NOT NULL,
+      task_id TEXT NOT NULL,
+      answer_type TEXT NOT NULL,
+      submitted_answer TEXT,
+      check_method TEXT NOT NULL CHECK (check_method IN ('strict', 'llm_assisted')),
+      strict_check_type TEXT,
+      target_mastery_level TEXT NOT NULL DEFAULT 'understood'
+        CHECK (target_mastery_level IN ('seen', 'understood', 'remembered', 'applied', 'confirmed', 'retained')),
+      passed INTEGER NOT NULL DEFAULT 0 CHECK (passed IN (0, 1)),
+      score REAL,
+      feedback_summary TEXT,
+      evidence_payload TEXT,
+      idempotency_key TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (campaign_id) REFERENCES campaigns (id),
+      FOREIGN KEY (specialization_id) REFERENCES career_specializations (id),
+      FOREIGN KEY (node_id) REFERENCES nodes (id),
+      UNIQUE (campaign_id, idempotency_key)
+    )
+  `);
+
   await ensureColumn(database, 'spheres', 'campaign_id', 'INTEGER');
   await ensureColumn(database, 'daily_sessions', 'campaign_id', 'INTEGER');
   await ensureColumn(database, 'skills', 'primary_stat_id', 'INTEGER');
+  await ensureColumn(database, 'nodes', 'knowledge_node_id', 'INTEGER');
+  await ensureColumn(database, 'nodes', 'self_marked_mastery_level', 'TEXT');
+  await ensureColumn(database, 'nodes', 'check_metadata', 'TEXT');
+  await ensureColumn(database, 'stat_xp_grants', 'mastery_event_id', 'INTEGER');
+  await ensureColumn(database, 'stat_xp_grants', 'assessment_attempt_id', 'INTEGER');
+  await ensureColumn(database, 'mastery_events', 'specialization_id', 'INTEGER');
+  await ensureColumn(database, 'mastery_events', 'knowledge_node_id', 'INTEGER');
+  await ensureColumn(database, 'mastery_events', 'source_id', 'INTEGER');
+  await ensureColumn(database, 'mastery_events', 'idempotency_key', 'TEXT');
+  await ensureColumn(database, 'mastery_events', 'reversed_at', 'TEXT');
+  await ensureColumn(database, 'assessment_attempts', 'specialization_id', 'INTEGER');
+  await ensureColumn(database, 'assessment_attempts', 'strict_check_type', 'TEXT');
+  await ensureColumn(database, 'assessment_attempts', 'target_mastery_level', "TEXT NOT NULL DEFAULT 'understood'");
+  await ensureColumn(database, 'assessment_attempts', 'score', 'REAL');
+  await ensureColumn(database, 'assessment_attempts', 'feedback_summary', 'TEXT');
+  await ensureColumn(database, 'assessment_attempts', 'evidence_payload', 'TEXT');
+  await ensureColumn(database, 'assessment_attempts', 'idempotency_key', 'TEXT');
+  await ensureColumn(database, 'specialization_route_nodes', 'route_order', 'INTEGER');
+  await ensureColumn(database, 'specialization_route_nodes', 'route_stage', 'TEXT');
+  await database.execute('UPDATE specialization_route_nodes SET route_order = id WHERE route_order IS NULL');
 
   await database.execute('CREATE INDEX IF NOT EXISTS idx_campaigns_archived ON campaigns (is_archived, last_opened_at)');
+  await database.execute('CREATE INDEX IF NOT EXISTS idx_campaigns_current_specialization ON campaigns (current_specialization_id)');
   await database.execute('CREATE INDEX IF NOT EXISTS idx_spheres_campaign_id ON spheres (campaign_id)');
   await database.execute('CREATE INDEX IF NOT EXISTS idx_daily_sessions_campaign_id ON daily_sessions (campaign_id)');
   await database.execute('CREATE INDEX IF NOT EXISTS idx_skills_primary_stat_id ON skills (primary_stat_id)');
   await database.execute('CREATE INDEX IF NOT EXISTS idx_campaign_stats_campaign_id ON campaign_stats (campaign_id)');
   await database.execute('CREATE INDEX IF NOT EXISTS idx_stat_xp_grants_campaign_stat ON stat_xp_grants (campaign_id, stat_id, active)');
   await database.execute('CREATE INDEX IF NOT EXISTS idx_stat_xp_grants_node ON stat_xp_grants (node_id)');
+  await database.execute('CREATE INDEX IF NOT EXISTS idx_nodes_knowledge_node_id ON nodes (knowledge_node_id)');
+  await database.execute('CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_key ON knowledge_nodes (key)');
+  await database.execute('CREATE INDEX IF NOT EXISTS idx_career_specializations_campaign ON career_specializations (campaign_id, status)');
+  await database.execute(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_career_specializations_one_active ON career_specializations (campaign_id) WHERE status = 'active'",
+  );
+  await database.execute('CREATE INDEX IF NOT EXISTS idx_specialization_route_nodes_specialization ON specialization_route_nodes (specialization_id)');
+  await database.execute('CREATE INDEX IF NOT EXISTS idx_specialization_route_nodes_order ON specialization_route_nodes (specialization_id, route_order, id)');
+  await database.execute(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_route_nodes_unique_knowledge ON specialization_route_nodes (specialization_id, knowledge_node_id) WHERE knowledge_node_id IS NOT NULL',
+  );
+  await database.execute(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_route_nodes_unique_node_without_knowledge ON specialization_route_nodes (specialization_id, node_id) WHERE knowledge_node_id IS NULL AND node_id IS NOT NULL',
+  );
+  await database.execute(`
+    CREATE TRIGGER IF NOT EXISTS trg_route_edges_same_specialization_insert
+    BEFORE INSERT ON specialization_route_edges
+    BEGIN
+      SELECT CASE
+        WHEN (
+          (SELECT specialization_id FROM specialization_route_nodes WHERE id = NEW.source_route_node_id) != NEW.specialization_id
+          OR (SELECT specialization_id FROM specialization_route_nodes WHERE id = NEW.target_route_node_id) != NEW.specialization_id
+        )
+        THEN RAISE(ABORT, 'Route edge endpoints must belong to the same specialization.')
+      END;
+    END
+  `);
+  await database.execute(`
+    CREATE TRIGGER IF NOT EXISTS trg_route_edges_same_specialization_update
+    BEFORE UPDATE ON specialization_route_edges
+    BEGIN
+      SELECT CASE
+        WHEN (
+          (SELECT specialization_id FROM specialization_route_nodes WHERE id = NEW.source_route_node_id) != NEW.specialization_id
+          OR (SELECT specialization_id FROM specialization_route_nodes WHERE id = NEW.target_route_node_id) != NEW.specialization_id
+        )
+        THEN RAISE(ABORT, 'Route edge endpoints must belong to the same specialization.')
+      END;
+    END
+  `);
+  await database.execute('CREATE INDEX IF NOT EXISTS idx_mastery_events_campaign_node ON mastery_events (campaign_id, node_id, active)');
+  await database.execute('CREATE INDEX IF NOT EXISTS idx_mastery_events_source ON mastery_events (campaign_id, source_type, source_id)');
+  await database.execute('CREATE INDEX IF NOT EXISTS idx_assessment_attempts_campaign_node ON assessment_attempts (campaign_id, node_id)');
 
   const developerCampaign = await ensureDeveloperMainCampaign(database);
   await seedStatsForCampaign(database, developerCampaign, DEVELOPER_MAIN_STATS);
@@ -341,6 +586,8 @@ export const runCampaignMigrations = async (database) => {
   await ensureCampaignScopedSphereSlugs(database, developerCampaign.id);
   await seedMissingCampaignStats(database);
   await assignMissingPrimaryStats(database);
+  await repairCampaignModeForCurrentSpecializations(database);
+  await backfillLegacyMasteryEvents(database);
 
   if (!(await tableExists(database, 'campaigns'))) {
     throw new Error('Campaign migration verification failed: missing campaigns table.');

@@ -299,6 +299,20 @@ const currentTimestamp = () => new Date().toISOString();
 
 const activeActionStatuses = ['todo', 'ready', 'doing'];
 const NODE_COMPLETION_GRANT_REASON = 'node_completion';
+const ASSESSMENT_MASTERY_GRANT_REASON = 'assessment_mastery';
+const MASTERY_LEVELS = ['seen', 'understood', 'remembered', 'applied', 'confirmed', 'retained'];
+
+const masteryLevelRank = (level) => Math.max(MASTERY_LEVELS.indexOf(level), 0);
+const masteryLevelFromRank = (rank) => {
+  const index = Number(rank ?? 0) - 1;
+  return index >= 0 && index < MASTERY_LEVELS.length ? MASTERY_LEVELS[index] : null;
+};
+
+const assertMasteryLevel = (level) => {
+  if (!MASTERY_LEVELS.includes(level)) {
+    throw new Error('Unsupported mastery level.');
+  }
+};
 
 const resolveCampaignId = async (database, campaignId = null) => {
   if (campaignId != null) {
@@ -423,7 +437,7 @@ const assertEdgeEndpointsInCampaign = async (database, input, campaignId) => {
   }
 };
 
-const syncNodeCompletionXpGrant = async (database, nodeId, nextStatus, timestamp = currentTimestamp()) => {
+const loadNodeMasteryBoundary = async (database, nodeId) => {
   const rows = await database.select(
     `
       SELECT
@@ -431,6 +445,8 @@ const syncNodeCompletionXpGrant = async (database, nodeId, nextStatus, timestamp
         nodes.type,
         nodes.importance,
         nodes.skill_id AS branch_id,
+        nodes.knowledge_node_id,
+        nodes.check_metadata,
         skills.primary_stat_id,
         spheres.campaign_id
       FROM nodes
@@ -442,26 +458,433 @@ const syncNodeCompletionXpGrant = async (database, nodeId, nextStatus, timestamp
     `,
     [nodeId],
   );
-  const node = rows[0] ?? null;
 
-  if (!node?.campaign_id) {
-    return { status: 'missing-campaign' };
+  return rows[0] ?? null;
+};
+
+const parseJsonObject = (value) => {
+  if (!value) {
+    return null;
   }
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const assessmentTaskFromMetadata = (metadata, taskId) => {
+  const normalized = parseJsonObject(metadata);
+  if (!normalized) {
+    return null;
+  }
+
+  const tasks = normalized.tasks ?? normalized.assessments ?? null;
+  if (Array.isArray(tasks)) {
+    const task = tasks.find((candidate) => {
+      const candidateId = candidate?.id ?? candidate?.task_id ?? candidate?.taskId ?? candidate?.key;
+      return candidateId != null && String(candidateId) === String(taskId);
+    });
+    return task ? assessmentTaskFromMetadata(task, taskId) : null;
+  }
+  if (tasks && typeof tasks === 'object') {
+    const task = tasks[taskId] ?? tasks[String(taskId)];
+    return task ? assessmentTaskFromMetadata(task, taskId) : null;
+  }
+
+  const directStrictType = normalized.strict_check_type ?? normalized.strictCheckType ?? null;
+  const inferredStrictType =
+    normalized.check_method === 'strict' || normalized.checkMethod === 'strict'
+      ? normalized.check_type ?? normalized.checkType ?? 'strict'
+      : null;
+  const strictCheckType = directStrictType ?? inferredStrictType ?? null;
+  return strictCheckType ? { ...normalized, strictCheckType } : null;
+};
+
+const autoStrictCheckTypes = new Set(['exact', 'number', 'contains', 'checklist']);
+
+const normalizeStrictText = (value, { caseSensitive = false } = {}) => {
+  const normalized = String(value ?? '').trim().replace(/\s+/g, ' ');
+  return caseSensitive ? normalized : normalized.toLocaleLowerCase();
+};
+
+const parseMaybeJson = (value) => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+};
+
+const checklistSelectionFromInput = (input) => {
+  const raw =
+    input.checklist_results ??
+    input.checklistResults ??
+    input.selected_items ??
+    input.selectedItems ??
+    parseMaybeJson(input.submitted_answer ?? input.submittedAnswer ?? null);
+  if (Array.isArray(raw)) {
+    return new Set(raw.map((item) => String(item)));
+  }
+  if (raw && typeof raw === 'object') {
+    return new Set(
+      Object.entries(raw)
+        .filter(([, selected]) => Boolean(selected))
+        .map(([key]) => String(key)),
+    );
+  }
+  return new Set();
+};
+
+const normalizedChecklistItemId = (item, index) => String(item?.id ?? item?.key ?? index);
+
+const summarizeExpectedAnswer = (value) => {
+  if (Array.isArray(value)) {
+    return `${value.length} accepted answers`;
+  }
+  if (value == null || String(value).trim() === '') {
+    return null;
+  }
+  const text = String(value).trim();
+  return text.length > 48 ? `${text.slice(0, 45)}...` : text;
+};
+
+const buildStrictAssessmentResult = ({ strictCheckType, passed, score, feedbackSummary, evidenceExtra = {}, timestamp }) => ({
+  passed,
+  score,
+  feedbackSummary,
+  evidencePayload: {
+    method: 'strict',
+    strict_check_type: strictCheckType,
+    result: passed ? 'pass' : 'fail',
+    verdict: passed ? 'pass' : 'fail',
+    score,
+    checked_at: timestamp,
+    ...evidenceExtra,
+  },
+});
+
+const evaluateStrictAssessmentCheck = ({ strictCheckType, config, input, timestamp }) => {
+  if (!autoStrictCheckTypes.has(strictCheckType)) {
+    return null;
+  }
+
+  const answer = input.submitted_answer ?? input.submittedAnswer ?? '';
+  if (strictCheckType === 'exact') {
+    const expectedValues = []
+      .concat(config.expected_answers ?? config.expectedAnswers ?? config.expected_answer ?? config.expectedAnswer ?? [])
+      .filter((value) => value != null && String(value).trim() !== '');
+    if (expectedValues.length === 0) {
+      return null;
+    }
+    const caseSensitive = Boolean(config.case_sensitive ?? config.caseSensitive);
+    const normalizedAnswer = normalizeStrictText(answer, { caseSensitive });
+    const passed = expectedValues.some(
+      (expected) => normalizeStrictText(expected, { caseSensitive }) === normalizedAnswer,
+    );
+    return buildStrictAssessmentResult({
+      strictCheckType,
+      passed,
+      score: passed ? 1 : 0,
+      feedbackSummary: passed ? 'Exact answer matched.' : 'Exact answer did not match.',
+      evidenceExtra: {
+        expected_summary: summarizeExpectedAnswer(expectedValues),
+        case_sensitive: caseSensitive,
+      },
+      timestamp,
+    });
+  }
+
+  if (strictCheckType === 'number') {
+    const expected = Number(config.expected_number ?? config.expectedNumber ?? config.expected_answer ?? config.expectedAnswer);
+    const actual = Number(String(answer).trim().replace(',', '.'));
+    if (!Number.isFinite(expected)) {
+      return null;
+    }
+    const tolerance = Math.max(0, Number(config.tolerance ?? 0));
+    const delta = Number.isFinite(actual) ? Math.abs(actual - expected) : Number.POSITIVE_INFINITY;
+    const passed = delta <= tolerance;
+    return buildStrictAssessmentResult({
+      strictCheckType,
+      passed,
+      score: passed ? 1 : 0,
+      feedbackSummary: passed ? 'Number is within tolerance.' : 'Number is outside tolerance.',
+      evidenceExtra: {
+        expected_summary: String(expected),
+        tolerance,
+        delta: Number.isFinite(delta) ? delta : null,
+      },
+      timestamp,
+    });
+  }
+
+  if (strictCheckType === 'contains') {
+    const requiredTerms = []
+      .concat(config.required_terms ?? config.requiredTerms ?? config.terms ?? [])
+      .filter((value) => value != null && String(value).trim() !== '');
+    if (requiredTerms.length === 0) {
+      return null;
+    }
+    const caseSensitive = Boolean(config.case_sensitive ?? config.caseSensitive);
+    const normalizedAnswer = normalizeStrictText(answer, { caseSensitive });
+    const missingTerms = requiredTerms.filter(
+      (term) => !normalizedAnswer.includes(normalizeStrictText(term, { caseSensitive })),
+    );
+    const passed = missingTerms.length === 0;
+    return buildStrictAssessmentResult({
+      strictCheckType,
+      passed,
+      score: requiredTerms.length === 0 ? 0 : (requiredTerms.length - missingTerms.length) / requiredTerms.length,
+      feedbackSummary: passed
+        ? 'All required terms are present.'
+        : `Missing required terms: ${missingTerms.map(String).join(', ')}.`,
+      evidenceExtra: {
+        expected_summary: `${requiredTerms.length} required terms`,
+        missing_terms: missingTerms,
+        case_sensitive: caseSensitive,
+      },
+      timestamp,
+    });
+  }
+
+  if (strictCheckType === 'checklist') {
+    const items = Array.isArray(config.items) ? config.items : [];
+    const requiredItems = items.filter((item) => item?.required === true || (item && !('required' in item)));
+    if (requiredItems.length === 0) {
+      return null;
+    }
+    const selected = checklistSelectionFromInput(input);
+    const missingItems = requiredItems.filter((item) => !selected.has(normalizedChecklistItemId(item, items.indexOf(item))));
+    const passed = missingItems.length === 0;
+    return buildStrictAssessmentResult({
+      strictCheckType,
+      passed,
+      score: requiredItems.length === 0 ? 0 : (requiredItems.length - missingItems.length) / requiredItems.length,
+      feedbackSummary: passed
+        ? 'All required checklist items are selected.'
+        : `Missing checklist items: ${missingItems.map((item) => item.label ?? item.id ?? item.key).join(', ')}.`,
+      evidenceExtra: {
+        expected_summary: `${requiredItems.length} required checklist items`,
+        selected_items: Array.from(selected),
+        missing_items: missingItems.map((item) => normalizedChecklistItemId(item, items.indexOf(item))),
+      },
+      timestamp,
+    });
+  }
+
+  return null;
+};
+
+const verifierEvidenceKeys = new Set([
+  'checker_run_id',
+  'checkerRunId',
+  'llm_result_id',
+  'llmResultId',
+  'strict_result_id',
+  'strictResultId',
+  'result',
+  'output',
+  'verdict',
+  'summary',
+  'feedback',
+  'reason',
+  'assessment_result',
+  'assessmentResult',
+  'evidence',
+  'artifact',
+  'artifact_url',
+  'artifactUrl',
+]);
+
+const isMeaningfulEvidenceValue = (value) => {
+  if (value == null) {
+    return false;
+  }
+  if (typeof value === 'string') {
+    return value.trim().length > 0;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.some(isMeaningfulEvidenceValue);
+  }
+  if (typeof value === 'object') {
+    return Object.values(value).some(isMeaningfulEvidenceValue);
+  }
+  return false;
+};
+
+const hasVerifierEvidencePayload = (payload) => {
+  if (payload == null) {
+    return false;
+  }
+  if (typeof payload === 'string') {
+    return payload.trim().length > 0;
+  }
+  if (Array.isArray(payload)) {
+    return payload.some(hasVerifierEvidencePayload);
+  }
+  if (typeof payload === 'object') {
+    return Object.entries(payload).some(
+      ([key, value]) => verifierEvidenceKeys.has(key) && isMeaningfulEvidenceValue(value),
+    );
+  }
+  return false;
+};
+
+const normalizeEvidencePayload = (input = {}) => {
+  const directPayload = input.evidence_payload ?? input.evidencePayload ?? input.evidence ?? null;
+  const checkerRunId = input.checker_run_id ?? input.checkerRunId ?? null;
+  const llmResultId = input.llm_result_id ?? input.llmResultId ?? null;
+  const strictResultId = input.strict_result_id ?? input.strictResultId ?? null;
+
+  if (directPayload != null) {
+    if (!hasVerifierEvidencePayload(directPayload)) {
+      return null;
+    }
+    return typeof directPayload === 'string' ? directPayload.trim() : JSON.stringify(directPayload);
+  }
+
+  const evidence = {};
+  if (isMeaningfulEvidenceValue(checkerRunId)) {
+    evidence.checker_run_id = typeof checkerRunId === 'string' ? checkerRunId.trim() : checkerRunId;
+  }
+  if (isMeaningfulEvidenceValue(llmResultId)) {
+    evidence.llm_result_id = typeof llmResultId === 'string' ? llmResultId.trim() : llmResultId;
+  }
+  if (isMeaningfulEvidenceValue(strictResultId)) {
+    evidence.strict_result_id = typeof strictResultId === 'string' ? strictResultId.trim() : strictResultId;
+  }
+
+  return Object.keys(evidence).length > 0 ? JSON.stringify(evidence) : null;
+};
+
+const createOrReactivateMasteryEvent = async (
+  database,
+  node,
+  {
+    masteryLevel,
+    specializationId = null,
+    sourceType,
+    sourceId = null,
+    idempotencyKey,
+    timestamp = currentTimestamp(),
+  },
+) => {
+  assertMasteryLevel(masteryLevel);
+
+  if (masteryLevelRank(masteryLevel) > masteryLevelRank('seen') && !['legacy_node_completion', 'assessment'].includes(sourceType)) {
+    throw new Error('Verified mastery requires assessment evidence or legacy completion.');
+  }
+
+  const existing = await database.select(
+    `
+      SELECT id
+      FROM mastery_events
+      WHERE campaign_id = ?
+        AND idempotency_key = ?
+      LIMIT 1
+    `,
+    [node.campaign_id, idempotencyKey],
+  );
+
+  if (existing[0]?.id != null) {
+    await database.execute(
+      `
+        UPDATE mastery_events
+        SET active = 1,
+            reversed_at = NULL
+        WHERE id = ?
+      `,
+      [existing[0].id],
+    );
+    return { status: 'reactivated', masteryEventId: existing[0].id };
+  }
+
+  const result = await database.execute(
+    `
+      INSERT INTO mastery_events (
+        campaign_id,
+        node_id,
+        specialization_id,
+        knowledge_node_id,
+        mastery_level,
+        source_type,
+        source_id,
+        idempotency_key,
+        active,
+        created_at,
+        reversed_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL)
+    `,
+    [
+      node.campaign_id,
+      node.id,
+      specializationId,
+      node.knowledge_node_id ?? null,
+      masteryLevel,
+      sourceType,
+      sourceId,
+      idempotencyKey,
+      timestamp,
+    ],
+  );
+
+  return { status: 'created', masteryEventId: result.lastInsertId ?? null };
+};
+
+const syncNodeCompletionMasteryEvent = async (database, node, nextStatus, timestamp = currentTimestamp()) => {
+  const idempotencyKey = `legacy-node-completion:${node.campaign_id}:${node.id}`;
 
   if (nextStatus !== 'done') {
     await database.execute(
       `
-        UPDATE stat_xp_grants
+        UPDATE mastery_events
         SET active = 0,
             reversed_at = COALESCE(reversed_at, ?)
         WHERE campaign_id = ?
           AND node_id = ?
-          AND grant_reason = ?
+          AND source_type = 'legacy_node_completion'
           AND active = 1
       `,
-      [timestamp, node.campaign_id, nodeId, NODE_COMPLETION_GRANT_REASON],
+      [timestamp, node.campaign_id, node.id],
     );
-    return { status: 'deactivated' };
+    return { status: 'deactivated', masteryEventId: null };
+  }
+
+  return createOrReactivateMasteryEvent(database, node, {
+    masteryLevel: 'confirmed',
+    sourceType: 'legacy_node_completion',
+    sourceId: node.id,
+    idempotencyKey,
+    timestamp,
+  });
+};
+
+const upsertXpGrantForNode = async (
+  database,
+  node,
+  {
+    grantReason,
+    timestamp = currentTimestamp(),
+    masteryEventId = null,
+    assessmentAttemptId = null,
+  },
+) => {
+  if (!node?.campaign_id) {
+    return { status: 'missing-campaign' };
   }
 
   if (!node.primary_stat_id) {
@@ -477,7 +900,7 @@ const syncNodeCompletionXpGrant = async (database, nodeId, nextStatus, timestamp
         AND grant_reason = ?
       LIMIT 1
     `,
-    [node.campaign_id, nodeId, NODE_COMPLETION_GRANT_REASON],
+    [node.campaign_id, node.id, grantReason],
   );
 
   if (existing[0]?.id != null) {
@@ -487,11 +910,20 @@ const syncNodeCompletionXpGrant = async (database, nodeId, nextStatus, timestamp
         SET branch_id = ?,
             stat_id = ?,
             xp_amount = ?,
+            mastery_event_id = COALESCE(?, mastery_event_id),
+            assessment_attempt_id = COALESCE(?, assessment_attempt_id),
             active = 1,
             reversed_at = NULL
         WHERE id = ?
       `,
-      [node.branch_id, node.primary_stat_id, nodeCompletionXp(node), existing[0].id],
+      [
+        node.branch_id,
+        node.primary_stat_id,
+        nodeCompletionXp(node),
+        masteryEventId,
+        assessmentAttemptId,
+        existing[0].id,
+      ],
     );
     return { status: 'reactivated' };
   }
@@ -505,24 +937,66 @@ const syncNodeCompletionXpGrant = async (database, nodeId, nextStatus, timestamp
         stat_id,
         grant_reason,
         xp_amount,
+        mastery_event_id,
+        assessment_attempt_id,
         active,
         created_at,
         reversed_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, 1, ?, NULL)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL)
     `,
     [
       node.campaign_id,
-      nodeId,
+      node.id,
       node.branch_id,
       node.primary_stat_id,
-      NODE_COMPLETION_GRANT_REASON,
+      grantReason,
       nodeCompletionXp(node),
+      masteryEventId,
+      assessmentAttemptId,
       timestamp,
     ],
   );
 
   return { status: 'created' };
+};
+
+const syncNodeCompletionXpGrant = async (database, nodeId, nextStatus, timestamp = currentTimestamp()) => {
+  const node = await loadNodeMasteryBoundary(database, nodeId);
+
+  if (!node?.campaign_id) {
+    return { status: 'missing-campaign' };
+  }
+
+  const masteryEventResult = await syncNodeCompletionMasteryEvent(database, node, nextStatus, timestamp);
+
+  if (nextStatus !== 'done') {
+    await database.execute(
+      `
+        UPDATE stat_xp_grants
+        SET active = 0,
+            reversed_at = COALESCE(reversed_at, ?)
+        WHERE campaign_id = ?
+          AND node_id = ?
+          AND grant_reason = ?
+          AND active = 1
+      `,
+      [timestamp, node.campaign_id, nodeId, NODE_COMPLETION_GRANT_REASON],
+    );
+    return { status: 'deactivated', masteryEventStatus: masteryEventResult.status };
+  }
+
+  const xpGrantResult = await upsertXpGrantForNode(database, node, {
+    grantReason: NODE_COMPLETION_GRANT_REASON,
+    masteryEventId: masteryEventResult.masteryEventId,
+    timestamp,
+  });
+
+  return {
+    ...xpGrantResult,
+    masteryEventStatus: masteryEventResult.status,
+    masteryEventId: masteryEventResult.masteryEventId,
+  };
 };
 
 const buildXpWarning = (xpGrantResult) => {
@@ -1065,6 +1539,116 @@ const loadReviewState = async (database, nodeId) => {
   return rows[0] ?? null;
 };
 
+const loadNodeMasteryFocus = async (database, node, selectedAction = null) => {
+  if (!node?.campaign_id) {
+    return null;
+  }
+
+  const events = await database.select(
+    `
+      SELECT id, mastery_level, source_type, created_at, active
+      FROM mastery_events
+      WHERE campaign_id = ?
+        AND node_id = ?
+        AND active = 1
+      ORDER BY created_at DESC, id DESC
+    `,
+    [node.campaign_id, node.id],
+  );
+
+  const latestAttemptRows = await database.select(
+    `
+      SELECT id, task_id, check_method, passed, score, target_mastery_level, feedback_summary, evidence_payload, created_at
+      FROM assessment_attempts
+      WHERE campaign_id = ?
+        AND node_id = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `,
+    [node.campaign_id, node.id],
+  );
+
+  const routeRequirementRows = await database.select(
+    `
+      SELECT
+        route_nodes.required_mastery_level,
+        route_nodes.is_required,
+        specializations.id AS specialization_id,
+        specializations.name AS specialization_name
+      FROM campaigns
+      JOIN career_specializations specializations
+        ON specializations.id = campaigns.current_specialization_id
+       AND specializations.campaign_id = campaigns.id
+      JOIN specialization_route_nodes route_nodes
+        ON route_nodes.specialization_id = specializations.id
+      WHERE campaigns.id = ?
+        AND (
+          route_nodes.node_id = ?
+          OR (
+            route_nodes.node_id IS NULL
+            AND route_nodes.knowledge_node_id IS NOT NULL
+            AND route_nodes.knowledge_node_id = ?
+          )
+        )
+      ORDER BY route_nodes.is_required DESC, route_nodes.id ASC
+      LIMIT 1
+    `,
+    [node.campaign_id, node.id, node.knowledge_node_id ?? null],
+  );
+
+  const currentEvent =
+    events.reduce((best, event) => {
+      if (!best) {
+        return event;
+      }
+      return masteryLevelRank(event.mastery_level) > masteryLevelRank(best.mastery_level) ? event : best;
+    }, null) ?? null;
+  const currentLevel = currentEvent?.mastery_level ?? null;
+  const taskId = selectedAction?.id != null ? `action:${selectedAction.id}` : `node:${node.id}:assessment`;
+  const assessmentTask = assessmentTaskFromMetadata(node.check_metadata, taskId);
+  const strictCheckType = assessmentTask?.strictCheckType ?? null;
+  const hasVerifiedEvent = events.some((event) => ['legacy_node_completion', 'assessment'].includes(event.source_type));
+  const checklistItems = Array.isArray(assessmentTask?.items)
+    ? assessmentTask.items.map((item, index) => ({
+        id: normalizedChecklistItemId(item, index),
+        label: String(item.label ?? item.title ?? item.id ?? item.key ?? `Item ${index + 1}`),
+        required: item.required !== false,
+      }))
+    : [];
+
+  return {
+    currentLevel,
+    currentRank: currentLevel ? masteryLevelRank(currentLevel) + 1 : 0,
+    isVerified: hasVerifiedEvent,
+    isSelfMarkedOnly: events.length > 0 && !hasVerifiedEvent,
+    eventCount: events.length,
+    latestEvent: currentEvent,
+    latestAttempt: latestAttemptRows[0] ?? null,
+    routeRequirement: routeRequirementRows[0] ?? null,
+    check: {
+      taskId,
+      strictCheckType,
+      isStrictCheckable: strictCheckType != null,
+      isAutoStrictCheck: strictCheckType != null && autoStrictCheckTypes.has(strictCheckType),
+      prompt: assessmentTask?.prompt ?? assessmentTask?.question ?? assessmentTask?.title ?? null,
+      expectedSummary:
+        summarizeExpectedAnswer(
+          assessmentTask?.expected_summary ??
+            assessmentTask?.expectedSummary ??
+            assessmentTask?.expected_answer ??
+            assessmentTask?.expectedAnswer ??
+            assessmentTask?.expected_number ??
+            assessmentTask?.expectedNumber,
+        ) ?? null,
+      requiredTerms: []
+        .concat(assessmentTask?.required_terms ?? assessmentTask?.requiredTerms ?? assessmentTask?.terms ?? [])
+        .filter((value) => value != null && String(value).trim() !== '')
+        .map((value) => String(value)),
+      checklistItems,
+    },
+  };
+};
+
 const loadNodeFocus = async (database, dailySessionStore, nodeId, actionId = null, campaignId = null) => {
   const [node, actions, dependencies, dependents, reviewState, todaySession] = await Promise.all([
     loadNodeMetadata(database, nodeId, campaignId),
@@ -1085,6 +1669,7 @@ const loadNodeFocus = async (database, dailySessionStore, nodeId, actionId = nul
     actions[0] ??
     null;
 
+  const mastery = await loadNodeMasteryFocus(database, node, selectedAction);
   const completedActions = actions.filter((action) => action.status === 'done').length;
   const totalActions = actions.length;
   const openActions = actions.filter((action) => activeActionStatuses.includes(action.status)).length;
@@ -1104,6 +1689,7 @@ const loadNodeFocus = async (database, dailySessionStore, nodeId, actionId = nul
       completionPercent: totalActions === 0 ? 0 : Math.round((completedActions / totalActions) * 100),
       isCurrentSessionNode: todaySession?.primary_node_id === node.id,
     },
+    mastery,
   };
 };
 
@@ -1707,6 +2293,852 @@ const buildWindRoseSnapshot = async (database, campaignId) => {
   };
 };
 
+const runTransaction = async (database, callback) => {
+  await database.execute('BEGIN');
+  try {
+    const result = await callback();
+    await database.execute('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await database.execute('ROLLBACK');
+    } catch (rollbackError) {
+      if (
+        error != null &&
+        (typeof error === 'object' || typeof error === 'function') &&
+        !/no transaction|cannot rollback/i.test(String(rollbackError?.message ?? rollbackError))
+      ) {
+        error.rollbackError = rollbackError;
+      }
+    }
+    throw error;
+  }
+};
+
+const loadCampaign = async (database, campaignId) => {
+  const rows = await database.select('SELECT * FROM campaigns WHERE id = ? AND is_archived = 0 LIMIT 1', [campaignId]);
+  return rows[0] ?? null;
+};
+
+const assertCampaign = async (database, campaignId) => {
+  const campaign = await loadCampaign(database, campaignId);
+  if (!campaign) {
+    throw new Error('Campaign not found.');
+  }
+  return campaign;
+};
+
+const loadSpecialization = async (database, campaignId, specializationId) => {
+  const rows = await database.select(
+    'SELECT * FROM career_specializations WHERE id = ? AND campaign_id = ? LIMIT 1',
+    [specializationId, campaignId],
+  );
+  return rows[0] ?? null;
+};
+
+const assertSpecialization = async (database, campaignId, specializationId) => {
+  const specialization = await loadSpecialization(database, campaignId, specializationId);
+  if (!specialization) {
+    throw new Error('Specialization does not belong to the selected campaign.');
+  }
+  return specialization;
+};
+
+const activeSpecializationForCampaign = async (database, campaignId) => {
+  const rows = await database.select(
+    "SELECT * FROM career_specializations WHERE campaign_id = ? AND status = 'active' LIMIT 1",
+    [campaignId],
+  );
+  return rows[0] ?? null;
+};
+
+const slugKey = (value, fallback = 'specialization') => {
+  const base = slugify(value).replace(/[^a-z0-9-]+/gi, '-').replace(/^-+|-+$/g, '');
+  return base || fallback;
+};
+
+const buildCareerSnapshot = async (database, campaignId) => {
+  const campaign = await assertCampaign(database, campaignId);
+  const [currentRows, specializations, routeStats, masteryRows] = await Promise.all([
+    campaign.current_specialization_id
+      ? database.select('SELECT * FROM career_specializations WHERE id = ? AND campaign_id = ? LIMIT 1', [
+          campaign.current_specialization_id,
+          campaignId,
+        ])
+      : Promise.resolve([]),
+    database.select(
+      `
+        SELECT *
+        FROM career_specializations
+        WHERE campaign_id = ?
+        ORDER BY
+          CASE status
+            WHEN 'active' THEN 0
+            WHEN 'completed' THEN 1
+            WHEN 'paused' THEN 2
+            WHEN 'archived' THEN 3
+            ELSE 4
+          END,
+          COALESCE(completed_at, started_at, created_at) DESC,
+          id DESC
+      `,
+      [campaignId],
+    ),
+    database.select(
+      `
+        SELECT
+          career_specializations.id AS specialization_id,
+          COUNT(route_nodes.id) AS route_node_count,
+          SUM(CASE WHEN route_nodes.is_required = 1 THEN 1 ELSE 0 END) AS required_node_count
+        FROM career_specializations
+        LEFT JOIN specialization_route_nodes route_nodes ON route_nodes.specialization_id = career_specializations.id
+        WHERE career_specializations.campaign_id = ?
+        GROUP BY career_specializations.id
+      `,
+      [campaignId],
+    ),
+    database.select(
+      `
+        SELECT
+          mastery_events.node_id,
+          MAX(
+            CASE mastery_events.mastery_level
+              WHEN 'seen' THEN 1
+              WHEN 'understood' THEN 2
+              WHEN 'remembered' THEN 3
+              WHEN 'applied' THEN 4
+              WHEN 'confirmed' THEN 5
+              WHEN 'retained' THEN 6
+              ELSE 0
+            END
+          ) AS mastery_rank,
+          MAX(
+            CASE
+              WHEN mastery_events.source_type IN ('legacy_node_completion', 'assessment') THEN 1
+              ELSE 0
+            END
+          ) AS has_verified_event
+        FROM mastery_events
+        WHERE mastery_events.campaign_id = ?
+          AND mastery_events.active = 1
+        GROUP BY mastery_events.node_id
+      `,
+      [campaignId],
+    ),
+  ]);
+
+  const routeStatBySpecialization = new Map(routeStats.map((row) => [row.specialization_id, row]));
+  const verifiedNodeCount = masteryRows.filter((row) => Number(row.has_verified_event ?? 0) === 1).length;
+  const selfMarkedOnlyNodeCount = masteryRows.filter((row) => Number(row.has_verified_event ?? 0) !== 1).length;
+  const masteredNodeCount = masteryRows.filter(
+    (row) =>
+      Number(row.has_verified_event ?? 0) === 1 &&
+      Number(row.mastery_rank ?? 0) >= masteryLevelRank('confirmed') + 1,
+  ).length;
+
+  return {
+    campaign: {
+      id: campaign.id,
+      name: campaign.name,
+      icon: campaign.icon ?? null,
+      color: campaign.color ?? null,
+      mode: campaign.mode ?? 'free',
+      career_status: campaign.career_status ?? 'active',
+      current_specialization_id: campaign.current_specialization_id ?? null,
+    },
+    currentSpecialization: currentRows[0] ?? null,
+    specializations: specializations.map((specialization) => {
+      const stats = routeStatBySpecialization.get(specialization.id) ?? {};
+      return {
+        ...specialization,
+        route_node_count: Number(stats.route_node_count ?? 0),
+        required_node_count: Number(stats.required_node_count ?? 0),
+      };
+    }),
+    mastery: {
+      activeNodeCount: masteryRows.length,
+      confirmedOrBetterNodeCount: masteredNodeCount,
+      verifiedNodeCount,
+      selfMarkedOnlyNodeCount,
+    },
+  };
+};
+
+const loadCurrentSpecialization = async (database, campaignId) => {
+  const campaign = await assertCampaign(database, campaignId);
+  if (!campaign.current_specialization_id) {
+    return null;
+  }
+  return loadSpecialization(database, campaignId, campaign.current_specialization_id);
+};
+
+const buildRaceProjection = (campaign, currentSpecialization = null) => {
+  const careerMode = campaign.mode === 'career' || currentSpecialization != null;
+  const iconEmblems = {
+    spark: '✦',
+    brain: '◆',
+    compass: '⌖',
+    map: '▧',
+    book: '▤',
+  };
+  return {
+    key: careerMode ? 'crow_commander' : 'free_builder',
+    title: careerMode ? 'Ворон-стратег' : 'Архитектор',
+    emblem: iconEmblems[campaign.icon] ?? (careerMode ? '♜' : '◆'),
+    color: campaign.color ?? (careerMode ? '#f6c445' : '#58f0d0'),
+  };
+};
+
+const buildCityProjection = async (database, campaignId) => {
+  const rows = await database.select(
+    `
+      SELECT
+        campaign_stats.id,
+        campaign_stats.title,
+        campaign_stats.icon,
+        campaign_stats.color,
+        COALESCE(SUM(CASE WHEN grants.active = 1 THEN grants.xp_amount ELSE 0 END), 0) AS xp
+      FROM campaign_stats
+      LEFT JOIN stat_xp_grants grants ON grants.stat_id = campaign_stats.id
+        AND grants.campaign_id = campaign_stats.campaign_id
+      WHERE campaign_stats.campaign_id = ?
+        AND campaign_stats.is_archived = 0
+      GROUP BY campaign_stats.id
+      ORDER BY campaign_stats.sort_order ASC, campaign_stats.id ASC
+      LIMIT 6
+    `,
+    [campaignId],
+  );
+
+  const districts = rows.map((row) => {
+    const xp = Number(row.xp ?? 0);
+    const level = levelFromXp(xp);
+    const nextXp = nextLevelXp(level);
+    return {
+      id: row.id,
+      title: row.title,
+      emblem: row.icon ?? '◆',
+      color: row.color ?? '#58f0d0',
+      xp,
+      level,
+      stability: nextXp <= 0 ? 100 : Math.min(100, Math.round((xp / nextXp) * 100)),
+    };
+  });
+
+  return {
+    level: Math.max(1, districts.reduce((sum, district) => sum + district.level, 0)),
+    totalXp: districts.reduce((sum, district) => sum + district.xp, 0),
+    districts,
+  };
+};
+
+const computeRouteCompletion = async (database, campaignId, specializationId) => {
+  await assertSpecialization(database, campaignId, specializationId);
+  const rows = await database.select(
+    `
+      SELECT
+        route_nodes.id,
+        route_nodes.node_id,
+        route_nodes.knowledge_node_id,
+        route_nodes.required_mastery_level,
+        route_nodes.route_label,
+        route_nodes.route_order,
+        route_nodes.route_stage,
+        route_nodes.is_required,
+        nodes.title AS node_title,
+        skills.name AS skill_name,
+        directions.name AS direction_name,
+        spheres.name AS sphere_name,
+        knowledge_nodes.title AS knowledge_title,
+        MAX(
+          CASE mastery_events.mastery_level
+            WHEN 'seen' THEN 1
+            WHEN 'understood' THEN 2
+            WHEN 'remembered' THEN 3
+            WHEN 'applied' THEN 4
+            WHEN 'confirmed' THEN 5
+            WHEN 'retained' THEN 6
+            ELSE 0
+          END
+        ) AS active_mastery_rank
+      FROM specialization_route_nodes route_nodes
+      LEFT JOIN nodes ON nodes.id = route_nodes.node_id
+      LEFT JOIN skills ON skills.id = nodes.skill_id
+      LEFT JOIN directions ON directions.id = skills.direction_id
+      LEFT JOIN spheres ON spheres.id = directions.sphere_id
+      LEFT JOIN knowledge_nodes ON knowledge_nodes.id = route_nodes.knowledge_node_id
+      LEFT JOIN mastery_events ON mastery_events.campaign_id = ?
+        AND mastery_events.active = 1
+        AND mastery_events.source_type IN ('legacy_node_completion', 'assessment')
+        AND (
+          (route_nodes.node_id IS NOT NULL AND mastery_events.node_id = route_nodes.node_id)
+          OR (
+            route_nodes.node_id IS NULL
+            AND route_nodes.knowledge_node_id IS NOT NULL
+            AND mastery_events.knowledge_node_id = route_nodes.knowledge_node_id
+          )
+        )
+      WHERE route_nodes.specialization_id = ?
+      GROUP BY route_nodes.id
+      ORDER BY COALESCE(route_nodes.route_order, route_nodes.id) ASC, route_nodes.id ASC
+    `,
+    [campaignId, specializationId],
+  );
+
+  const required = rows.filter((row) => Number(row.is_required ?? 1) === 1);
+  const incomplete = required.filter(
+    (row) => Number(row.active_mastery_rank ?? 0) < masteryLevelRank(row.required_mastery_level) + 1,
+  );
+  const items = rows.map((row) => {
+    const activeMasteryRank = Number(row.active_mastery_rank ?? 0);
+    const requiredRank = masteryLevelRank(row.required_mastery_level) + 1;
+    return {
+      id: row.id,
+      node_id: row.node_id ?? null,
+      knowledge_node_id: row.knowledge_node_id ?? null,
+      title: row.node_title ?? row.knowledge_title ?? row.route_label ?? 'Route node',
+      path: [row.sphere_name, row.direction_name, row.skill_name].filter(Boolean).join(' / '),
+      required_mastery_level: row.required_mastery_level,
+      route_order: Number(row.route_order ?? row.id ?? 0),
+      route_stage: row.route_stage ?? null,
+      current_mastery_level: masteryLevelFromRank(activeMasteryRank),
+      current_mastery_rank: activeMasteryRank,
+      is_required: Number(row.is_required ?? 1),
+      is_complete: activeMasteryRank >= requiredRank,
+    };
+  });
+
+  return {
+    routeNodeCount: rows.length,
+    requiredNodeCount: required.length,
+    completedRequiredNodeCount: required.length - incomplete.length,
+    isComplete: required.length > 0 && incomplete.length === 0,
+    items,
+    nextItem: items.find((item) => item.is_required === 1 && !item.is_complete) ?? null,
+    incomplete,
+  };
+};
+
+const buildOpponentProjection = (specialization, routeCompletion) => {
+  if (!specialization) {
+    return null;
+  }
+  const startedAt = Date.parse(specialization.started_at ?? specialization.created_at ?? currentTimestamp());
+  const daysElapsed = Number.isFinite(startedAt)
+    ? Math.max(0, Math.floor((Date.now() - startedAt) / (1000 * 60 * 60 * 24)))
+    : 0;
+  const requiredNodeCount = Number(routeCompletion?.requiredNodeCount ?? 0);
+  const projectedRequired = requiredNodeCount > 0
+    ? Math.min(requiredNodeCount, Math.max(1, Math.ceil((daysElapsed + 1) * 0.6)))
+    : 0;
+  const pressure = requiredNodeCount > 0 ? Math.round((projectedRequired / requiredNodeCount) * 100) : 0;
+
+  return {
+    specialization_id: specialization.id,
+    daysElapsed,
+    projectedRequired,
+    pressure: Math.min(100, pressure),
+    score: projectedRequired * 10,
+  };
+};
+
+const routeMasteryGap = (item) =>
+  Math.max(0, masteryLevelRank(item.required_mastery_level) + 1 - Number(item.current_mastery_rank ?? 0));
+
+const buildRoutePlannerProjection = (routeCompletion) => {
+  if (!routeCompletion) {
+    return null;
+  }
+
+  const incompleteRequired = routeCompletion.items.filter((item) => item.is_required === 1 && !item.is_complete);
+  const focusItem = routeCompletion.nextItem ?? incompleteRequired[0] ?? null;
+  const focusIndex = focusItem
+    ? Math.max(0, incompleteRequired.findIndex((item) => item.id === focusItem.id))
+    : 0;
+  const nextItems = incompleteRequired.slice(focusIndex, focusIndex + 3);
+  const currentStage = focusItem?.route_stage ?? null;
+  const currentStageItems = currentStage
+    ? routeCompletion.items
+        .filter((item) => item.route_stage === currentStage)
+    : focusItem
+      ? routeCompletion.items.filter((item) => item.route_stage == null && item.id === focusItem.id)
+      : [];
+  const weakSpots = incompleteRequired
+    .filter((item) => item.id !== focusItem?.id)
+    .sort((left, right) => {
+      const gapDelta = routeMasteryGap(right) - routeMasteryGap(left);
+      if (gapDelta !== 0) {
+        return gapDelta;
+      }
+      return Number(left.current_mastery_rank ?? 0) - Number(right.current_mastery_rank ?? 0) || left.id - right.id;
+    })
+    .slice(0, 3);
+  const readyToVerify = incompleteRequired
+    .filter((item) => {
+      const requiredRank = masteryLevelRank(item.required_mastery_level) + 1;
+      return Number(item.current_mastery_rank ?? 0) >= Math.max(1, requiredRank - 1);
+    })
+    .slice(0, 3);
+
+  return {
+    focusItem,
+    currentStage,
+    currentStageItems,
+    nextItems,
+    weakSpots,
+    readyToVerify,
+    hasRouteItems: routeCompletion.routeNodeCount > 0,
+  };
+};
+
+const buildTodayGameSnapshot = async (database, campaignId, career) => {
+  const currentSpecialization = career.currentSpecialization ?? null;
+  const hasActiveSpecialization = currentSpecialization?.status === 'active';
+  const [routeCompletion, city] = await Promise.all([
+    currentSpecialization
+      ? computeRouteCompletion(database, campaignId, currentSpecialization.id)
+      : Promise.resolve(null),
+    buildCityProjection(database, campaignId),
+  ]);
+  const route = routeCompletion
+    ? {
+        routeNodeCount: routeCompletion.routeNodeCount,
+        requiredNodeCount: routeCompletion.requiredNodeCount,
+        completedRequiredNodeCount: routeCompletion.completedRequiredNodeCount,
+        completionPercent:
+          routeCompletion.requiredNodeCount > 0
+            ? Math.round((routeCompletion.completedRequiredNodeCount / routeCompletion.requiredNodeCount) * 100)
+            : 0,
+        isComplete: routeCompletion.isComplete,
+        items: routeCompletion.items,
+        nextItem: routeCompletion.nextItem,
+      }
+    : null;
+
+  return {
+    currentSpecialization,
+    careerStatus: career.campaign.career_status,
+    mastery: career.mastery,
+    race: buildRaceProjection(career.campaign, currentSpecialization),
+    route,
+    planner: hasActiveSpecialization ? buildRoutePlannerProjection(routeCompletion) : null,
+    city,
+    opponent: buildOpponentProjection(currentSpecialization, routeCompletion),
+  };
+};
+
+const createSpecializationRecord = async (database, campaignId, input = {}) => {
+  await assertCampaign(database, campaignId);
+  const existingActive = await activeSpecializationForCampaign(database, campaignId);
+  if (existingActive) {
+    throw new Error('Campaign already has an active specialization.');
+  }
+
+  const timestamp = currentTimestamp();
+  const name = String(input.name ?? '').trim() || 'New specialization';
+  const key = slugKey(input.key ?? name);
+  const status = input.status ?? 'active';
+
+  if (!['active', 'paused'].includes(status)) {
+    throw new Error('New specialization must start active or paused.');
+  }
+
+  await database.execute(
+    `
+      INSERT INTO career_specializations (
+        campaign_id,
+        name,
+        key,
+        domain,
+        length,
+        status,
+        started_at,
+        completed_at,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+    `,
+    [
+      campaignId,
+      name,
+      key,
+      input.domain ?? null,
+      input.length ?? 'medium',
+      status,
+      status === 'active' ? timestamp : null,
+      timestamp,
+      timestamp,
+    ],
+  );
+
+  const [specialization] = await database.select(
+    'SELECT * FROM career_specializations WHERE campaign_id = ? AND key = ? LIMIT 1',
+    [campaignId, key],
+  );
+
+  if (status === 'active') {
+    await database.execute(
+      `
+        UPDATE campaigns
+        SET current_specialization_id = ?,
+            career_status = 'active',
+            mode = 'career',
+            updated_at = ?
+        WHERE id = ?
+      `,
+      [specialization.id, timestamp, campaignId],
+    );
+  }
+
+  return specialization;
+};
+
+const validateNodeInCampaign = async (database, nodeId, campaignId) => {
+  const node = await loadNodeMasteryBoundary(database, nodeId);
+  if (!node || node.campaign_id !== campaignId) {
+    throw new Error('Node does not belong to the selected campaign.');
+  }
+  return node;
+};
+
+const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object ?? {}, key);
+
+const normalizeNullableId = (value) => {
+  if (value == null || value === '') {
+    return null;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : value;
+};
+
+const assertRouteKnowledgeIdentityCanChange = async (database, campaignId, nodeId, nextKnowledgeNodeId) => {
+  const rows = await database.select(
+    `
+      SELECT route_nodes.id, route_nodes.knowledge_node_id
+      FROM specialization_route_nodes route_nodes
+      JOIN career_specializations specializations ON specializations.id = route_nodes.specialization_id
+      WHERE route_nodes.node_id = ?
+        AND route_nodes.knowledge_node_id IS NOT NULL
+        AND route_nodes.knowledge_node_id IS NOT ?
+        AND specializations.campaign_id = ?
+        AND specializations.status != 'archived'
+      LIMIT 1
+    `,
+    [nodeId, nextKnowledgeNodeId, campaignId],
+  );
+
+  if (rows[0]) {
+    throw new Error('Node knowledge identity is locked by an existing route item.');
+  }
+};
+
+const upsertKnowledgeNode = async (database, input = {}) => {
+  const timestamp = currentTimestamp();
+  const key = slugKey(input.key ?? input.title ?? 'knowledge-node', 'knowledge-node');
+  const title = String(input.title ?? key).trim() || key;
+  const existing = await database.select('SELECT * FROM knowledge_nodes WHERE key = ? LIMIT 1', [key]);
+
+  if (existing[0]) {
+    await database.execute(
+      `
+        UPDATE knowledge_nodes
+        SET title = ?,
+            domain = ?,
+            summary = ?,
+            updated_at = ?
+        WHERE id = ?
+      `,
+      [title, input.domain ?? existing[0].domain ?? null, input.summary ?? existing[0].summary ?? null, timestamp, existing[0].id],
+    );
+    return (await database.select('SELECT * FROM knowledge_nodes WHERE id = ? LIMIT 1', [existing[0].id]))[0];
+  }
+
+  await database.execute(
+    `
+      INSERT INTO knowledge_nodes (key, title, domain, summary, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `,
+    [key, title, input.domain ?? null, input.summary ?? null, timestamp, timestamp],
+  );
+
+  return (await database.select('SELECT * FROM knowledge_nodes WHERE key = ? LIMIT 1', [key]))[0];
+};
+
+const hasRouteNodeMetadataPatch = (input = {}) =>
+  input.required_mastery_level !== undefined ||
+  input.requiredMasteryLevel !== undefined ||
+  input.route_order !== undefined ||
+  input.routeOrder !== undefined ||
+  input.route_stage !== undefined ||
+  input.routeStage !== undefined ||
+  input.route_label !== undefined ||
+  input.routeLabel !== undefined ||
+  input.is_required !== undefined ||
+  input.isRequired !== undefined;
+
+const addRouteNode = async (database, campaignId, specializationId, input = {}) => {
+  const specialization = await assertSpecialization(database, campaignId, specializationId);
+  if (specialization.status !== 'active') {
+    throw new Error('Route nodes can only be added to an active specialization.');
+  }
+  const timestamp = currentTimestamp();
+  const knowledgeNodeId = input.knowledge_node_id ?? input.knowledgeNodeId ?? null;
+  let nodeId = input.node_id ?? input.nodeId ?? null;
+  let routeNode = null;
+
+  if (nodeId != null) {
+    routeNode = await validateNodeInCampaign(database, nodeId, campaignId);
+    if (knowledgeNodeId != null && routeNode.knowledge_node_id !== knowledgeNodeId) {
+      throw new Error('Route node knowledge identity does not match the selected node.');
+    }
+  }
+
+  if (knowledgeNodeId != null && nodeId == null) {
+    const existingNode = await database.select(
+      `
+        SELECT nodes.id
+        FROM nodes
+        JOIN skills ON skills.id = nodes.skill_id
+        JOIN directions ON directions.id = skills.direction_id
+        JOIN spheres ON spheres.id = directions.sphere_id
+        WHERE spheres.campaign_id = ?
+          AND nodes.knowledge_node_id = ?
+          AND nodes.is_archived = 0
+        ORDER BY nodes.id ASC
+        LIMIT 1
+      `,
+      [campaignId, knowledgeNodeId],
+    );
+    nodeId = existingNode[0]?.id ?? null;
+  }
+
+  const existing = await database.select(
+    `
+      SELECT *
+      FROM specialization_route_nodes
+      WHERE specialization_id = ?
+        AND (
+          (? IS NOT NULL AND knowledge_node_id = ?)
+          OR (? IS NULL AND ? IS NOT NULL AND knowledge_node_id IS NULL AND node_id = ?)
+        )
+      LIMIT 1
+    `,
+    [specializationId, knowledgeNodeId, knowledgeNodeId, knowledgeNodeId, nodeId, nodeId],
+  );
+
+  if (existing[0]) {
+    if (hasRouteNodeMetadataPatch(input)) {
+      return updateRouteNode(database, campaignId, existing[0].id, input);
+    }
+    return existing[0];
+  }
+
+  const requestedRouteOrder = input.route_order ?? input.routeOrder ?? null;
+  let routeOrder = requestedRouteOrder == null ? null : Number(requestedRouteOrder);
+  if (routeOrder != null && !Number.isFinite(routeOrder)) {
+    throw new Error('Route order must be a finite number.');
+  }
+  if (routeOrder == null) {
+    const orderRows = await database.select(
+      'SELECT COALESCE(MAX(route_order), MAX(id), 0) AS max_order FROM specialization_route_nodes WHERE specialization_id = ?',
+      [specializationId],
+    );
+    routeOrder = Number(orderRows[0]?.max_order ?? 0) + 10;
+  }
+  const routeStage = input.route_stage ?? input.routeStage ?? null;
+  const isRequired = input.is_required ?? input.isRequired;
+
+  await database.execute(
+    `
+      INSERT INTO specialization_route_nodes (
+        specialization_id,
+        node_id,
+        knowledge_node_id,
+        required_mastery_level,
+        route_label,
+        route_order,
+        route_stage,
+        is_required,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      specializationId,
+      nodeId,
+      knowledgeNodeId,
+      input.required_mastery_level ?? input.requiredMasteryLevel ?? 'confirmed',
+      input.route_label ?? input.routeLabel ?? null,
+      Math.trunc(routeOrder),
+      routeStage == null ? null : String(routeStage).trim() || null,
+      isRequired === false || isRequired === 0 ? 0 : 1,
+      timestamp,
+      timestamp,
+    ],
+  );
+
+  const rows = await database.select(
+    'SELECT * FROM specialization_route_nodes WHERE specialization_id = ? ORDER BY id DESC LIMIT 1',
+    [specializationId],
+  );
+  return rows[0] ?? null;
+};
+
+const loadActiveRouteNode = async (database, campaignId, routeNodeId) => {
+  const rows = await database.select(
+    `
+      SELECT route_nodes.*, specializations.status AS specialization_status
+      FROM specialization_route_nodes route_nodes
+      JOIN career_specializations specializations ON specializations.id = route_nodes.specialization_id
+      WHERE route_nodes.id = ?
+        AND specializations.campaign_id = ?
+      LIMIT 1
+    `,
+    [routeNodeId, campaignId],
+  );
+  const routeNode = rows[0] ?? null;
+  if (!routeNode) {
+    throw new Error('Route node does not belong to this campaign.');
+  }
+  if (routeNode.specialization_status !== 'active') {
+    throw new Error('Route nodes can only be changed in an active specialization.');
+  }
+  return routeNode;
+};
+
+const updateRouteNode = async (database, campaignId, routeNodeId, input = {}) => {
+  await loadActiveRouteNode(database, campaignId, routeNodeId);
+  const timestamp = currentTimestamp();
+  const patch = {};
+
+  if (input.required_mastery_level !== undefined || input.requiredMasteryLevel !== undefined) {
+    const requiredMasteryLevel = input.required_mastery_level ?? input.requiredMasteryLevel;
+    assertMasteryLevel(requiredMasteryLevel);
+    patch.required_mastery_level = requiredMasteryLevel;
+  }
+
+  if (input.route_label !== undefined || input.routeLabel !== undefined) {
+    const routeLabel = input.route_label ?? input.routeLabel;
+    patch.route_label = routeLabel == null ? null : String(routeLabel).trim() || null;
+  }
+
+  if (input.route_order !== undefined || input.routeOrder !== undefined) {
+    const routeOrder = Number(input.route_order ?? input.routeOrder);
+    if (!Number.isFinite(routeOrder)) {
+      throw new Error('Route order must be a finite number.');
+    }
+    patch.route_order = Math.trunc(routeOrder);
+  }
+
+  if (input.route_stage !== undefined || input.routeStage !== undefined) {
+    const routeStage = input.route_stage ?? input.routeStage;
+    patch.route_stage = routeStage == null ? null : String(routeStage).trim() || null;
+  }
+
+  if (input.is_required !== undefined || input.isRequired !== undefined) {
+    const isRequired = input.is_required ?? input.isRequired;
+    patch.is_required = isRequired === false || isRequired === 0 ? 0 : 1;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return loadActiveRouteNode(database, campaignId, routeNodeId);
+  }
+
+  await database.execute(
+    `
+      UPDATE specialization_route_nodes
+      SET required_mastery_level = COALESCE(?, required_mastery_level),
+          route_label = CASE WHEN ? THEN ? ELSE route_label END,
+          route_order = COALESCE(?, route_order),
+          route_stage = CASE WHEN ? THEN ? ELSE route_stage END,
+          is_required = COALESCE(?, is_required),
+          updated_at = ?
+      WHERE id = ?
+    `,
+    [
+      patch.required_mastery_level ?? null,
+      Object.prototype.hasOwnProperty.call(patch, 'route_label') ? 1 : 0,
+      patch.route_label ?? null,
+      patch.route_order ?? null,
+      Object.prototype.hasOwnProperty.call(patch, 'route_stage') ? 1 : 0,
+      patch.route_stage ?? null,
+      patch.is_required ?? null,
+      timestamp,
+      routeNodeId,
+    ],
+  );
+
+  return loadActiveRouteNode(database, campaignId, routeNodeId);
+};
+
+const removeRouteNode = async (database, campaignId, routeNodeId) => {
+  const routeNode = await loadActiveRouteNode(database, campaignId, routeNodeId);
+  await database.execute(
+    `
+      DELETE FROM specialization_route_edges
+      WHERE source_route_node_id = ?
+         OR target_route_node_id = ?
+    `,
+    [routeNodeId, routeNodeId],
+  );
+  await database.execute('DELETE FROM specialization_route_nodes WHERE id = ?', [routeNodeId]);
+  return routeNode;
+};
+
+const reorderRouteNodes = async (database, campaignId, firstRouteNodeId, secondRouteNodeId) => {
+  if (firstRouteNodeId === secondRouteNodeId) {
+    return [];
+  }
+  const first = await loadActiveRouteNode(database, campaignId, firstRouteNodeId);
+  const second = await loadActiveRouteNode(database, campaignId, secondRouteNodeId);
+  if (first.specialization_id !== second.specialization_id) {
+    throw new Error('Route nodes must belong to the same specialization.');
+  }
+
+  const firstOrder = Number(first.route_order ?? first.id);
+  const secondOrder = Number(second.route_order ?? second.id);
+  const timestamp = currentTimestamp();
+
+  await database.execute(
+    `
+      UPDATE specialization_route_nodes
+      SET route_order = CASE
+            WHEN id = ? THEN ?
+            WHEN id = ? THEN ?
+            ELSE route_order
+          END,
+          updated_at = ?
+      WHERE id IN (?, ?)
+    `,
+    [first.id, secondOrder, second.id, firstOrder, timestamp, first.id, second.id],
+  );
+
+  return database.select(
+    `
+      SELECT *
+      FROM specialization_route_nodes
+      WHERE id IN (?, ?)
+      ORDER BY COALESCE(route_order, id) ASC, id ASC
+    `,
+    [first.id, second.id],
+  );
+};
+
+const createAssessmentXpGrant = async (database, node, masteryEventResult, attempt, timestamp) => {
+  if (!masteryEventResult?.masteryEventId || attempt.check_method === 'self_marked') {
+    return { status: 'skipped' };
+  }
+
+  return upsertXpGrantForNode(database, node, {
+    grantReason: ASSESSMENT_MASTERY_GRANT_REASON,
+    masteryEventId: masteryEventResult.masteryEventId,
+    assessmentAttemptId: attempt.id,
+    timestamp,
+  });
+};
+
 export const createNowService = ({ database, hierarchyStore, reviewStateStore, dailySessionStore, nodeNoteStore }) => {
   const starterLocalizationPromises = new Map();
 
@@ -1737,10 +3169,11 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
     await ensureStarterLocalization(resolvedCampaignId);
 
-    const [metrics, rawCandidates, todaySession] = await Promise.all([
+    const [metrics, rawCandidates, todaySession, career] = await Promise.all([
       loadMetrics(database, resolvedCampaignId),
       loadCandidateRows(database, resolvedCampaignId),
       loadTodaySession(database, dailySessionStore, resolvedCampaignId),
+      buildCareerSnapshot(database, resolvedCampaignId),
     ]);
 
     const rankedCandidates = rankCandidates(rawCandidates);
@@ -1750,7 +3183,292 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       primaryRecommendation: rankedCandidates[0] ?? null,
       queue: rankedCandidates.slice(1, 1 + MAX_QUEUE_ITEMS),
       todaySession,
+      today: await buildTodayGameSnapshot(database, resolvedCampaignId, career),
     };
+  },
+
+  async getCareerSnapshot(campaignId = null) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    return buildCareerSnapshot(database, resolvedCampaignId);
+  },
+
+  async createSpecialization(campaignId, input = {}) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    return runTransaction(database, async () => createSpecializationRecord(database, resolvedCampaignId, input));
+  },
+
+  async continueWithSpecialization(campaignId, input = {}) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    return runTransaction(database, async () => createSpecializationRecord(database, resolvedCampaignId, input));
+  },
+
+  async completeSpecialization(campaignId, specializationId = null, options = {}) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const specialization =
+      specializationId == null
+        ? await loadCurrentSpecialization(database, resolvedCampaignId)
+        : await assertSpecialization(database, resolvedCampaignId, specializationId);
+
+    if (!specialization) {
+      throw new Error('No current specialization to complete.');
+    }
+
+    if (specialization.status !== 'active') {
+      throw new Error('Only an active specialization can be completed.');
+    }
+
+    const routeCompletion = await computeRouteCompletion(database, resolvedCampaignId, specialization.id);
+    if (!routeCompletion.isComplete && !options.force) {
+      throw new Error('Specialization route is not complete.');
+    }
+
+    const timestamp = currentTimestamp();
+    return runTransaction(database, async () => {
+      await database.execute(
+        `
+          UPDATE career_specializations
+          SET status = 'completed',
+              completed_at = ?,
+              updated_at = ?
+          WHERE id = ?
+            AND campaign_id = ?
+        `,
+        [timestamp, timestamp, specialization.id, resolvedCampaignId],
+      );
+      await database.execute(
+        `
+          UPDATE campaigns
+          SET current_specialization_id = ?,
+              career_status = 'victory',
+              updated_at = ?
+          WHERE id = ?
+        `,
+        [specialization.id, timestamp, resolvedCampaignId],
+      );
+      return {
+        specialization: (await loadSpecialization(database, resolvedCampaignId, specialization.id)),
+        routeCompletion,
+        career: await buildCareerSnapshot(database, resolvedCampaignId),
+      };
+    });
+  },
+
+  async archiveSpecialization(campaignId, specializationId) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const specialization = await assertSpecialization(database, resolvedCampaignId, specializationId);
+    const campaign = await assertCampaign(database, resolvedCampaignId);
+
+    if (campaign.current_specialization_id === specialization.id && ['active', 'paused'].includes(specialization.status)) {
+      throw new Error('Current active or paused specialization cannot be archived without choosing another route.');
+    }
+
+    const timestamp = currentTimestamp();
+    return runTransaction(database, async () => {
+      await database.execute(
+        `
+          UPDATE career_specializations
+          SET status = 'archived',
+              updated_at = ?
+          WHERE id = ?
+            AND campaign_id = ?
+        `,
+        [timestamp, specialization.id, resolvedCampaignId],
+      );
+
+      if (campaign.current_specialization_id === specialization.id && specialization.status === 'completed') {
+        await database.execute(
+          `
+            UPDATE campaigns
+            SET current_specialization_id = NULL,
+                career_status = 'victory',
+                updated_at = ?
+            WHERE id = ?
+          `,
+          [timestamp, resolvedCampaignId],
+        );
+      }
+
+      return buildCareerSnapshot(database, resolvedCampaignId);
+    });
+  },
+
+  async getRouteCompletion(campaignId, specializationId = null) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const specialization =
+      specializationId == null
+        ? await loadCurrentSpecialization(database, resolvedCampaignId)
+        : await assertSpecialization(database, resolvedCampaignId, specializationId);
+    if (!specialization) {
+      return null;
+    }
+    return computeRouteCompletion(database, resolvedCampaignId, specialization.id);
+  },
+
+  async upsertKnowledgeNode(input = {}) {
+    return upsertKnowledgeNode(database, input);
+  },
+
+  async addSpecializationRouteNode(campaignId, specializationId, input = {}) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    return addRouteNode(database, resolvedCampaignId, specializationId, input);
+  },
+
+  async updateSpecializationRouteNode(campaignId, routeNodeId, input = {}) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    return runTransaction(database, async () => updateRouteNode(database, resolvedCampaignId, routeNodeId, input));
+  },
+
+  async reorderSpecializationRouteNodes(campaignId, firstRouteNodeId, secondRouteNodeId) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    return runTransaction(database, async () =>
+      reorderRouteNodes(database, resolvedCampaignId, firstRouteNodeId, secondRouteNodeId),
+    );
+  },
+
+  async removeSpecializationRouteNode(campaignId, routeNodeId) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    return runTransaction(database, async () => removeRouteNode(database, resolvedCampaignId, routeNodeId));
+  },
+
+  async submitAssessmentAttempt(campaignId, input = {}) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const node = await validateNodeInCampaign(database, input.node_id ?? input.nodeId, resolvedCampaignId);
+    const specializationId = input.specialization_id ?? input.specializationId ?? (await loadCurrentSpecialization(database, resolvedCampaignId))?.id ?? null;
+    if (specializationId != null) {
+      await assertSpecialization(database, resolvedCampaignId, specializationId);
+    }
+
+    const checkMethod = input.check_method ?? input.checkMethod ?? 'strict';
+    if (!['strict', 'llm_assisted'].includes(checkMethod)) {
+      throw new Error('Unsupported assessment check method.');
+    }
+
+    const targetMasteryLevel = input.target_mastery_level ?? input.targetMasteryLevel ?? 'understood';
+    assertMasteryLevel(targetMasteryLevel);
+    const timestamp = currentTimestamp();
+    const taskId = String(input.task_id ?? input.taskId ?? `node:${node.id}:assessment`);
+    const assessmentTask = assessmentTaskFromMetadata(node.check_metadata, taskId);
+    const strictCheckType =
+      input.strict_check_type ??
+      input.strictCheckType ??
+      assessmentTask?.strictCheckType ??
+      null;
+    if (strictCheckType && checkMethod !== 'strict') {
+      throw new Error('Strict-checkable tasks cannot be passed through LLM-only checking.');
+    }
+    const strictCheckResult =
+      checkMethod === 'strict' && input.passed !== false
+        ? evaluateStrictAssessmentCheck({ strictCheckType, config: assessmentTask ?? {}, input, timestamp })
+        : null;
+    const evidencePayload = strictCheckResult ? JSON.stringify(strictCheckResult.evidencePayload) : normalizeEvidencePayload(input);
+    const explicitIdempotencyKey = input.idempotency_key ?? input.idempotencyKey ?? null;
+    if (!explicitIdempotencyKey) {
+      throw new Error('Assessment submit requires an idempotency key.');
+    }
+    const passed = strictCheckResult ? strictCheckResult.passed : Boolean(input.passed);
+    const score = strictCheckResult ? strictCheckResult.score : input.score ?? null;
+    const feedbackSummary =
+      strictCheckResult?.feedbackSummary ?? input.feedback_summary ?? input.feedbackSummary ?? null;
+    if (passed && !evidencePayload) {
+      throw new Error('Passed assessment requires evidence payload.');
+    }
+    const idempotencyKey = explicitIdempotencyKey;
+
+    return runTransaction(database, async () => {
+      const existing = await database.select(
+        'SELECT * FROM assessment_attempts WHERE campaign_id = ? AND idempotency_key = ? LIMIT 1',
+        [resolvedCampaignId, idempotencyKey],
+      );
+
+      const attempt =
+        existing[0] ??
+        (await (async () => {
+          await database.execute(
+            `
+              INSERT INTO assessment_attempts (
+                campaign_id,
+                specialization_id,
+                node_id,
+                task_id,
+                answer_type,
+                submitted_answer,
+                check_method,
+                strict_check_type,
+                target_mastery_level,
+                passed,
+                score,
+                feedback_summary,
+                evidence_payload,
+                idempotency_key,
+                created_at
+              )
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            [
+              resolvedCampaignId,
+              specializationId,
+              node.id,
+              taskId,
+              input.answer_type ?? input.answerType ?? 'text',
+              input.submitted_answer ?? input.submittedAnswer ?? null,
+              checkMethod,
+              strictCheckType,
+              targetMasteryLevel,
+              passed ? 1 : 0,
+              score,
+              feedbackSummary,
+              evidencePayload,
+              idempotencyKey,
+              timestamp,
+            ],
+          );
+          return (
+            await database.select(
+              'SELECT * FROM assessment_attempts WHERE campaign_id = ? AND idempotency_key = ? LIMIT 1',
+              [resolvedCampaignId, idempotencyKey],
+            )
+          )[0];
+        })());
+
+      let masteryEvent = null;
+      let xpGrantResult = null;
+      if (Number(attempt.passed ?? 0) === 1) {
+        if (!attempt.evidence_payload) {
+          throw new Error('Passed assessment requires evidence payload.');
+        }
+        masteryEvent = await createOrReactivateMasteryEvent(database, node, {
+          masteryLevel: attempt.target_mastery_level,
+          specializationId: attempt.specialization_id ?? null,
+          sourceType: 'assessment',
+          sourceId: attempt.id,
+          idempotencyKey: `assessment-mastery:${resolvedCampaignId}:${node.id}:${attempt.id}:${attempt.target_mastery_level}`,
+          timestamp,
+        });
+        xpGrantResult = await createAssessmentXpGrant(database, node, masteryEvent, attempt, timestamp);
+      }
+
+      return {
+        attempt,
+        masteryEvent,
+        xpGrantResult,
+        xpWarning: buildXpWarning(xpGrantResult),
+      };
+    });
+  },
+
+  async markSelfMastery(campaignId, nodeId, masteryLevel = 'seen') {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const node = await validateNodeInCampaign(database, nodeId, resolvedCampaignId);
+    assertMasteryLevel(masteryLevel);
+
+    const timestamp = currentTimestamp();
+    return createOrReactivateMasteryEvent(database, node, {
+      masteryLevel,
+      sourceType: 'self_marked',
+      sourceId: node.id,
+      idempotencyKey: `self-marked:${resolvedCampaignId}:${node.id}:${masteryLevel}`,
+      timestamp,
+    });
   },
 
   async getNodeFocus(campaignId, nodeId, actionId = null) {
@@ -1827,6 +3545,13 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     const before = await loadNodeMetadata(database, nodeId, resolvedCampaignId);
     if (!before) {
       return null;
+    }
+    const hasKnowledgeNodePatch = hasOwn(payload, 'knowledge_node_id') || hasOwn(payload, 'knowledgeNodeId');
+    if (hasKnowledgeNodePatch) {
+      const nextKnowledgeNodeId = normalizeNullableId(payload.knowledge_node_id ?? payload.knowledgeNodeId ?? null);
+      if (normalizeNullableId(before.knowledge_node_id) !== nextKnowledgeNodeId) {
+        await assertRouteKnowledgeIdentityCanChange(database, resolvedCampaignId, nodeId, nextKnowledgeNodeId);
+      }
     }
     const node = await hierarchyStore.updateNode(nodeId, payload);
 

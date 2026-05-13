@@ -41,6 +41,38 @@ const WindRoseView = lazy(() =>
   import('./components/WindRoseView').then((module) => ({ default: module.WindRoseView })),
 );
 
+const rawPersistenceErrorPattern =
+  /\b(sql|sqlite|constraint|transaction|rollback|commit|begin|foreign key|database)\b|cannot rollback/i;
+
+const domainErrorMessages = new globalThis.Map([
+  ['Passed assessment requires evidence payload.', 'Зачет требует результата проверки. Заполните evidence и повторите попытку.'],
+  ['Assessment submit requires an idempotency key.', 'Не удалось подготовить попытку проверки. Повторите действие.'],
+  ['Specialization route is not complete.', 'Маршрут пока нельзя завершить: сначала закройте обязательные узлы.'],
+  ['No current specialization to complete.', 'Нет активного маршрута для завершения.'],
+  ['Only an active specialization can be completed.', 'Завершить можно только активный маршрут.'],
+  ['Campaign already has an active specialization.', 'В кампании уже есть активный маршрут.'],
+]);
+
+const userActionErrorMessage = (error, fallback) => {
+  const message = String(error?.message ?? error ?? '').trim();
+  if (!message || rawPersistenceErrorPattern.test(message)) {
+    return fallback;
+  }
+
+  return domainErrorMessages.get(message) ?? message;
+};
+
+const isExpectedActionError = (error) => {
+  const message = String(error?.message ?? error ?? '').trim();
+  return !message || rawPersistenceErrorPattern.test(message) || domainErrorMessages.has(message);
+};
+
+const logUnexpectedActionError = (label, error) => {
+  if (!isExpectedActionError(error)) {
+    console.error(label, error);
+  }
+};
+
 export default function App() {
   const runtime = getRuntimeProfile();
   const [activeTab, setActiveTab] = useState('now');
@@ -80,12 +112,16 @@ export default function App() {
   const [mapShrinkTitle, setMapShrinkTitle] = useState('');
   const [nodeEditorPendingAction, setNodeEditorPendingAction] = useState(null);
   const [nodeEditorNotice, setNodeEditorNotice] = useState(null);
+  const [nodeMasteryPendingAction, setNodeMasteryPendingAction] = useState(null);
+  const [routeMutationPending, setRouteMutationPending] = useState(false);
+  const [mapRouteFilterRequestId, setMapRouteFilterRequestId] = useState(null);
   const [mapMutationPendingAction, setMapMutationPendingAction] = useState(null);
   const [windRoseSnapshot, setWindRoseSnapshot] = useState(null);
   const [windRoseLoading, setWindRoseLoading] = useState(false);
   const [windRoseError, setWindRoseError] = useState(null);
   const [selectedWindStatId, setSelectedWindStatId] = useState(null);
   const mapUndoStackRef = useRef([]);
+  const mapRouteFilterRequestCounterRef = useRef(0);
   const selectedCampaignId = selectedCampaign?.id ?? null;
 
   useEffect(() => {
@@ -245,7 +281,7 @@ export default function App() {
     }
   };
 
-  const loadNavigationSnapshot = async (preferredSelection = navigationSelection) => {
+  const loadNavigationSnapshot = async (preferredSelection = navigationSelection, options = {}) => {
     setNavigationLoading(true);
     setNavigationError(null);
     setNodeEditorNotice(null);
@@ -253,7 +289,14 @@ export default function App() {
     try {
       const snapshot = await db.getNavigationSnapshot(selectedCampaignId);
       setNavigationSnapshot(snapshot);
-      const nextBranchFilterId = preferredSelection?.skillId ?? navigationBranchFilterId ?? null;
+      const hasBranchFilterOverride = Object.prototype.hasOwnProperty.call(options, 'branchFilterId');
+      const hasPreferredSkillFilter =
+        preferredSelection && Object.prototype.hasOwnProperty.call(preferredSelection, 'skillId');
+      const nextBranchFilterId = hasBranchFilterOverride
+        ? options.branchFilterId ?? null
+        : hasPreferredSkillFilter
+          ? preferredSelection.skillId ?? null
+          : navigationBranchFilterId ?? null;
       const nextSelection =
         preferredSelection?.nodeId
           ? preferredSelection
@@ -295,9 +338,16 @@ export default function App() {
     setNavigationFocus(null);
     setNavigationSelection(null);
     setNavigationBranchFilterId(null);
+    setRouteMutationPending(false);
+    setMapRouteFilterRequestId(null);
     setWindRoseSnapshot(null);
     setSelectedWindStatId(null);
     mapUndoStackRef.current = [];
+  };
+
+  const requestMapRouteFilter = () => {
+    mapRouteFilterRequestCounterRef.current += 1;
+    setMapRouteFilterRequestId(mapRouteFilterRequestCounterRef.current);
   };
 
   const handleOpenCampaign = async (campaign) => {
@@ -443,6 +493,52 @@ export default function App() {
     }
   };
 
+  const refreshCareerSurfaces = async () => {
+    await Promise.all([
+      loadCampaigns(),
+      loadNowDashboard(),
+      normalizedActiveTab === 'wind' ? loadWindRose() : Promise.resolve(),
+    ]);
+  };
+
+  const handleCompleteSpecialization = async () => {
+    if (!selectedCampaignId) {
+      return;
+    }
+
+    setNowError(null);
+    try {
+      await db.completeSpecialization(null, {}, selectedCampaignId);
+      await refreshCareerSurfaces();
+    } catch (error) {
+      logUnexpectedActionError('Specialization completion failed', error);
+      setNowError(userActionErrorMessage(error, 'Маршрут пока нельзя завершить.'));
+    }
+  };
+
+  const handleContinueSpecialization = async () => {
+    if (!selectedCampaignId) {
+      return;
+    }
+
+    setNowError(null);
+    try {
+      await db.continueWithSpecialization(
+        {
+          name: `Продолжение ${new Date().toLocaleDateString('ru-RU')}`,
+          key: `route-${Date.now().toString(36)}`,
+          domain: selectedCampaign?.name ?? 'BrainGainz',
+          length: 'medium',
+        },
+        selectedCampaignId,
+      );
+      await refreshCareerSurfaces();
+    } catch (error) {
+      logUnexpectedActionError('Specialization continuation failed', error);
+      setNowError(userActionErrorMessage(error, 'Не удалось выбрать новый маршрут.'));
+    }
+  };
+
   const handleCreateLinearAlgebraGraph = async () => {
     setNowCreatingStarter(true);
     setNowError(null);
@@ -562,6 +658,31 @@ export default function App() {
     setNavigationSelection(selection);
     setNowError(null);
     await loadNowFocus(selection);
+  };
+
+  const handleOpenTodayRouteNode = async (nodeId) => {
+    if (!nodeId) {
+      return;
+    }
+    const selection = { nodeId, actionId: null, skillId: null };
+    setNavigationBranchFilterId(null);
+    setNavigationSelection(selection);
+    requestMapRouteFilter();
+    if (normalizedActiveTab === 'map') {
+      await loadNavigationSnapshot(selection, { branchFilterId: null });
+      return;
+    }
+    setActiveTab('map');
+  };
+
+  const handleOpenTodayRouteMap = async () => {
+    setNavigationBranchFilterId(null);
+    requestMapRouteFilter();
+    if (normalizedActiveTab === 'map') {
+      await loadNavigationSnapshot(navigationSelection, { branchFilterId: null });
+      return;
+    }
+    setActiveTab('map');
   };
 
   const handleSelectNavigationNode = async (node) => {
@@ -1134,6 +1255,280 @@ export default function App() {
     );
   };
 
+  const refreshNavigationMasterySurfaces = async (notice) => {
+    await loadNowDashboard(nowSelection);
+    await loadNavigationSnapshot(navigationSelection);
+    setNavigationError(null);
+    setNodeEditorNotice(notice);
+  };
+
+  const verifierEvidenceKeys = new Set([
+    'checker_run_id',
+    'checkerRunId',
+    'llm_result_id',
+    'llmResultId',
+    'strict_result_id',
+    'strictResultId',
+    'result',
+    'output',
+    'verdict',
+    'summary',
+    'feedback',
+    'reason',
+    'assessment_result',
+    'assessmentResult',
+    'evidence',
+    'artifact',
+    'artifact_url',
+    'artifactUrl',
+  ]);
+
+  const hasMeaningfulAssessmentEvidenceValue = (value) => {
+    if (value == null) {
+      return false;
+    }
+    if (typeof value === 'string') {
+      return value.trim().length > 0;
+    }
+    if (Array.isArray(value)) {
+      return value.some(hasMeaningfulAssessmentEvidenceValue);
+    }
+    if (typeof value === 'object') {
+      return Object.values(value).some(hasMeaningfulAssessmentEvidenceValue);
+    }
+    return true;
+  };
+
+  const hasVerifierAssessmentEvidence = (payload) => {
+    if (!payload) {
+      return false;
+    }
+    if (typeof payload === 'string') {
+      return payload.trim().length > 0;
+    }
+    if (Array.isArray(payload)) {
+      return payload.some(hasVerifierAssessmentEvidence);
+    }
+    if (typeof payload === 'object') {
+      return Object.entries(payload).some(
+        ([key, value]) => verifierEvidenceKeys.has(key) && hasMeaningfulAssessmentEvidenceValue(value),
+      );
+    }
+    return false;
+  };
+
+  const handleMarkNavigationSelfMastery = async (masteryLevel = 'seen') => {
+    if (!navigationFocus?.node?.id) {
+      return;
+    }
+
+    setNodeMasteryPendingAction('self-mark');
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      await db.markSelfMastery(navigationFocus.node.id, masteryLevel, selectedCampaignId);
+      await refreshNavigationMasterySurfaces('Отмечено без проверки: XP и завершение маршрута не начислены.');
+    } catch (error) {
+      console.error('Failed to mark self mastery', error);
+      setNavigationError(error.message || 'Не удалось отметить прогресс узла.');
+    } finally {
+      setNodeMasteryPendingAction(null);
+    }
+  };
+
+  const handleSubmitNavigationAssessment = async ({
+    targetMasteryLevel = 'understood',
+    checkMethod = 'strict',
+    passed = true,
+    submittedAnswer = '',
+    feedbackSummary = '',
+    evidencePayload = null,
+    checklistResults = null,
+    usesAutomaticStrictCheck = false,
+    } = {}) => {
+    if (!navigationFocus?.node?.id) {
+      return;
+    }
+
+    if (passed && !usesAutomaticStrictCheck && !hasVerifierAssessmentEvidence(evidencePayload)) {
+      setNavigationError(null);
+      setNodeEditorNotice('Зачет требует результата проверки. Заполните evidence, чтобы получить verified mastery и XP.');
+      return;
+    }
+
+    const strictCheckType = navigationFocus.mastery?.check?.strictCheckType ?? null;
+    const resolvedCheckMethod = strictCheckType ? 'strict' : checkMethod;
+    const taskId = navigationFocus.mastery?.check?.taskId ?? `node:${navigationFocus.node.id}:assessment`;
+
+    setNodeMasteryPendingAction('assessment');
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      const result = await db.submitAssessmentAttempt(
+        {
+          node_id: navigationFocus.node.id,
+          task_id: taskId,
+          answer_type: resolvedCheckMethod === 'strict' ? 'manual_check' : 'explanation',
+          submitted_answer:
+            submittedAnswer?.trim() ||
+            (passed ? 'passed from node inspector assessment form' : 'failed from node inspector assessment form'),
+          check_method: resolvedCheckMethod,
+          strict_check_type: strictCheckType,
+          target_mastery_level: targetMasteryLevel,
+          passed,
+          feedback_summary: feedbackSummary?.trim() || (passed ? 'Проверка засчитана.' : 'Проверка не пройдена.'),
+          evidence_payload: evidencePayload,
+          checklist_results: checklistResults,
+          idempotency_key: `ui-assessment:${selectedCampaignId}:${navigationFocus.node.id}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+        },
+        selectedCampaignId,
+      );
+      const xpStatus = result?.xpGrantResult?.status;
+      const attemptPassed = Number(result?.attempt?.passed ?? (passed ? 1 : 0)) === 1;
+      const notice =
+        attemptPassed && xpStatus === 'missing-stat'
+          ? 'Проверка засчитана, но XP не начислены: у ветки нет основной характеристики.'
+          : attemptPassed
+            ? 'Проверка засчитана: проверенный уровень обновлен.'
+            : 'Попытка сохранена. Mastery и XP не изменены.';
+      await refreshNavigationMasterySurfaces(notice);
+    } catch (error) {
+      logUnexpectedActionError('Assessment attempt submission failed', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось сохранить проверку узла.'));
+    } finally {
+      setNodeMasteryPendingAction(null);
+    }
+  };
+
+  const handleAddNavigationNodeToRoute = async ({ nodeId, requiredMasteryLevel = 'confirmed' } = {}) => {
+    const specializationId = nowSnapshot?.today?.currentSpecialization?.id ?? null;
+    const specializationStatus = nowSnapshot?.today?.currentSpecialization?.status ?? null;
+
+    if (!nodeId || !specializationId || specializationStatus !== 'active') {
+      setNavigationError(null);
+      setNodeEditorNotice('Сначала начните активный маршрут в Today.');
+      return;
+    }
+
+    setRouteMutationPending(true);
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      await db.addSpecializationRouteNode(
+        specializationId,
+        {
+          node_id: nodeId,
+          required_mastery_level: requiredMasteryLevel,
+        },
+        selectedCampaignId,
+      );
+      await loadNowDashboard(nowSelection);
+      await loadNavigationSnapshot(navigationSelection);
+      setNodeEditorNotice('Узел добавлен в текущий маршрут.');
+    } catch (error) {
+      console.error('Failed to add node to specialization route', error);
+      setNavigationError(error.message || 'Не удалось добавить узел в маршрут.');
+    } finally {
+      setRouteMutationPending(false);
+    }
+  };
+
+  const handleUpdateNavigationRouteNode = async ({
+    routeNodeId,
+    requiredMasteryLevel,
+    routeOrder,
+    routeStage,
+    routeLabel,
+    isRequired,
+  } = {}) => {
+    if (!routeNodeId) {
+      return;
+    }
+
+    setRouteMutationPending(true);
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      const payload = {};
+      if (requiredMasteryLevel != null) {
+        payload.required_mastery_level = requiredMasteryLevel;
+      }
+      if (routeOrder != null) {
+        payload.route_order = routeOrder;
+      }
+      if (routeStage !== undefined) {
+        payload.route_stage = routeStage;
+      }
+      if (routeLabel !== undefined) {
+        payload.route_label = routeLabel;
+      }
+      if (isRequired !== undefined) {
+        payload.is_required = isRequired ? 1 : 0;
+      }
+      await db.updateSpecializationRouteNode(
+        routeNodeId,
+        payload,
+        selectedCampaignId,
+      );
+      await loadNowDashboard(nowSelection);
+      await loadNavigationSnapshot(navigationSelection);
+      setNodeEditorNotice('Требование маршрута обновлено.');
+    } catch (error) {
+      console.error('Failed to update specialization route node', error);
+      setNavigationError(error.message || 'Не удалось обновить требование маршрута.');
+    } finally {
+      setRouteMutationPending(false);
+    }
+  };
+
+  const handleReorderNavigationRouteNodes = async ({ firstRouteNodeId, secondRouteNodeId } = {}) => {
+    if (!firstRouteNodeId || !secondRouteNodeId) {
+      return;
+    }
+
+    setRouteMutationPending(true);
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      await db.reorderSpecializationRouteNodes(firstRouteNodeId, secondRouteNodeId, selectedCampaignId);
+      await loadNowDashboard(nowSelection);
+      await loadNavigationSnapshot(navigationSelection);
+      setNodeEditorNotice('Порядок маршрута обновлен.');
+    } catch (error) {
+      console.error('Failed to reorder specialization route nodes', error);
+      setNavigationError(error.message || 'Не удалось изменить порядок маршрута.');
+    } finally {
+      setRouteMutationPending(false);
+    }
+  };
+
+  const handleRemoveNavigationRouteNode = async ({ routeNodeId } = {}) => {
+    if (!routeNodeId) {
+      return;
+    }
+
+    setRouteMutationPending(true);
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      await db.removeSpecializationRouteNode(routeNodeId, selectedCampaignId);
+      await loadNowDashboard(nowSelection);
+      await loadNavigationSnapshot(navigationSelection);
+      setNodeEditorNotice('Узел убран из текущего маршрута.');
+    } catch (error) {
+      console.error('Failed to remove specialization route node', error);
+      setNavigationError(error.message || 'Не удалось убрать узел из маршрута.');
+    } finally {
+      setRouteMutationPending(false);
+    }
+  };
+
   const handleCreateJournalFollowUp = async (payload) => {
     setNavigationError(null);
 
@@ -1435,7 +1830,11 @@ export default function App() {
               await handleSelectNowRecommendation(recommendation);
               setActiveTab('map');
             }}
+            onOpenRouteNode={handleOpenTodayRouteNode}
+            onOpenRouteMap={handleOpenTodayRouteMap}
             onRefresh={loadNowDashboard}
+            onCompleteSpecialization={handleCompleteSpecialization}
+            onContinueSpecialization={handleContinueSpecialization}
           />
         )}
 
@@ -1477,7 +1876,19 @@ export default function App() {
             onArchiveNode={handleArchiveMapNode}
             onDuplicateNode={handleDuplicateMapNode}
             onUndoMapMutation={handleUndoMapMutation}
+            onMarkSelfMastery={handleMarkNavigationSelfMastery}
+            onSubmitAssessment={handleSubmitNavigationAssessment}
+            currentSpecialization={nowSnapshot?.today?.currentSpecialization ?? null}
+            currentRoute={nowSnapshot?.today?.route ?? null}
+            routeFilterRequestId={mapRouteFilterRequestId}
+            onRouteFilterRequestHandled={() => setMapRouteFilterRequestId(null)}
+            onAddNodeToRoute={handleAddNavigationNodeToRoute}
+            onUpdateRouteNode={handleUpdateNavigationRouteNode}
+            onReorderRouteNodes={handleReorderNavigationRouteNodes}
+            onRemoveRouteNode={handleRemoveNavigationRouteNode}
             editorPendingAction={nodeEditorPendingAction}
+            masteryPendingAction={nodeMasteryPendingAction}
+            routeMutationPending={routeMutationPending}
             editorNotice={nodeEditorNotice}
             mapMutationPendingAction={mapMutationPendingAction}
             branchFilterSkillId={navigationBranchFilterId}
