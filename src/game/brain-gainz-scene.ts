@@ -672,17 +672,10 @@ export class BrainGainzScene {
       this.currentModel &&
       this.currentCamera
     ) {
-      const worldPoint = screenToWorld({ x: event.global.x, y: event.global.y }, this.currentCamera);
-      const nearestNode = this.currentModel.nodes
-        .filter((node) => node.id !== this.currentCallbacks?.connectSourceNodeId)
-        .map((node) => ({
-          node,
-          distance: Math.hypot(node.position.x - worldPoint.x, node.position.y - worldPoint.y),
-        }))
-        .sort((left, right) => left.distance - right.distance)[0];
+      const targetHit = this.findNodeHitAtScreenPoint({ x: event.global.x, y: event.global.y });
 
-      if (nearestNode && nearestNode.distance <= CONNECT_NODE_HIT_RADIUS) {
-        this.currentCallbacks.onNodeSelect(nearestNode.node.id, {
+      if (targetHit && targetHit.nodeId !== this.currentCallbacks.connectSourceNodeId) {
+        this.currentCallbacks.onNodeSelect(targetHit.nodeId, {
           screenX: event.global.x,
           screenY: event.global.y,
         });

@@ -707,6 +707,9 @@ export const NavigationView = ({
   const handleSelectStructure = async (value: string) => {
     if (value === linearAlgebraTemplateValue) {
       clearMapTransientState();
+      setMapCanvasMode('free');
+      setLayerParentNodeId(null);
+      setIsRouteFilterEnabled(false);
       await onCreateLinearAlgebraGraph();
       return;
     }
