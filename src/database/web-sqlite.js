@@ -62,6 +62,7 @@ const loadPersistedBytes = () => {
 export const loadWebDatabase = async () => {
   const SQL = await getSqlJs();
   const database = new SQL.Database(loadPersistedBytes());
+  let transactionDepth = 0;
 
   const persist = () => {
     const exportedBytes = database.export();
@@ -70,12 +71,25 @@ export const loadWebDatabase = async () => {
 
   return {
     async execute(sql, params = []) {
+      const normalizedSql = String(sql ?? '').trim().toUpperCase();
+      const isBegin = normalizedSql === 'BEGIN' || normalizedSql.startsWith('BEGIN ');
+      const isCommit = normalizedSql === 'COMMIT' || normalizedSql.startsWith('COMMIT ');
+      const isRollback = normalizedSql === 'ROLLBACK' || normalizedSql.startsWith('ROLLBACK ');
+
       database.run(sql, params);
       const rowsAffected = database.getRowsModified();
       const lastInsertRow = database.exec('SELECT last_insert_rowid() AS id');
       const lastInsertId = Number(lastInsertRow[0]?.values?.[0]?.[0] ?? 0);
 
-      persist();
+      if (isBegin) {
+        transactionDepth += 1;
+      } else if (isCommit || isRollback) {
+        transactionDepth = Math.max(0, transactionDepth - 1);
+      }
+
+      if (transactionDepth === 0 && !isBegin && !isRollback) {
+        persist();
+      }
 
       return {
         lastInsertId,

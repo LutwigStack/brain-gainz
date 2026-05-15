@@ -31,3 +31,7 @@ Everything else must be `planned`, `done`, or `parked`.
 ## Current Workstream
 
 - none
+
+## Planned Epics
+
+- [10 UX Stabilization And Daily Flow](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/10-ux-stabilization-and-daily-flow/README.md)

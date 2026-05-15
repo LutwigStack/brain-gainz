@@ -9,6 +9,7 @@ import { createNodeNoteStore } from './stores/node-note-store.js';
 import { createReviewStateStore } from './stores/review-state-store.js';
 import type {
   DatabaseMutationResult,
+  CareerSnapshot,
   GraphEdgeCreatePayload,
   GraphEdgeMutationResult,
   GraphEdgeUpdatePayload,
@@ -81,6 +82,19 @@ type StoresRegistry = {
     blockActionInTodaySession: (campaignId: number | null, actionId: number, payload?: { barrierType?: string | null; note?: string }) => Promise<unknown>;
     shrinkActionInTodaySession: (campaignId: number | null, actionId: number, payload?: { title?: string; note?: string }) => Promise<unknown>;
     getWindRoseSnapshot: (campaignId?: number | null) => Promise<unknown>;
+    getCareerSnapshot: (campaignId?: number | null) => Promise<CareerSnapshot>;
+    createSpecialization: (campaignId: number | null, input: unknown) => Promise<unknown>;
+    continueWithSpecialization: (campaignId: number | null, input: unknown) => Promise<unknown>;
+    completeSpecialization: (campaignId: number | null, specializationId?: number | null, options?: unknown) => Promise<unknown>;
+    archiveSpecialization: (campaignId: number | null, specializationId: number) => Promise<unknown>;
+    getRouteCompletion: (campaignId: number | null, specializationId?: number | null) => Promise<unknown>;
+    upsertKnowledgeNode: (input: unknown) => Promise<unknown>;
+    addSpecializationRouteNode: (campaignId: number | null, specializationId: number, input: unknown) => Promise<unknown>;
+    updateSpecializationRouteNode: (campaignId: number | null, routeNodeId: number, input: unknown) => Promise<unknown>;
+    reorderSpecializationRouteNodes: (campaignId: number | null, firstRouteNodeId: number, secondRouteNodeId: number) => Promise<unknown>;
+    removeSpecializationRouteNode: (campaignId: number | null, routeNodeId: number) => Promise<unknown>;
+    submitAssessmentAttempt: (campaignId: number | null, input: unknown) => Promise<unknown>;
+    markSelfMastery: (campaignId: number | null, nodeId: number, masteryLevel?: string) => Promise<unknown>;
   };
   campaignStore: {
     listCampaigns: () => Promise<unknown>;
@@ -345,6 +359,95 @@ export const getJournalSnapshot = async (campaignId: number | null = null): Prom
 export const getWindRoseSnapshot = async (campaignId: number | null = null) => {
   const { nowService } = await getStores();
   return nowService.getWindRoseSnapshot(requireCampaignId(campaignId));
+};
+
+export const getCareerSnapshot = async (campaignId: number | null = null): Promise<CareerSnapshot> => {
+  const { nowService } = await getStores();
+  return nowService.getCareerSnapshot(requireCampaignId(campaignId));
+};
+
+export const createSpecialization = async (input: unknown, campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.createSpecialization(requireCampaignId(campaignId), input);
+};
+
+export const continueWithSpecialization = async (input: unknown, campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.continueWithSpecialization(requireCampaignId(campaignId), input);
+};
+
+export const completeSpecialization = async (
+  specializationId: number | null = null,
+  options: unknown = {},
+  campaignId: number | null = null,
+) => {
+  const { nowService } = await getStores();
+  return nowService.completeSpecialization(requireCampaignId(campaignId), specializationId, options);
+};
+
+export const archiveSpecialization = async (specializationId: number, campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.archiveSpecialization(requireCampaignId(campaignId), specializationId);
+};
+
+export const getRouteCompletion = async (specializationId: number | null = null, campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.getRouteCompletion(requireCampaignId(campaignId), specializationId);
+};
+
+export const upsertKnowledgeNode = async (input: unknown) => {
+  const { nowService } = await getStores();
+  return nowService.upsertKnowledgeNode(input);
+};
+
+export const addSpecializationRouteNode = async (
+  specializationId: number,
+  input: unknown,
+  campaignId: number | null = null,
+) => {
+  const { nowService } = await getStores();
+  return nowService.addSpecializationRouteNode(requireCampaignId(campaignId), specializationId, input);
+};
+
+export const updateSpecializationRouteNode = async (
+  routeNodeId: number,
+  input: unknown,
+  campaignId: number | null = null,
+) => {
+  const { nowService } = await getStores();
+  return nowService.updateSpecializationRouteNode(requireCampaignId(campaignId), routeNodeId, input);
+};
+
+export const reorderSpecializationRouteNodes = async (
+  firstRouteNodeId: number,
+  secondRouteNodeId: number,
+  campaignId: number | null = null,
+) => {
+  const { nowService } = await getStores();
+  return nowService.reorderSpecializationRouteNodes(
+    requireCampaignId(campaignId),
+    firstRouteNodeId,
+    secondRouteNodeId,
+  );
+};
+
+export const removeSpecializationRouteNode = async (routeNodeId: number, campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.removeSpecializationRouteNode(requireCampaignId(campaignId), routeNodeId);
+};
+
+export const submitAssessmentAttempt = async (input: unknown, campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.submitAssessmentAttempt(requireCampaignId(campaignId), input);
+};
+
+export const markSelfMastery = async (
+  nodeId: number,
+  masteryLevel: string = 'seen',
+  campaignId: number | null = null,
+) => {
+  const { nowService } = await getStores();
+  return nowService.markSelfMastery(requireCampaignId(campaignId), nodeId, masteryLevel);
 };
 
 export const createJournalFollowUpStep = async (payload: JournalFollowUpPayload, campaignId: number | null = null) => {

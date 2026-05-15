@@ -1,13 +1,11 @@
 import {
   Brain,
-  Castle,
   CheckCircle2,
   Compass,
   Eye,
   Layers,
   Map as MapIcon,
   RefreshCw,
-  Shield,
   ShieldCheck,
   Swords,
 } from 'lucide-react';
@@ -192,9 +190,7 @@ export const NowView = ({
   const opponent = today?.opponent ?? null;
   const race = today?.race ?? null;
   const verifiedMasteryCount = today?.mastery.verifiedNodeCount ?? 0;
-  const confirmedMasteryCount = today?.mastery.confirmedOrBetterNodeCount ?? 0;
   const selfMarkedOnlyCount = today?.mastery.selfMarkedOnlyNodeCount ?? 0;
-  const cityDistricts = city?.districts.slice(0, 6) ?? [];
   const routeCompletionPercent = routeProgress?.completionPercent ?? 0;
   const opponentPressure = opponent?.pressure ?? 0;
   const opponentIsAhead = opponentPressure >= routeCompletionPercent && opponentPressure > 0;
@@ -218,10 +214,85 @@ export const NowView = ({
     metrics,
     todaySession,
   });
+  const modeTitle = currentSpecialization?.name ?? 'Свободный режим';
+  const hasRouteItems = Boolean(routePlanner?.hasRouteItems || routeItems.length > 0);
+  const hasRouteFocusNode = plannerFocusItem?.node_id != null;
+  const routeFocusMeta = plannerFocusItem
+    ? `${plannerFocusItem.route_stage ? `${plannerFocusItem.route_stage} · ` : ''}${
+        plannerFocusItem.path || 'Концепт маршрута'
+      } · ${plannerFocusItem.current_mastery_rank}/6 · нужно ${plannerFocusItem.required_mastery_level}`
+    : null;
+  const primaryWorkTitle = routeProgress?.isComplete
+    ? 'Маршрут готов к завершению'
+    : plannerFocusItem?.title ?? primaryCandidate?.actionTitle ?? (currentSpecialization ? (hasRouteItems ? 'Нет валидного следующего узла' : 'Маршрут пустой') : 'Стартовый набор');
+  const primaryWorkDescription = routeProgress?.isComplete
+    ? 'Все обязательные узлы закрыты. Завершение засчитает текущий маршрут.'
+    : plannerFocusItem
+      ? routeFocusMeta
+      : primaryCandidate
+        ? `${primaryCandidate.whatDegrades || primaryCandidate.nodeTitle} · ${candidatePath(primaryCandidate)}`
+        : currentSpecialization
+          ? hasRouteItems
+            ? 'Откройте карту и проверьте требования маршрута: сейчас нет безопасного следующего узла.'
+            : 'Добавьте обязательные узлы на карте, чтобы Today начал выбирать следующий ход.'
+          : 'Создайте стартовый набор или откройте карту, чтобы появился первый рабочий шаг.';
+  const primaryActionLabel = isVictory
+    ? 'Новый маршрут'
+    : routeProgress?.isComplete
+      ? 'Завершить'
+      : hasRouteFocusNode
+        ? 'Проверить'
+        : plannerFocusItem
+          ? 'На карту'
+          : primaryCandidate
+            ? 'Открыть карту'
+            : currentSpecialization
+              ? hasRouteItems
+                ? 'Настроить на карте'
+                : 'Добавить узлы на карте'
+              : 'Стартовый набор';
+  const primaryActionIcon = isVictory ? (
+    <Compass size={16} />
+  ) : routeProgress?.isComplete || hasRouteFocusNode ? (
+    <CheckCircle2 size={16} />
+  ) : primaryCandidate || currentSpecialization ? (
+    <MapIcon size={16} />
+  ) : (
+    <Layers size={16} />
+  );
+  const handlePrimaryAction = () => {
+    if (isVictory) {
+      onContinueSpecialization();
+      return;
+    }
+
+    if (routeProgress?.isComplete) {
+      onCompleteSpecialization();
+      return;
+    }
+
+    if (hasRouteFocusNode) {
+      onOpenRouteNode(plannerFocusItem.node_id as number);
+      return;
+    }
+
+    if (primaryCandidate) {
+      onOpenMap(primaryCandidate);
+      return;
+    }
+
+    if (currentSpecialization) {
+      onOpenRouteMap();
+      return;
+    }
+
+    onCreateStarterWorkspace();
+  };
+  const isPrimaryActionDisabled = isLoading || (!currentSpecialization && !primaryCandidate && isCreatingStarter);
 
   return (
-    <div className="space-y-4">
-      <PixelSurface frame="panel" padding="xl">
+    <div className="now-view space-y-4">
+      <PixelSurface frame="panel" padding="xl" className="now-primary-panel">
         <PixelStack gap="lg">
           <PixelPanelHeader
             eyebrow="Сейчас"
@@ -236,16 +307,6 @@ export const NowView = ({
                 <PixelButton onClick={onRefresh} disabled={isLoading}>
                   <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} /> Обновить
                 </PixelButton>
-
-                {!primaryRecommendation ? (
-                  <PixelButton
-                    tone="accent"
-                    onClick={onCreateStarterWorkspace}
-                    disabled={isCreatingStarter || isLoading}
-                  >
-                    <Layers size={16} /> {isCreatingStarter ? 'Создаю…' : 'Стартовый набор'}
-                  </PixelButton>
-                ) : null}
               </div>
             }
           />
@@ -266,60 +327,45 @@ export const NowView = ({
             </PixelSurface>
           ) : null}
 
-          <PixelSurface frame={isVictory ? 'accent' : 'ghost'} padding="md">
-            <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-              <div className="min-w-0">
+          <PixelSurface frame={isVictory ? 'accent' : 'ghost'} padding="md" className="now-work-panel">
+            <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+              <PixelStack gap="sm" className="min-w-0">
                 <PixelText as="p" size="xs" color="textMuted" uppercase>
-                  Today / маршрут
+                  Today / текущий режим
                 </PixelText>
-                <PixelText as="h3" readable size="lg" style={{ marginTop: 4, fontWeight: 800 }}>
-                  {currentSpecialization?.name ?? 'Свободный режим'}
+                <PixelText as="h3" readable size="lg" style={{ margin: 0, fontWeight: 800 }}>
+                  {modeTitle}
                 </PixelText>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <PixelText as="span" size="xs" color="textMuted" uppercase>
-                    {isVictory ? 'победа' : currentSpecialization?.status ?? 'без специализации'}
+                <PixelSurface frame="inset" padding="md" className="now-next-work">
+                  <PixelText as="p" size="xs" color="accent" uppercase style={{ margin: 0 }}>
+                    следующий ход
                   </PixelText>
-                  <PixelText as="span" size="xs" color="textMuted" uppercase>
-                    {verifiedMasteryCount} проверено
+                  <PixelText as="h2" readable size="xl" style={{ marginTop: 8, fontWeight: 800 }}>
+                    {primaryWorkTitle}
                   </PixelText>
-                  {selfMarkedOnlyCount > 0 ? (
-                    <PixelText as="span" size="xs" color="accent" uppercase>
-                      {selfMarkedOnlyCount} сам отметил
-                    </PixelText>
-                  ) : null}
-                  <PixelText as="span" size="xs" color="textMuted" uppercase>
-                    {confirmedMasteryCount} confirmed+
+                  <PixelText as="p" readable size="sm" color="textMuted" style={{ marginTop: 10 }}>
+                    {primaryWorkDescription}
                   </PixelText>
-                  {opponent ? (
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
-                      соперник {opponent.pressure}%
-                    </PixelText>
-                  ) : null}
-                </div>
-              </div>
+                </PixelSurface>
+              </PixelStack>
 
-              <div className="flex flex-wrap gap-2 md:justify-end">
-                {!currentSpecialization ? (
-                  <PixelButton tone="accent" onClick={onOpenRouteMap} disabled={isLoading}>
-                    <MapIcon size={16} /> Маршрут
+              <div className="flex min-w-[180px] flex-col gap-2 lg:items-end">
+                <PixelButton tone="accent" onClick={handlePrimaryAction} disabled={isPrimaryActionDisabled}>
+                  {primaryActionIcon} {primaryActionLabel}
+                </PixelButton>
+                {hasRouteFocusNode ? (
+                  <PixelButton tone="ghost" onClick={() => onOpenRouteNode(plannerFocusItem.node_id as number)} disabled={isLoading}>
+                    <MapIcon size={16} /> На карту
                   </PixelButton>
-                ) : isVictory ? (
-                  <PixelButton tone="accent" onClick={onContinueSpecialization} disabled={isLoading}>
-                    <Compass size={16} /> Новый маршрут
-                  </PixelButton>
-                ) : routeProgress?.isComplete ? (
-                  <PixelButton tone="accent" onClick={onCompleteSpecialization} disabled={isLoading}>
-                    <CheckCircle2 size={16} /> Завершить
-                  </PixelButton>
-                ) : (
+                ) : currentSpecialization && !routeProgress?.isComplete ? (
                   <PixelButton tone="ghost" onClick={onOpenRouteMap} disabled={isLoading}>
-                    <MapIcon size={16} /> В маршрут
+                    <MapIcon size={16} /> Карта маршрута
                   </PixelButton>
-                )}
+                ) : null}
               </div>
             </div>
 
-            <PixelSurface frame="inset" padding="md" className="mt-4 overflow-hidden">
+            <PixelSurface frame="inset" padding="md" className="now-route-strip mt-4 overflow-hidden">
               <div className="grid gap-4 xl:grid-cols-[minmax(180px,0.7fr)_minmax(260px,1.4fr)_minmax(180px,0.7fr)] xl:items-center">
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-3">
@@ -409,7 +455,7 @@ export const NowView = ({
               </div>
 
               <div className="mt-4 grid gap-2 border-t border-[var(--pixel-line-soft)] pt-3 md:grid-cols-2">
-                <div className="flex items-center justify-between gap-3 border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel)] p-2">
+                <div className="now-mastery-badge now-mastery-badge--verified flex items-center justify-between gap-3 border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel)] p-2">
                   <span className="flex min-w-0 items-center gap-2">
                     <ShieldCheck size={15} className="text-[var(--pixel-success)]" />
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -420,7 +466,7 @@ export const NowView = ({
                     {verifiedMasteryCount} · XP/маршрут
                   </PixelText>
                 </div>
-                <div className="flex items-center justify-between gap-3 border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel)] p-2">
+                <div className="now-mastery-badge now-mastery-badge--self flex items-center justify-between gap-3 border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel)] p-2">
                   <span className="flex min-w-0 items-center gap-2">
                     <Eye size={15} className="text-[var(--pixel-accent)]" />
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -433,45 +479,16 @@ export const NowView = ({
                 </div>
               </div>
 
-              <div className="mt-4 border-t border-[var(--pixel-line-soft)] pt-3">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Castle size={16} className="text-[var(--pixel-accent)]" />
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
-                      районы города
-                    </PixelText>
-                  </div>
-                  <PixelText as="span" size="xs" color="accent" uppercase>
-                    XP {city?.totalXp ?? 0}
-                  </PixelText>
-                </div>
-                {cityDistricts.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-                    {cityDistricts.map((district) => (
-                      <div
-                        key={district.id}
-                        className="min-w-0 border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel)] p-2"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <Shield size={13} style={{ color: district.color }} />
-                          <PixelText as="span" size="xs" color="accent">
-                            {district.level}
-                          </PixelText>
-                        </div>
-                        <PixelText as="p" size="xs" color="textMuted" uppercase style={{ marginTop: 8 }}>
-                          {district.title}
-                        </PixelText>
-                        <div className="mt-2 h-1.5 bg-[var(--pixel-panel-inset)]" aria-hidden="true">
-                          <div className="h-full" style={{ width: `${district.stability}%`, background: district.color }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <PixelText as="p" readable size="sm" color="textMuted">
-                    Районы появятся после первых XP.
-                  </PixelText>
-                )}
+              <div className="mt-4 grid gap-2 border-t border-[var(--pixel-line-soft)] pt-3 sm:grid-cols-3">
+                <PixelText as="span" size="xs" color="textMuted" uppercase>
+                  город {city?.level ?? 1} · XP {city?.totalXp ?? 0}
+                </PixelText>
+                <PixelText as="span" size="xs" color="textMuted" uppercase>
+                  раса {race?.title ?? 'свободный режим'}
+                </PixelText>
+                <PixelText as="span" size="xs" color={opponentIsAhead ? 'danger' : 'textMuted'} uppercase>
+                  соперник {opponentPressure}% · {opponent ? `${opponent.projectedRequired} узл.` : 'нет гонки'}
+                </PixelText>
               </div>
             </PixelSurface>
 
@@ -575,7 +592,7 @@ export const NowView = ({
                               </>
                             ) : (
                               <>
-                                <MapIcon size={14} /> В маршрут
+                                <MapIcon size={14} /> {routePlanner?.hasRouteItems ? 'Открыть карту' : 'Добавить узлы'}
                               </>
                             )}
                           </PixelButton>
@@ -698,13 +715,13 @@ export const NowView = ({
           </PixelSurface>
 
           {primaryCandidate ? (
-            <PixelSurface frame="accent" padding="lg">
+            <PixelSurface frame="inset" padding="md">
               <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
                 <PixelStack gap="sm" className="min-w-0">
-                  <PixelText as="p" size="xs" color="accentGlow" uppercase>
-                    Фокус дня
+                  <PixelText as="p" size="xs" color="textMuted" uppercase>
+                    в очереди на сегодня
                   </PixelText>
-                  <PixelText as="h2" readable size="xl" style={{ margin: 0, fontWeight: 800 }}>
+                  <PixelText as="h3" readable size="lg" style={{ margin: 0, fontWeight: 800 }}>
                     {primaryCandidate.actionTitle}
                   </PixelText>
                   <PixelText as="p" readable color="textMuted" size="sm">
@@ -720,7 +737,7 @@ export const NowView = ({
                   <PixelButton tone="ghost" onClick={() => onSelectRecommendation(primaryCandidate)}>
                     <Compass size={16} /> Сделать фокусом
                   </PixelButton>
-                  <PixelButton tone="accent" onClick={() => onOpenMap(primaryCandidate)}>
+                  <PixelButton tone="ghost" onClick={() => onOpenMap(primaryCandidate)}>
                     <MapIcon size={16} /> Открыть карту
                   </PixelButton>
                 </div>

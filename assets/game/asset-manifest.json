@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "art_direction_reference": "tasks/09-strategic-career-knowledge-graph/references/visual-reference-strategy-dashboard.md",
+  "rules": {
+    "no_baked_ui_text": true,
+    "generate_from_ui_slot_first": true,
+    "variant_count": "2-4",
+    "acceptance_requires_real_component_check": true
+  },
+  "assets": [
+    {
+      "asset_id": "race_portrait_crow_commander_v1",
+      "family": "race_portrait",
+      "usage_surface": "campaign_menu_today_panel",
+      "ui_slot": "right-side race identity portrait",
+      "target_width": 256,
+      "target_height": 256,
+      "format": "png",
+      "transparent_background": true,
+      "source_prompt_path": "assets/prompts/race-portrait-crow-commander-v1.md",
+      "raw_variant_paths": [],
+      "selected_variant_path": null,
+      "status": "planned",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 44,
+        "display_height": 44,
+        "required_states": ["free campaign", "active career specialization"]
+      },
+      "notes": "First controlled image-generation slot. Do not generate UI text inside the portrait."
+    },
+    {
+      "asset_id": "city_district_learning_core_v1",
+      "family": "city_district_tile",
+      "usage_surface": "today_city_projection",
+      "ui_slot": "compact city district reward tile",
+      "target_width": 192,
+      "target_height": 128,
+      "format": "png",
+      "transparent_background": false,
+      "source_prompt_path": "assets/prompts/city-district-learning-core-v1.md",
+      "raw_variant_paths": [],
+      "selected_variant_path": null,
+      "status": "planned",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 96,
+        "display_height": 64,
+        "required_states": ["zero XP", "active XP district"]
+      },
+      "notes": "Read-only projection from mastery and XP, not a city-builder resource."
+    },
+    {
+      "asset_id": "opponent_portrait_rival_architect_v1",
+      "family": "opponent_portrait",
+      "usage_surface": "today_pressure_panel",
+      "ui_slot": "compact opponent portrait beside pressure meter",
+      "target_width": 192,
+      "target_height": 192,
+      "format": "png",
+      "transparent_background": true,
+      "source_prompt_path": "assets/prompts/opponent-portrait-rival-architect-v1.md",
+      "raw_variant_paths": [],
+      "selected_variant_path": null,
+      "status": "planned",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 40,
+        "display_height": 40,
+        "required_states": ["active route", "new specialization reset"]
+      },
+      "notes": "V1 opponent is deterministic pressure projection, not combat simulation."
+    },
+    {
+      "asset_id": "mastery_icon_confirmed_v1",
+      "family": "mastery_icon",
+      "usage_surface": "node_card_route_today",
+      "ui_slot": "small confirmed mastery badge",
+      "target_width": 64,
+      "target_height": 64,
+      "format": "png",
+      "transparent_background": true,
+      "source_prompt_path": "assets/prompts/mastery-icon-confirmed-v1.md",
+      "raw_variant_paths": [],
+      "selected_variant_path": null,
+      "status": "planned",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 24,
+        "display_height": 24,
+        "required_states": ["confirmed route node", "unconfirmed route node"]
+      },
+      "notes": "Must remain readable at 20-24px before acceptance."
+    }
+  ]
+}

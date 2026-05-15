@@ -1575,7 +1575,7 @@ export default function App() {
         }}
       >
         <div className="flex w-full flex-col gap-2">
-          <PixelSurface frame="panel" padding="xs">
+          <PixelSurface frame="panel" padding="xs" className="app-topbar">
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <div className="flex items-center gap-2">
@@ -1593,7 +1593,7 @@ export default function App() {
                 </div>
 
                 <div
-                  className="hide-scrollbar ml-0 flex min-w-0 items-center gap-1 overflow-x-auto sm:ml-3"
+                  className="app-primary-nav hide-scrollbar ml-0 flex min-w-0 items-center gap-1 overflow-x-auto sm:ml-3"
                   role="navigation"
                   aria-label="Основные разделы BrainGainz"
                 >
@@ -1607,7 +1607,7 @@ export default function App() {
                     <Globe2 size={14} /> Кампании
                   </PixelButton>
                   {selectedCampaign ? (
-                    <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="hidden md:block">
+                    <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="app-campaign-chip hidden md:block">
                       <PixelText as="span" readable size="xs" color="textMuted">
                         {selectedCampaign.name}
                       </PixelText>

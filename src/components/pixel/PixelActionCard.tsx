@@ -36,6 +36,8 @@ export const PixelActionCard = ({
   const wrapperStyle = {
     display: 'block',
     width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
     textAlign: 'left' as const,
     background: 'transparent',
     border: 0,
@@ -49,6 +51,7 @@ export const PixelActionCard = ({
       padding="md"
       style={{
         opacity: props.disabled ? 0.55 : 1,
+        overflow: 'hidden',
       }}
     >
       <div className="grid min-w-0 gap-3 2xl:grid-cols-[minmax(0,1fr)_auto]">
@@ -62,7 +65,7 @@ export const PixelActionCard = ({
             {title}
           </PixelText>
           {description ? (
-            <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: 0 }}>
+            <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: 0, overflowWrap: 'anywhere' }}>
               {description}
             </PixelText>
           ) : null}

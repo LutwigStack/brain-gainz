@@ -791,6 +791,243 @@ const ensureNodeDependenciesSchema = async (database) => {
   }
 };
 
+const recreateDirectionsTable = async (database) => {
+  await database.execute('PRAGMA foreign_keys = OFF');
+  await database.execute('PRAGMA legacy_alter_table = ON');
+
+  try {
+    await database.execute('DROP INDEX IF EXISTS idx_directions_sphere_id');
+    await database.execute('DROP TABLE IF EXISTS directions_pr1_fk_repair');
+    await database.execute(`
+      CREATE TABLE directions_pr1_fk_repair (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sphere_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        description TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (sphere_id) REFERENCES spheres (id),
+        UNIQUE (sphere_id, slug)
+      )
+    `);
+    await database.execute(`
+      INSERT INTO directions_pr1_fk_repair (
+        id,
+        sphere_id,
+        name,
+        slug,
+        description,
+        sort_order,
+        is_archived,
+        created_at,
+        updated_at
+      )
+      SELECT
+        id,
+        sphere_id,
+        name,
+        slug,
+        description,
+        sort_order,
+        is_archived,
+        created_at,
+        updated_at
+      FROM directions
+    `);
+    await database.execute('DROP TABLE directions');
+    await database.execute('ALTER TABLE directions_pr1_fk_repair RENAME TO directions');
+    await database.execute('CREATE INDEX IF NOT EXISTS idx_directions_sphere_id ON directions (sphere_id)');
+  } finally {
+    await database.execute('PRAGMA legacy_alter_table = OFF');
+    await database.execute('PRAGMA foreign_keys = ON');
+  }
+};
+
+const ensureDirectionsForeignKeyTarget = async (database) => {
+  const rows = await database.select(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'directions' LIMIT 1",
+  );
+  if (rows.length === 0) {
+    return;
+  }
+
+  const foreignKeys = await database.select('PRAGMA foreign_key_list(directions)');
+  const sphereForeignKey = foreignKeys.find((foreignKey) => foreignKey.from === 'sphere_id');
+
+  if (sphereForeignKey && sphereForeignKey.table !== 'spheres') {
+    await recreateDirectionsTable(database);
+  }
+};
+
+const recreateSkillsTable = async (database) => {
+  const columns = await database.select('PRAGMA table_info(skills)');
+  const hasPrimaryStatId = columns.some((column) => column.name === 'primary_stat_id');
+  const primaryStatSelect = hasPrimaryStatId ? 'primary_stat_id' : 'NULL AS primary_stat_id';
+
+  await database.execute('PRAGMA foreign_keys = OFF');
+  await database.execute('PRAGMA legacy_alter_table = ON');
+
+  try {
+    await database.execute('DROP INDEX IF EXISTS idx_skills_direction_id');
+    await database.execute('DROP INDEX IF EXISTS idx_skills_primary_stat_id');
+    await database.execute('DROP TABLE IF EXISTS skills_pr1_fk_repair');
+    await database.execute(`
+      CREATE TABLE skills_pr1_fk_repair (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        direction_id INTEGER NOT NULL,
+        primary_stat_id INTEGER,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        description TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (direction_id) REFERENCES directions (id),
+        UNIQUE (direction_id, slug)
+      )
+    `);
+    await database.execute(`
+      INSERT INTO skills_pr1_fk_repair (
+        id,
+        direction_id,
+        primary_stat_id,
+        name,
+        slug,
+        description,
+        sort_order,
+        is_archived,
+        created_at,
+        updated_at
+      )
+      SELECT
+        id,
+        direction_id,
+        ${primaryStatSelect},
+        name,
+        slug,
+        description,
+        sort_order,
+        is_archived,
+        created_at,
+        updated_at
+      FROM skills
+    `);
+    await database.execute('DROP TABLE skills');
+    await database.execute('ALTER TABLE skills_pr1_fk_repair RENAME TO skills');
+    await database.execute('CREATE INDEX IF NOT EXISTS idx_skills_direction_id ON skills (direction_id)');
+    await database.execute('CREATE INDEX IF NOT EXISTS idx_skills_primary_stat_id ON skills (primary_stat_id)');
+  } finally {
+    await database.execute('PRAGMA legacy_alter_table = OFF');
+    await database.execute('PRAGMA foreign_keys = ON');
+  }
+};
+
+const ensureSkillsForeignKeyTarget = async (database) => {
+  const rows = await database.select(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'skills' LIMIT 1",
+  );
+  if (rows.length === 0) {
+    return;
+  }
+
+  const foreignKeys = await database.select('PRAGMA foreign_key_list(skills)');
+  const directionForeignKey = foreignKeys.find((foreignKey) => foreignKey.from === 'direction_id');
+
+  if (directionForeignKey && directionForeignKey.table !== 'directions') {
+    await recreateSkillsTable(database);
+  }
+};
+
+const recreateLegacySubjectMappingsTable = async (database) => {
+  await database.execute('PRAGMA foreign_keys = OFF');
+  await database.execute('PRAGMA legacy_alter_table = ON');
+
+  try {
+    await database.execute('DROP INDEX IF EXISTS idx_legacy_subject_mappings_sphere_id');
+    await database.execute('DROP INDEX IF EXISTS idx_legacy_subject_mappings_direction_id');
+    await database.execute('DROP INDEX IF EXISTS idx_legacy_subject_mappings_skill_id');
+    await database.execute('DROP TABLE IF EXISTS legacy_subject_mappings_pr1_fk_repair');
+    await database.execute(`
+      CREATE TABLE legacy_subject_mappings_pr1_fk_repair (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        legacy_subject_id INTEGER NOT NULL UNIQUE,
+        sphere_id INTEGER,
+        direction_id INTEGER,
+        skill_id INTEGER,
+        mapping_status TEXT NOT NULL DEFAULT 'pending' CHECK (mapping_status IN ('pending', 'suggested', 'accepted', 'archived')),
+        mapping_decider TEXT NOT NULL DEFAULT 'assisted' CHECK (mapping_decider IN ('manual', 'automatic', 'assisted')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (legacy_subject_id) REFERENCES subjects (id) ON DELETE CASCADE,
+        FOREIGN KEY (sphere_id) REFERENCES spheres (id),
+        FOREIGN KEY (direction_id) REFERENCES directions (id),
+        FOREIGN KEY (skill_id) REFERENCES skills (id)
+      )
+    `);
+    await database.execute(`
+      INSERT INTO legacy_subject_mappings_pr1_fk_repair (
+        id,
+        legacy_subject_id,
+        sphere_id,
+        direction_id,
+        skill_id,
+        mapping_status,
+        mapping_decider,
+        created_at,
+        updated_at
+      )
+      SELECT
+        id,
+        legacy_subject_id,
+        sphere_id,
+        direction_id,
+        skill_id,
+        mapping_status,
+        mapping_decider,
+        created_at,
+        updated_at
+      FROM legacy_subject_mappings
+    `);
+    await database.execute('DROP TABLE legacy_subject_mappings');
+    await database.execute('ALTER TABLE legacy_subject_mappings_pr1_fk_repair RENAME TO legacy_subject_mappings');
+    await database.execute('CREATE INDEX IF NOT EXISTS idx_legacy_subject_mappings_sphere_id ON legacy_subject_mappings (sphere_id)');
+    await database.execute('CREATE INDEX IF NOT EXISTS idx_legacy_subject_mappings_direction_id ON legacy_subject_mappings (direction_id)');
+    await database.execute('CREATE INDEX IF NOT EXISTS idx_legacy_subject_mappings_skill_id ON legacy_subject_mappings (skill_id)');
+  } finally {
+    await database.execute('PRAGMA legacy_alter_table = OFF');
+    await database.execute('PRAGMA foreign_keys = ON');
+  }
+};
+
+const ensureLegacySubjectMappingForeignKeyTargets = async (database) => {
+  const rows = await database.select(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'legacy_subject_mappings' LIMIT 1",
+  );
+  if (rows.length === 0) {
+    return;
+  }
+
+  const foreignKeys = await database.select('PRAGMA foreign_key_list(legacy_subject_mappings)');
+  const expected = {
+    sphere_id: 'spheres',
+    direction_id: 'directions',
+    skill_id: 'skills',
+  };
+
+  const needsRepair = Object.entries(expected).some(([fromColumn, targetTable]) => {
+    const foreignKey = foreignKeys.find((candidate) => candidate.from === fromColumn);
+    return foreignKey && foreignKey.table !== targetTable;
+  });
+
+  if (needsRepair) {
+    await recreateLegacySubjectMappingsTable(database);
+  }
+};
+
 export const runPr1Migrations = async (database) => {
   for (const statement of PR1_STATEMENTS) {
     await database.execute(statement);
@@ -798,6 +1035,9 @@ export const runPr1Migrations = async (database) => {
 
   await ensureTableColumns(database, 'nodes', NODE_EDITOR_OWNED_COLUMNS);
   await ensureTableColumns(database, 'nodes', NODE_GRAPH_COLUMNS);
+  await ensureDirectionsForeignKeyTarget(database);
+  await ensureSkillsForeignKeyTarget(database);
+  await ensureLegacySubjectMappingForeignKeyTargets(database);
   await ensureNodeDependenciesSchema(database);
   await backfillNodeCoordinates(database);
   await verifyPr1Schema(database);

@@ -70,3 +70,196 @@
     linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
   background-size: 24px 24px;
 }
+
+[data-pixel-frame] {
+  min-width: 0;
+}
+
+[data-pixel-frame="ghost"] [data-pixel-frame="ghost"] {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+button,
+[role="button"] {
+  min-width: 0;
+}
+
+button > svg {
+  flex-shrink: 0;
+}
+
+button:disabled,
+select:disabled,
+input:disabled,
+textarea:disabled {
+  filter: saturate(0.55);
+}
+
+.app-topbar {
+  overflow: hidden;
+}
+
+.app-primary-nav {
+  flex-wrap: nowrap;
+  scrollbar-gutter: stable;
+}
+
+.app-primary-nav button,
+.app-campaign-chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.app-campaign-chip {
+  max-width: min(42vw, 18rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.campaign-card {
+  overflow: hidden;
+}
+
+.campaign-card--system {
+  opacity: 0.86;
+}
+
+.campaign-card--user {
+  border-color: color-mix(in srgb, var(--pixel-accent-muted) 62%, var(--pixel-line)) !important;
+}
+
+.campaign-card__title,
+.now-view h2,
+.now-view h3,
+.navigation-map-panel h3,
+.navigation-inspector-panel h3 {
+  overflow-wrap: anywhere;
+}
+
+.now-work-panel {
+  background: color-mix(in srgb, var(--pixel-panel) 80%, transparent) !important;
+}
+
+.now-next-work {
+  border-color: color-mix(in srgb, var(--pixel-accent-muted) 70%, var(--pixel-line)) !important;
+}
+
+.now-route-strip {
+  background: color-mix(in srgb, var(--pixel-panel-inset) 86%, transparent) !important;
+}
+
+.now-mastery-badge {
+  box-shadow: none;
+}
+
+.now-mastery-badge--verified {
+  border-color: color-mix(in srgb, var(--pixel-success) 55%, var(--pixel-line-soft)) !important;
+  background: rgba(110, 231, 183, 0.07) !important;
+}
+
+.now-mastery-badge--self {
+  border-color: color-mix(in srgb, var(--pixel-accent-muted) 60%, var(--pixel-line-soft)) !important;
+  background: rgba(247, 201, 72, 0.045) !important;
+}
+
+.navigation-map-workspace {
+  order: 1;
+}
+
+.navigation-inspector-rail {
+  order: 2;
+}
+
+.navigation-map-controls {
+  background: transparent !important;
+}
+
+.navigation-node-summary {
+  background: color-mix(in srgb, var(--pixel-panel-inset) 88%, transparent) !important;
+}
+
+.debug-label {
+  opacity: 0.72;
+}
+
+.draft-status {
+  border: 1px solid transparent;
+  padding: 2px 5px;
+}
+
+.draft-status--dirty {
+  border-color: color-mix(in srgb, var(--pixel-accent) 55%, transparent);
+  background: rgba(247, 201, 72, 0.08);
+}
+
+@media (max-width: 640px) {
+  body {
+    background:
+      linear-gradient(180deg, var(--pixel-canvas) 0%, var(--pixel-background) 100%);
+  }
+
+  .pixel-shell-grid {
+    background-size: 32px 32px;
+  }
+
+  .app-topbar > div {
+    align-items: flex-start;
+  }
+
+  .app-primary-nav {
+    width: 100%;
+    padding-bottom: 2px;
+  }
+
+  .app-primary-nav button {
+    min-height: 32px !important;
+    padding: 6px 9px !important;
+  }
+
+  .navigation-map-shell {
+    gap: 0.75rem;
+  }
+
+  .navigation-map-panel,
+  .navigation-inspector-panel,
+  .now-primary-panel {
+    padding: 12px !important;
+  }
+
+  .navigation-map-canvas {
+    height: min(62dvh, 420px) !important;
+    min-height: 320px;
+  }
+
+  .navigation-inspector-rail {
+    position: relative;
+    top: auto;
+    width: 100% !important;
+  }
+
+  .navigation-inspector-panel {
+    max-height: none;
+  }
+
+  .now-route-strip .grid,
+  .now-mastery-badge,
+  .navigation-node-summary .grid {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .app-primary-nav button {
+    font-size: 9px !important;
+  }
+
+  .campaign-card__title {
+    font-size: 16px !important;
+  }
+
+  .navigation-map-canvas {
+    height: 360px !important;
+  }
+}

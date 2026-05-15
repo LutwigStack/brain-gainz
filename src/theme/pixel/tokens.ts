@@ -143,16 +143,22 @@ export const createPixelFrameStyle = ({
   padding = 'lg',
 }: PixelFrameStyleOptions = {}): CSSProperties => {
   const chrome = pixelFrames[frame];
+  const isGhost = frame === 'ghost';
+  const isInset = frame === 'inset';
 
   return {
     background: chrome.background,
     padding: pixelSpacing[padding],
-    border: `${pixelRadii.sm}px solid ${chrome.borderDark}`,
-    boxShadow: [
-      `inset ${pixelRadii.sm}px ${pixelRadii.sm}px 0 ${chrome.borderLight}`,
-      `inset -${pixelRadii.sm}px -${pixelRadii.sm}px 0 ${chrome.innerDark}`,
-      `${pixelRadii.sm}px ${pixelRadii.sm}px 0 ${chrome.innerLight}`,
-    ].join(', '),
+    border: isGhost ? `1px solid ${chrome.borderLight}` : `${pixelRadii.sm}px solid ${chrome.borderDark}`,
+    boxShadow: isGhost
+      ? 'none'
+      : isInset
+        ? `inset 1px 1px 0 ${chrome.borderLight}`
+        : [
+            `inset ${pixelRadii.sm}px ${pixelRadii.sm}px 0 ${chrome.borderLight}`,
+            `inset -${pixelRadii.sm}px -${pixelRadii.sm}px 0 ${chrome.innerDark}`,
+            `1px 1px 0 ${chrome.innerLight}`,
+          ].join(', '),
     imageRendering: 'pixelated',
   };
 };

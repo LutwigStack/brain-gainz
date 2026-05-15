@@ -2407,13 +2407,13 @@ export const NavigationView = ({
   };
 
   const mapShellClassName = isInspectorCollapsed
-    ? 'grid min-w-0 items-start gap-3 xl:grid-cols-1'
-    : 'grid min-w-0 items-start gap-3 xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]';
+    ? 'navigation-map-shell grid min-w-0 items-start gap-3 xl:grid-cols-1'
+    : 'navigation-map-shell grid min-w-0 items-start gap-3 xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]';
   const inspectorRailClassName =
-    'min-w-0 max-w-full self-start xl:sticky xl:top-3 xl:justify-self-end xl:w-[380px] 2xl:w-[420px]';
+    'navigation-inspector-rail min-w-0 max-w-full self-start xl:sticky xl:top-3 xl:justify-self-end xl:w-[380px] 2xl:w-[420px]';
   const mapCanvasClassName = `${
     focus?.node && !isInspectorCollapsed ? 'h-[340px]' : 'h-[420px]'
-  } min-w-0 max-w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] sm:h-[clamp(680px,calc(100dvh-220px),1040px)]`;
+  } navigation-map-canvas min-w-0 max-w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] sm:h-[clamp(680px,calc(100dvh-220px),1040px)]`;
 
   return (
     <div className="space-y-3">
@@ -2426,8 +2426,8 @@ export const NavigationView = ({
       ) : null}
 
       <section className={mapShellClassName}>
-        <div className="min-w-0 space-y-4">
-          <PixelSurface frame="panel" padding="md">
+        <div className="navigation-map-workspace min-w-0 space-y-4">
+          <PixelSurface frame="panel" padding="md" className="navigation-map-panel">
             <PixelPanelHeader
               eyebrow="Граф"
               title={
@@ -2459,7 +2459,7 @@ export const NavigationView = ({
             />
 
             <div className="mt-3 min-w-0 space-y-3">
-              <PixelSurface frame="ghost" padding="sm">
+              <PixelSurface frame="ghost" padding="sm" className="navigation-map-controls">
                 <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(220px,360px)_minmax(0,1fr)] md:items-end">
                   <PixelSelect
                     label="Структура"
@@ -2509,7 +2509,7 @@ export const NavigationView = ({
                 </div>
               </PixelSurface>
 
-              <PixelSurface frame="ghost" padding="sm">
+              <PixelSurface frame="ghost" padding="sm" className="navigation-map-controls">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -2637,7 +2637,7 @@ export const NavigationView = ({
                 </PixelSurface>
               ) : null}
 
-              <PixelSurface frame="ghost" padding="sm">
+              <PixelSurface frame="ghost" padding="sm" className="navigation-map-controls">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -3204,7 +3204,7 @@ export const NavigationView = ({
         {!isInspectorCollapsed ? (
         <div id="navigation-inspector-rail" className={inspectorRailClassName}>
           <PixelStack gap="md">
-            <PixelSurface frame="panel" padding="md">
+            <PixelSurface frame="panel" padding="md" className="navigation-inspector-panel">
               {isFocusLoading && !focus?.node ? (
                 <PixelText as="p" readable color="textMuted" size="sm">
                   Загрузка…
@@ -3254,13 +3254,19 @@ export const NavigationView = ({
                     }
                   />
 
-                  <PixelSurface frame="inset" padding="sm">
+                  <PixelSurface frame="inset" padding="sm" className="navigation-node-summary">
                     <div className="grid gap-2">
                       <div className="flex items-center justify-between gap-3">
-                        <PixelText as="span" size="xs" color="textMuted" uppercase>
-                          node_{focus.node.id}
+                        <PixelText as="span" size="xs" color="textDim" uppercase className="debug-label">
+                          ID {focus.node.id}
                         </PixelText>
-                        <PixelText as="span" size="xs" color={isEditorDirty ? 'accent' : 'textMuted'} uppercase>
+                        <PixelText
+                          as="span"
+                          size="xs"
+                          color={isEditorDirty ? 'accent' : 'textDim'}
+                          uppercase
+                          className={isEditorDirty ? 'draft-status draft-status--dirty' : 'draft-status'}
+                        >
                           {isEditorDirty
                             ? 'есть черновик'
                             : focus.node.updated_at?.slice(0, 16).replace('T', ' ') ?? 'сохранено'}
@@ -3693,8 +3699,8 @@ export const NavigationView = ({
                   <PixelText as="p" size="xs" color="textMuted" uppercase>
                     ID узла
                   </PixelText>
-                  <PixelText as="p" size="sm" style={{ marginTop: 4 }}>
-                    node_{focus.node.id}
+                  <PixelText as="p" size="xs" color="textDim" uppercase className="debug-label" style={{ marginTop: 4 }}>
+                    ID {focus.node.id}
                   </PixelText>
                 </PixelSurface>
 

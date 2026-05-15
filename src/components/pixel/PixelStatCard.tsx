@@ -25,7 +25,7 @@ export const PixelStatCard = ({
       as="p"
       size={compact ? 'sm' : 'lg'}
       lineHeight="tight"
-      style={{ margin: compact ? '4px 0 0' : '10px 0 0' }}
+      style={{ margin: compact ? '4px 0 0' : '10px 0 0', overflowWrap: 'anywhere' }}
     >
       {value}
     </PixelText>

@@ -198,6 +198,9 @@ export const createHierarchyStore = (database) => ({
           reward,
           x,
           y,
+          knowledge_node_id,
+          self_marked_mastery_level,
+          check_metadata,
           importance,
           target_date,
           last_touched_at,
@@ -205,7 +208,7 @@ export const createHierarchyStore = (database) => ({
           created_at,
           updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         input.skill_id,
@@ -219,6 +222,9 @@ export const createHierarchyStore = (database) => ({
         input.reward ?? null,
         input.x ?? null,
         input.y ?? null,
+        input.knowledge_node_id ?? null,
+        input.self_marked_mastery_level ?? null,
+        input.check_metadata ?? null,
         input.importance ?? 'medium',
         input.target_date ?? null,
         input.last_touched_at ?? null,
@@ -386,6 +392,9 @@ export const createHierarchyStore = (database) => ({
           reward = ?,
           x = ?,
           y = ?,
+          knowledge_node_id = ?,
+          self_marked_mastery_level = ?,
+          check_metadata = ?,
           importance = ?,
           target_date = ?,
           last_touched_at = ?,
@@ -404,6 +413,9 @@ export const createHierarchyStore = (database) => ({
         next.reward,
         next.x,
         next.y,
+        next.knowledge_node_id,
+        next.self_marked_mastery_level,
+        next.check_metadata,
         next.importance,
         next.target_date,
         next.last_touched_at,
@@ -510,6 +522,9 @@ export const createHierarchyStore = (database) => ({
       reward: patch.reward ?? current.reward,
       x: patch.x ?? current.x,
       y: patch.y ?? current.y,
+      knowledge_node_id: patch.knowledge_node_id ?? current.knowledge_node_id,
+      self_marked_mastery_level: patch.self_marked_mastery_level ?? current.self_marked_mastery_level,
+      check_metadata: patch.check_metadata ?? current.check_metadata,
       importance: current.importance,
       target_date: current.target_date,
       last_touched_at: null,

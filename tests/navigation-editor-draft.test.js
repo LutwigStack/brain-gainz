@@ -6,10 +6,14 @@ import {
   buildNodeEditorUpdatePayload,
   canDuplicateNodeEditorDraft,
   createNodeEditorDraft,
+  emptyCheckMetadataDraft,
+  getCheckMetadataValidationMessage,
   getNodeEditorCompletionCriteriaPreview,
   getNodeEditorLinksPreview,
   getNodeEditorRewardPreview,
   hasNodeEditorPersistedChanges,
+  parseCheckMetadataDraft,
+  serializeCheckMetadataDraft,
 } from '../src/components/navigation-editor-draft.ts';
 
 const focusSnapshot = {
@@ -22,6 +26,7 @@ const focusSnapshot = {
     completion_criteria: null,
     links: null,
     reward: null,
+    check_metadata: null,
     sphere_id: 1,
     sphere_name: 'Mathematics',
     direction_id: 2,
@@ -118,6 +123,12 @@ test('buildNodeEditorUpdatePayload keeps and writes expanded persisted fields', 
     completionCriteria: 'Manual completion criteria',
     links: 'Depends on: Algebra Fundamentals',
     reward: 'Another manual note',
+    checkMetadata: {
+      ...emptyCheckMetadataDraft('action:70'),
+      kind: 'exact',
+      prompt: 'Type the term',
+      expectedAnswer: 'linear map',
+    },
   };
 
   assert.equal(hasNodeEditorPersistedChanges(focusSnapshot, draft), true);
@@ -127,6 +138,15 @@ test('buildNodeEditorUpdatePayload keeps and writes expanded persisted fields', 
     completion_criteria: 'Manual completion criteria',
     links: 'Depends on: Algebra Fundamentals',
     reward: 'Another manual note',
+    check_metadata: JSON.stringify({
+      tasks: {
+        'action:70': {
+          strict_check_type: 'exact',
+          prompt: 'Type the term',
+          expected_answer: 'linear map',
+        },
+      },
+    }),
     type: 'theory',
     status: 'paused',
   });
@@ -146,6 +166,7 @@ test('buildNodeEditorUpdatePayload does not persist derived fallback values by d
     completion_criteria: null,
     links: null,
     reward: null,
+    check_metadata: null,
     type: 'theory',
     status: 'paused',
   });
@@ -159,6 +180,12 @@ test('buildNodeEditorDuplicatePayload uses the current authored fields', () => {
     completionCriteria: '  Finish the theorem summary and all open problems.  ',
     links: '  Depends on: Algebra Fundamentals\nUnlocks: Eigenvalues  ',
     reward: '  Unlocks the next theory block.  ',
+    checkMetadata: {
+      ...emptyCheckMetadataDraft('action:70'),
+      kind: 'llm_assisted',
+      prompt: 'Explain the result',
+      rubric: 'Must mention basis and dimension.',
+    },
   };
 
   assert.deepEqual(buildNodeEditorDuplicatePayload(draft), {
@@ -167,7 +194,220 @@ test('buildNodeEditorDuplicatePayload uses the current authored fields', () => {
     completion_criteria: 'Finish the theorem summary and all open problems.',
     links: 'Depends on: Algebra Fundamentals\nUnlocks: Eigenvalues',
     reward: 'Unlocks the next theory block.',
+    check_metadata: JSON.stringify({
+      tasks: {
+        'action:70': {
+          check_method: 'llm_assisted',
+          prompt: 'Explain the result',
+          rubric: 'Must mention basis and dimension.',
+        },
+      },
+    }),
   });
+});
+
+test('check metadata draft parses and serializes supported check types', () => {
+  const exact = parseCheckMetadataDraft(
+    JSON.stringify({
+      tasks: {
+        'action:70': {
+          strict_check_type: 'exact',
+          prompt: 'Term?',
+          expected_answer: 'linear map',
+          case_sensitive: true,
+        },
+      },
+    }),
+    'action:70',
+  );
+  assert.equal(exact.kind, 'exact');
+  assert.equal(exact.expectedAnswer, 'linear map');
+  assert.equal(exact.caseSensitive, true);
+
+  const multiTaskExact = parseCheckMetadataDraft(
+    JSON.stringify({
+      tasks: {
+        'action:70': {
+          strict_check_type: 'exact',
+          prompt: 'Term?',
+          expected_answer: 'linear map',
+        },
+        sibling: {
+          strict_check_type: 'contains',
+          required_terms: ['basis'],
+        },
+      },
+    }),
+    'action:70',
+  );
+  assert.deepEqual(JSON.parse(serializeCheckMetadataDraft({ ...multiTaskExact, expectedAnswer: 'basis' })), {
+    tasks: {
+      'action:70': {
+        strict_check_type: 'exact',
+        prompt: 'Term?',
+        expected_answer: 'basis',
+      },
+      sibling: {
+        strict_check_type: 'contains',
+        required_terms: ['basis'],
+      },
+    },
+  });
+
+  const assessmentContainerExact = parseCheckMetadataDraft(
+    JSON.stringify({
+      version: 1,
+      assessments: {
+        'action:70': {
+          strict_check_type: 'exact',
+          prompt: 'Term?',
+          expected_answer: 'linear map',
+        },
+        sibling: {
+          strict_check_type: 'contains',
+          required_terms: ['basis'],
+        },
+      },
+    }),
+    'action:70',
+  );
+  assert.deepEqual(JSON.parse(serializeCheckMetadataDraft({ ...assessmentContainerExact, expectedAnswer: 'basis' })), {
+    version: 1,
+    assessments: {
+      'action:70': {
+        strict_check_type: 'exact',
+        prompt: 'Term?',
+        expected_answer: 'basis',
+      },
+      sibling: {
+        strict_check_type: 'contains',
+        required_terms: ['basis'],
+      },
+    },
+  });
+
+  assert.equal(
+    serializeCheckMetadataDraft({
+      ...emptyCheckMetadataDraft('node:7:exact'),
+      kind: 'exact',
+      prompt: 'Type the answer',
+      expectedAnswer: '',
+    }),
+    null,
+  );
+  assert.match(
+    getCheckMetadataValidationMessage({
+      ...emptyCheckMetadataDraft('node:7:exact'),
+      kind: 'exact',
+    }),
+    /ожидаемый точный ответ/,
+  );
+
+  assert.equal(
+    serializeCheckMetadataDraft({
+      ...emptyCheckMetadataDraft('node:7:contains'),
+      kind: 'contains',
+      prompt: 'Use key terms',
+      requiredTerms: '',
+    }),
+    null,
+  );
+  assert.match(
+    getCheckMetadataValidationMessage({
+      ...emptyCheckMetadataDraft('node:7:contains'),
+      kind: 'contains',
+    }),
+    /обязательный термин/,
+  );
+
+  const blankNumber = {
+    ...emptyCheckMetadataDraft('node:7:number'),
+    kind: 'number',
+    prompt: 'Enter the result',
+    expectedNumber: '',
+    tolerance: '',
+  };
+  assert.equal(serializeCheckMetadataDraft(blankNumber), null);
+
+  const blankNumberWithSibling = parseCheckMetadataDraft(
+    JSON.stringify({
+      tasks: {
+        'node:7:number': {
+          strict_check_type: 'number',
+          expected_number: 5,
+        },
+        sibling: {
+          strict_check_type: 'exact',
+          expected_answer: 'kept',
+        },
+      },
+    }),
+    'node:7:number',
+  );
+  assert.deepEqual(
+    JSON.parse(serializeCheckMetadataDraft({ ...blankNumberWithSibling, expectedNumber: '' })),
+    {
+      tasks: {
+        sibling: {
+          strict_check_type: 'exact',
+          expected_answer: 'kept',
+        },
+      },
+    },
+  );
+
+  const validNumber = {
+    ...blankNumber,
+    expectedNumber: '12',
+    tolerance: '',
+  };
+  assert.deepEqual(JSON.parse(serializeCheckMetadataDraft(validNumber)), {
+    tasks: {
+      'node:7:number': {
+        strict_check_type: 'number',
+        prompt: 'Enter the result',
+        expected_number: 12,
+      },
+    },
+  });
+
+  const checklist = {
+    ...emptyCheckMetadataDraft('node:7:assessment'),
+    kind: 'checklist',
+    prompt: 'Check proof',
+    checklistItems: [
+      { id: '', label: 'Definition written', required: true },
+      { id: 'example', label: 'Example given', required: false },
+    ],
+  };
+  assert.deepEqual(JSON.parse(serializeCheckMetadataDraft(checklist)), {
+    tasks: {
+      'node:7:assessment': {
+        strict_check_type: 'checklist',
+        prompt: 'Check proof',
+        items: [
+          { id: 'definition-written', label: 'Definition written', required: true },
+          { id: 'example', label: 'Example given', required: false },
+        ],
+      },
+    },
+  });
+
+  const emptyChecklist = {
+    ...emptyCheckMetadataDraft('node:7:empty-checklist'),
+    kind: 'checklist',
+    prompt: 'Check proof',
+    checklistItems: [],
+  };
+  assert.equal(serializeCheckMetadataDraft(emptyChecklist), null);
+  assert.match(getCheckMetadataValidationMessage(emptyChecklist), /обязательный пункт/);
+});
+
+test('invalid check metadata stays raw and is not lost', () => {
+  const draft = parseCheckMetadataDraft('{not-json', 'action:70');
+  assert.equal(draft.kind, 'raw');
+  assert.equal(draft.invalidRaw, true);
+  assert.equal(serializeCheckMetadataDraft(draft), '{not-json');
 });
 
 test('duplicate guard blocks unsupported unsaved type and status changes', () => {

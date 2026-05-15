@@ -50,6 +50,9 @@ export interface CampaignSummary {
   type: 'developer_main' | 'user';
   slug: string;
   name: string;
+  mode?: 'career' | 'free' | null;
+  career_status?: 'active' | 'victory' | null;
+  current_specialization_id?: number | null;
   icon?: string | null;
   color?: string | null;
   is_archived: number;
@@ -99,11 +102,116 @@ export interface DailySession {
   events: DailySessionEvent[];
 }
 
+export type MasteryLevel = 'seen' | 'understood' | 'remembered' | 'applied' | 'confirmed' | 'retained';
+export type SpecializationStatus = 'active' | 'completed' | 'paused' | 'archived';
+
+export interface CareerSpecialization {
+  id: number;
+  campaign_id: number;
+  name: string;
+  key: string;
+  domain?: string | null;
+  length: string;
+  status: SpecializationStatus;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  route_node_count?: number;
+  required_node_count?: number;
+}
+
+export interface CareerSnapshot {
+  campaign: {
+    id: number;
+    name?: string | null;
+    icon?: string | null;
+    color?: string | null;
+    mode: string;
+    career_status: 'active' | 'victory';
+    current_specialization_id?: number | null;
+  };
+  currentSpecialization: CareerSpecialization | null;
+  specializations: CareerSpecialization[];
+  mastery: {
+    activeNodeCount: number;
+    confirmedOrBetterNodeCount: number;
+    verifiedNodeCount: number;
+    selfMarkedOnlyNodeCount: number;
+  };
+}
+
+export interface RouteProgressItem {
+  id: number;
+  node_id?: number | null;
+  knowledge_node_id?: number | null;
+  title: string;
+  path: string;
+  required_mastery_level: MasteryLevel;
+  route_order: number;
+  route_stage?: string | null;
+  current_mastery_level?: MasteryLevel | null;
+  current_mastery_rank: number;
+  is_required: number;
+  is_complete: boolean;
+}
+
+export interface TodaySnapshot {
+  currentSpecialization: CareerSpecialization | null;
+  careerStatus: 'active' | 'victory';
+  mastery: CareerSnapshot['mastery'];
+  race: {
+    key: string;
+    title: string;
+    emblem: string;
+    color: string;
+  };
+  route: {
+    routeNodeCount: number;
+    requiredNodeCount: number;
+    completedRequiredNodeCount: number;
+    completionPercent: number;
+    isComplete: boolean;
+    items: RouteProgressItem[];
+    nextItem: RouteProgressItem | null;
+  } | null;
+  planner: {
+    focusItem: RouteProgressItem | null;
+    currentStage?: string | null;
+    currentStageItems: RouteProgressItem[];
+    nextItems: RouteProgressItem[];
+    weakSpots: RouteProgressItem[];
+    readyToVerify: RouteProgressItem[];
+    hasRouteItems: boolean;
+  } | null;
+  city: {
+    level: number;
+    totalXp: number;
+    districts: Array<{
+      id: number;
+      title: string;
+      emblem: string;
+      color: string;
+      xp: number;
+      level: number;
+      stability: number;
+    }>;
+  };
+  opponent: {
+    specialization_id: number;
+    daysElapsed: number;
+    projectedRequired: number;
+    pressure: number;
+    score: number;
+  } | null;
+}
+
 export interface NowDashboardSnapshot {
   metrics: DashboardMetrics;
   primaryRecommendation: RecommendationCandidate | null;
   queue: RecommendationCandidate[];
   todaySession: DailySession | null;
+  today?: TodaySnapshot;
 }
 
 export interface NodeAction {
@@ -123,6 +231,7 @@ export interface NodeSummary {
   completion_criteria?: string | null;
   links?: string | null;
   reward?: string | null;
+  check_metadata?: string | null;
   x?: number | null;
   y?: number | null;
   updated_at?: string;
@@ -147,6 +256,9 @@ export interface PersistedNodeRecord {
   reward?: string | null;
   x?: number | null;
   y?: number | null;
+  knowledge_node_id?: number | null;
+  self_marked_mastery_level?: string | null;
+  check_metadata?: string | null;
   importance: string;
   target_date?: string | null;
   last_touched_at?: string | null;
@@ -166,6 +278,9 @@ export interface NodeCreatePayload {
   reward?: string | null;
   x?: number | null;
   y?: number | null;
+  knowledge_node_id?: number | null;
+  self_marked_mastery_level?: string | null;
+  check_metadata?: string | null;
   importance?: string;
   status?: string;
   target_date?: string | null;
@@ -183,6 +298,9 @@ export interface NodeUpdatePayload {
   reward?: string | null;
   x?: number | null;
   y?: number | null;
+  knowledge_node_id?: number | null;
+  self_marked_mastery_level?: string | null;
+  check_metadata?: string | null;
   importance?: string;
   target_date?: string | null;
   last_touched_at?: string | null;
@@ -199,6 +317,9 @@ export interface NodeDuplicatePayload {
   reward?: string | null;
   x?: number | null;
   y?: number | null;
+  knowledge_node_id?: number | null;
+  self_marked_mastery_level?: string | null;
+  check_metadata?: string | null;
 }
 
 export interface NodeArchivePayload {
@@ -285,6 +406,56 @@ export interface NodeFocusProgress {
   isCurrentSessionNode: boolean;
 }
 
+export interface NodeFocusMasteryEvent {
+  id: number;
+  mastery_level: MasteryLevel;
+  source_type: 'legacy_node_completion' | 'assessment' | 'self_marked' | 'manual';
+  created_at: string;
+  active: number;
+}
+
+export interface NodeFocusAssessmentAttempt {
+  id: number;
+  task_id: string;
+  check_method: 'strict' | 'llm_assisted';
+  passed: number;
+  score?: number | null;
+  target_mastery_level: MasteryLevel;
+  feedback_summary?: string | null;
+  evidence_payload?: string | null;
+  created_at: string;
+}
+
+export interface NodeFocusMastery {
+  currentLevel: MasteryLevel | null;
+  currentRank: number;
+  isVerified: boolean;
+  isSelfMarkedOnly: boolean;
+  eventCount: number;
+  latestEvent: NodeFocusMasteryEvent | null;
+  latestAttempt: NodeFocusAssessmentAttempt | null;
+  routeRequirement: {
+    specialization_id: number;
+    specialization_name: string;
+    required_mastery_level: MasteryLevel;
+    is_required: number;
+  } | null;
+  check: {
+    taskId: string;
+    strictCheckType: string | null;
+    isStrictCheckable: boolean;
+    isAutoStrictCheck?: boolean;
+    prompt?: string | null;
+    expectedSummary?: string | null;
+    requiredTerms?: string[];
+    checklistItems?: Array<{
+      id: string;
+      label: string;
+      required: boolean;
+    }>;
+  };
+}
+
 export interface NodeFocusSnapshot {
   node: NodeSummary;
   selectedAction: NodeAction | null;
@@ -294,6 +465,7 @@ export interface NodeFocusSnapshot {
   reviewState?: ReviewState | null;
   session: DailySession | null;
   progress: NodeFocusProgress;
+  mastery?: NodeFocusMastery;
   barrierNotes?: BarrierNote[];
   errorNotes?: ErrorNote[];
 }

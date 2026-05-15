@@ -1078,6 +1078,174 @@ test('bootstrap rejects pre-existing PR1 tables that miss ownership foreign keys
   );
 });
 
+test('bootstrap repairs directions foreign key target left by legacy sphere table rebuild', async (t) => {
+  const database = createSqliteTestDatabase();
+  t.after(() => database.close());
+
+  await ensureLegacySchema(database);
+  await database.execute(`
+    CREATE TABLE spheres (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      description TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await database.execute(`
+    CREATE TABLE directions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sphere_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      description TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (sphere_id) REFERENCES spheres_old_campaign_scope (id),
+      UNIQUE (sphere_id, slug)
+    )
+  `);
+
+  await bootstrapDatabase(database);
+
+  const foreignKeys = await database.select('PRAGMA foreign_key_list(directions)');
+  const sphereForeignKey = foreignKeys.find((foreignKey) => foreignKey.from === 'sphere_id');
+  assert.equal(sphereForeignKey.table, 'spheres');
+});
+
+test('bootstrap repairs skills foreign key target left by legacy direction table rebuild', async (t) => {
+  const database = createSqliteTestDatabase();
+  t.after(() => database.close());
+
+  await ensureLegacySchema(database);
+  await database.execute(`
+    CREATE TABLE spheres (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      description TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await database.execute(`
+    CREATE TABLE directions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sphere_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      description TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (sphere_id) REFERENCES spheres (id),
+      UNIQUE (sphere_id, slug)
+    )
+  `);
+  await database.execute(`
+    CREATE TABLE skills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      direction_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      description TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (direction_id) REFERENCES directions_old_pr1_fk_repair (id),
+      UNIQUE (direction_id, slug)
+    )
+  `);
+
+  await bootstrapDatabase(database);
+
+  const foreignKeys = await database.select('PRAGMA foreign_key_list(skills)');
+  const directionForeignKey = foreignKeys.find((foreignKey) => foreignKey.from === 'direction_id');
+  assert.equal(directionForeignKey.table, 'directions');
+});
+
+test('bootstrap repairs legacy subject mapping foreign key targets left by table rebuilds', async (t) => {
+  const database = createSqliteTestDatabase();
+  t.after(() => database.close());
+
+  await ensureLegacySchema(database);
+  await database.execute(`
+    CREATE TABLE spheres (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      description TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await database.execute(`
+    CREATE TABLE directions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sphere_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      description TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (sphere_id) REFERENCES spheres (id),
+      UNIQUE (sphere_id, slug)
+    )
+  `);
+  await database.execute(`
+    CREATE TABLE skills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      direction_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      description TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (direction_id) REFERENCES directions (id),
+      UNIQUE (direction_id, slug)
+    )
+  `);
+  await database.execute(`
+    CREATE TABLE legacy_subject_mappings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      legacy_subject_id INTEGER NOT NULL UNIQUE,
+      sphere_id INTEGER,
+      direction_id INTEGER,
+      skill_id INTEGER,
+      mapping_status TEXT NOT NULL DEFAULT 'pending' CHECK (mapping_status IN ('pending', 'suggested', 'accepted', 'archived')),
+      mapping_decider TEXT NOT NULL DEFAULT 'assisted' CHECK (mapping_decider IN ('manual', 'automatic', 'assisted')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (legacy_subject_id) REFERENCES subjects (id) ON DELETE CASCADE,
+      FOREIGN KEY (sphere_id) REFERENCES spheres_old_campaign_scope (id),
+      FOREIGN KEY (direction_id) REFERENCES directions_old_pr1_fk_repair (id),
+      FOREIGN KEY (skill_id) REFERENCES skills_old_pr1_fk_repair (id)
+    )
+  `);
+
+  await bootstrapDatabase(database);
+
+  const foreignKeys = await database.select('PRAGMA foreign_key_list(legacy_subject_mappings)');
+  assert.equal(foreignKeys.find((foreignKey) => foreignKey.from === 'sphere_id').table, 'spheres');
+  assert.equal(foreignKeys.find((foreignKey) => foreignKey.from === 'direction_id').table, 'directions');
+  assert.equal(foreignKeys.find((foreignKey) => foreignKey.from === 'skill_id').table, 'skills');
+});
+
 test('sqlite test adapter matches the execute/select contract used by stores', async (t) => {
   const database = createSqliteTestDatabase();
   t.after(() => database.close());

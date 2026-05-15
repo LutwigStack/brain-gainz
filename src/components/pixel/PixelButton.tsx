@@ -48,6 +48,8 @@ export const PixelButton = ({
     alignItems: 'center',
     justifyContent: 'center',
     gap: pixelSpacing.sm,
+    minWidth: 0,
+    maxWidth: '100%',
     fontFamily: pixelTypography.family.base,
     fontSize: pixelTypography.size.xs,
     lineHeight: pixelTypography.lineHeight.tight,
@@ -57,6 +59,9 @@ export const PixelButton = ({
     opacity: disabled ? 0.55 : 1,
     imageRendering: 'pixelated',
     transition: 'transform 120ms ease, opacity 120ms ease',
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
+    textAlign: 'center',
     ...style,
   };
 

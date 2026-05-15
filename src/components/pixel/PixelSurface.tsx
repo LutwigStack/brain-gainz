@@ -12,20 +12,20 @@ export const PixelSurface = ({
   frame = 'panel',
   padding = 'lg',
   fullWidth = true,
+  className,
   style,
   ...props
 }: PixelSurfaceProps) => {
   const surfaceStyle: CSSProperties = {
     ...createPixelFrameStyle({ frame, padding }),
     color: pixelColors.text,
-    display: 'block',
     width: fullWidth ? '100%' : undefined,
     position: 'relative',
     ...style,
   };
 
   return (
-    <div {...props} style={surfaceStyle}>
+    <div {...props} className={className} data-pixel-frame={frame} style={surfaceStyle}>
       {children}
     </div>
   );
