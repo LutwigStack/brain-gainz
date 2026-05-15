@@ -461,6 +461,7 @@ textarea:disabled {
   }
 
   .navigation-map-canvas {
-    height: 390px !important;
+    height: 300px !important;
+    min-height: 260px;
   }
 }

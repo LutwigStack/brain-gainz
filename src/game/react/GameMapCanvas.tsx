@@ -1,5 +1,5 @@
 ﻿import { Application } from 'pixi.js';
-import { useEffect, useEffectEvent, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type MouseEvent } from 'react';
 
 import { getGraphEdgeSemantics } from '../../application/graph-edge-semantics';
 import { PixelSurface, PixelText } from '../../components/pixel';
@@ -37,7 +37,7 @@ interface GameMapCanvasProps {
     sourceNodeId: number;
     targetNodeId: number;
     edgeType: 'requires' | 'supports' | 'relates_to';
-  }) => Promise<boolean> | boolean;
+  }) => Promise<boolean | number> | boolean | number;
   onCanvasContextMenu?: (input: {
     screenX: number;
     screenY: number;
@@ -232,6 +232,12 @@ export const GameMapCanvas = ({
   const selectedEdgeIdRef = useRef(selectedEdgeId);
   const connectSourceNodeIdRef = useRef(connectSourceNodeId);
   const connectEdgeTypeRef = useRef(connectEdgeType);
+  const lastConnectFallbackRef = useRef<{
+    sourceNodeId: number;
+    targetNodeId: number;
+    edgeType: 'requires' | 'supports' | 'relates_to';
+    at: number;
+  } | null>(null);
   const viewportCameraRef = useRef<ViewportCamera | null>(null);
   const suppressNextContextMenuRef = useRef(false);
   const [viewportCamera, setViewportCamera] = useState<ViewportCamera | null>(null);
@@ -317,8 +323,10 @@ export const GameMapCanvas = ({
   );
   const shouldRenderOverviewRef = useRef(shouldRenderOverview);
   const viewportModeKey = `${visibleSphereId ?? 'all'}:${visibleSkillId ?? 'all'}:${canvasMode}:${shouldRenderOverview ? 'overview' : 'detail'}:${visibleNodeIds?.join(',') ?? 'all'}`;
-  const getNodeRenderPosition = (node: GameSceneModel['nodes'][number]) =>
-    (shouldRenderOverview ? node.overviewPosition : null) ?? node.position;
+  const getNodeRenderPosition = useCallback(
+    (node: GameSceneModel['nodes'][number]) => (shouldRenderOverview ? node.overviewPosition : null) ?? node.position,
+    [shouldRenderOverview],
+  );
   const onSelectNodeEvent = useEffectEvent((nodeId: number, input?: { screenX: number; screenY: number }) => {
     const node = findNodeById(snapshot, nodeId);
     if (node) {
@@ -563,7 +571,7 @@ export const GameMapCanvas = ({
   const isEmptyMap = model.nodes.length === 0;
   const shouldShowZoomEditHint = Boolean(model.isLargeGraph && viewportCamera && viewportCamera.zoom < 0.24);
 
-  const resolveCanvasHit = (clientX: number, clientY: number) => {
+  const resolveCanvasHit = useCallback((clientX: number, clientY: number) => {
     if (!hostRef.current || !viewportCameraRef.current) {
       return null;
     }
@@ -573,6 +581,10 @@ export const GameMapCanvas = ({
       x: clientX - rect.left,
       y: clientY - rect.top,
     };
+    if (screenPoint.x < 0 || screenPoint.y < 0 || screenPoint.x > rect.width || screenPoint.y > rect.height) {
+      return null;
+    }
+
     const worldPoint = screenToWorld(screenPoint, viewportCameraRef.current);
     const nodeById = new Map(model.nodes.map((node) => [node.id, node]));
     const nearestEdge = model.edges
@@ -600,7 +612,9 @@ export const GameMapCanvas = ({
       })
       .filter((entry): entry is { edge: GameSceneModel['edges'][number]; distance: number } => entry != null)
       .sort((left, right) => left.distance - right.distance)[0];
-    const nodeHitPadding = 10 / viewportCameraRef.current.zoom;
+    const isConnectTargetPick =
+      connectSourceNodeIdRef.current != null && connectEdgeTypeRef.current != null;
+    const nodeHitPadding = (isConnectTargetPick ? 36 : 10) / viewportCameraRef.current.zoom;
     const nodeHit = model.nodes
       .map((node) => {
         const box = resolveNodeBox(node, shouldRenderOverview);
@@ -630,7 +644,122 @@ export const GameMapCanvas = ({
       nodeId: nodeHit ? nodeHit.node.id : null,
       edgeId: edgeHit ? edgeHit.edge.id : null,
     };
-  };
+  }, [getNodeRenderPosition, model.edges, model.nodes, shouldRenderOverview]);
+
+  const resolveConnectTargetNodeId = useCallback(
+    (clientX: number, clientY: number) => {
+      if (connectSourceNodeId == null || !hostRef.current || !viewportCameraRef.current) {
+        return null;
+      }
+
+      const exactHit = resolveCanvasHit(clientX, clientY);
+      if (exactHit?.nodeId != null) {
+        return exactHit.nodeId === connectSourceNodeId ? null : exactHit.nodeId;
+      }
+
+      const sourceNode = model.nodes.find((node) => node.id === connectSourceNodeId);
+      if (!sourceNode) {
+        return null;
+      }
+
+      const rect = hostRef.current.getBoundingClientRect();
+      const screenPoint = {
+        x: clientX - rect.left,
+        y: clientY - rect.top,
+      };
+      if (screenPoint.x < 0 || screenPoint.y < 0 || screenPoint.x > rect.width || screenPoint.y > rect.height) {
+        return null;
+      }
+
+      const targetNodes = model.nodes.filter((node) => node.id !== connectSourceNodeId);
+      if (targetNodes.length === 1) {
+        return targetNodes[0].id;
+      }
+
+      const camera = viewportCameraRef.current;
+      const sourcePosition = worldToScreen(getNodeRenderPosition(sourceNode), camera);
+      const sourceBox = resolveNodeBox(sourceNode, shouldRenderOverview);
+      const sourceGuardX = (sourceBox.width * camera.zoom) / 2 + 44;
+      const sourceGuardY = (sourceBox.height * camera.zoom) / 2 + 44;
+      if (
+        Math.abs(screenPoint.x - sourcePosition.x) <= sourceGuardX &&
+        Math.abs(screenPoint.y - sourcePosition.y) <= sourceGuardY
+      ) {
+        return null;
+      }
+
+      const nearestTarget = targetNodes
+        .map((node) => {
+          const position = worldToScreen(getNodeRenderPosition(node), camera);
+          return {
+            nodeId: node.id,
+            distance: Math.hypot(screenPoint.x - position.x, screenPoint.y - position.y),
+          };
+        })
+        .sort((left, right) => left.distance - right.distance)[0];
+
+      return nearestTarget && nearestTarget.distance <= 180 ? nearestTarget.nodeId : null;
+    },
+    [connectSourceNodeId, getNodeRenderPosition, model.nodes, resolveCanvasHit, shouldRenderOverview],
+  );
+
+  const createConnectFallbackEdge = useCallback(
+    (targetNodeId: number) => {
+      if (connectSourceNodeId == null || connectEdgeType == null || targetNodeId === connectSourceNodeId) {
+        return false;
+      }
+
+      const lastConnectFallback = lastConnectFallbackRef.current;
+      const isDuplicateClickFallback =
+        lastConnectFallback != null &&
+        lastConnectFallback.sourceNodeId === connectSourceNodeId &&
+        lastConnectFallback.targetNodeId === targetNodeId &&
+        lastConnectFallback.edgeType === connectEdgeType &&
+        Date.now() - lastConnectFallback.at < 1_000;
+
+      if (isDuplicateClickFallback) {
+        return true;
+      }
+
+      lastConnectFallbackRef.current = {
+        sourceNodeId: connectSourceNodeId,
+        targetNodeId,
+        edgeType: connectEdgeType,
+        at: Date.now(),
+      };
+      void onCreateEdge?.({
+        sourceNodeId: connectSourceNodeId,
+        targetNodeId,
+        edgeType: connectEdgeType,
+      });
+      return true;
+    },
+    [connectEdgeType, connectSourceNodeId, onCreateEdge],
+  );
+
+  useEffect(() => {
+    if (connectSourceNodeId == null || connectEdgeType == null) {
+      return undefined;
+    }
+
+    const handleConnectPointerEnd = (event: globalThis.MouseEvent | PointerEvent) => {
+      const targetNodeId = resolveConnectTargetNodeId(event.clientX, event.clientY);
+      if (targetNodeId == null) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      createConnectFallbackEdge(targetNodeId);
+    };
+
+    window.addEventListener('pointerup', handleConnectPointerEnd, { capture: true });
+    window.addEventListener('mouseup', handleConnectPointerEnd, { capture: true });
+    return () => {
+      window.removeEventListener('pointerup', handleConnectPointerEnd, { capture: true });
+      window.removeEventListener('mouseup', handleConnectPointerEnd, { capture: true });
+    };
+  }, [connectEdgeType, connectSourceNodeId, createConnectFallbackEdge, resolveConnectTargetNodeId]);
 
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -716,12 +845,44 @@ export const GameMapCanvas = ({
       onPointerDownCapture={(event) => {
         rootRef.current?.focus({ preventScroll: true });
         const hit = resolveCanvasHit(event.clientX, event.clientY);
+        if (
+          event.button === 0 &&
+          connectSourceNodeId != null &&
+          connectEdgeType != null
+        ) {
+          const targetNodeId = resolveConnectTargetNodeId(event.clientX, event.clientY);
+          if (targetNodeId != null) {
+            event.preventDefault();
+            event.stopPropagation();
+            createConnectFallbackEdge(targetNodeId);
+            return;
+          }
+        }
+
         if (hit) {
           onCanvasPointerDown?.({
             ...hit,
             button: event.button,
           });
         }
+      }}
+      onPointerUpCapture={(event) => {
+        if (
+          event.button !== 0 ||
+          connectSourceNodeId == null ||
+          connectEdgeType == null
+        ) {
+          return;
+        }
+
+        const targetNodeId = resolveConnectTargetNodeId(event.clientX, event.clientY);
+        if (targetNodeId == null) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        createConnectFallbackEdge(targetNodeId);
       }}
       onDoubleClickCapture={(event) => {
         event.preventDefault();

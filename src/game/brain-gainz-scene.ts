@@ -53,7 +53,7 @@ interface SceneCallbacks {
     sourceNodeId: number;
     targetNodeId: number;
     edgeType: 'requires' | 'supports' | 'relates_to';
-  }) => void | Promise<boolean>;
+  }) => void | Promise<boolean | number>;
   onEdgeContextMenu?: (input: { edgeId: number; screenX: number; screenY: number }) => void;
   interactionMode?: CanvasInteractionMode;
   createMode?: boolean;
@@ -403,6 +403,27 @@ export class BrainGainzScene {
     }
 
     const point = { x: event.global.x, y: event.global.y };
+    if (this.currentCallbacks.connectEdgeType) {
+      if (
+        this.currentCallbacks.connectSourceNodeId != null &&
+        this.currentCallbacks.connectSourceNodeId !== nodeId &&
+        this.currentCallbacks.onCreateEdge
+      ) {
+        void this.currentCallbacks.onCreateEdge({
+          sourceNodeId: this.currentCallbacks.connectSourceNodeId,
+          targetNodeId: nodeId,
+          edgeType: this.currentCallbacks.connectEdgeType,
+        });
+      } else {
+        this.currentCallbacks.onNodeSelect(nodeId, {
+          screenX: point.x,
+          screenY: point.y,
+        });
+      }
+      this.updateBackdropCursor();
+      return;
+    }
+
     if (!this.getInteractionCapabilities().canDragNodes) {
       this.currentCallbacks.onNodeSelect(nodeId, {
         screenX: point.x,
@@ -427,6 +448,27 @@ export class BrainGainzScene {
 
   private handleNodeGatePointerDown = (nodeId: number, gate: NodeGate, event: FederatedPointerEvent) => {
     if (event.button !== 0 || !this.currentCamera || !this.currentModel) {
+      return;
+    }
+
+    if (this.currentCallbacks?.connectEdgeType) {
+      if (
+        this.currentCallbacks.connectSourceNodeId != null &&
+        this.currentCallbacks.connectSourceNodeId !== nodeId &&
+        this.currentCallbacks.onCreateEdge
+      ) {
+        void this.currentCallbacks.onCreateEdge({
+          sourceNodeId: this.currentCallbacks.connectSourceNodeId,
+          targetNodeId: nodeId,
+          edgeType: this.currentCallbacks.connectEdgeType,
+        });
+      } else {
+        this.currentCallbacks.onNodeSelect(nodeId, {
+          screenX: event.global.x,
+          screenY: event.global.y,
+        });
+      }
+      this.updateBackdropCursor();
       return;
     }
 

@@ -294,7 +294,9 @@ export default function App() {
       const nextSelection =
         preferredSelection?.nodeId
           ? preferredSelection
-          : findFirstNodeSelectionInSkill(snapshot, nextBranchFilterId) ?? snapshot.defaultSelection ?? null;
+          : nextBranchFilterId != null
+            ? findFirstNodeSelectionInSkill(snapshot, nextBranchFilterId)
+            : snapshot.defaultSelection ?? null;
       setNavigationBranchFilterId(nextBranchFilterId);
       setNavigationSelection(nextSelection);
       await loadNavigationFocus(nextSelection);
@@ -994,7 +996,7 @@ export default function App() {
       setNavigationFocus(result?.focus ?? null);
       setNodeEditorNotice('Связь добавлена на карту.');
       setActiveTab('map');
-      return true;
+      return result?.edge?.id ?? true;
     } catch (error) {
       logUnexpectedActionError('Failed to create edge from map', error);
       setNavigationError(userActionErrorMessage(error, 'Не удалось создать связь на карте.'));
@@ -1963,6 +1965,10 @@ export default function App() {
                 ? { nodeId: branch.focus_node_id, actionId: branch.next_action_id ?? null, skillId: branch.id }
                 : { skillId: branch.id };
               setNavigationBranchFilterId(branch.id);
+              setNavigationSelection(selection.nodeId ? selection : null);
+              if (!branch.focus_node_id) {
+                setNavigationFocus(null);
+              }
               setActiveTab('map');
               await loadNavigationSnapshot(selection);
             }}

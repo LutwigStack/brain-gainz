@@ -141,6 +141,10 @@ test('assessment evidence hint distinguishes visible confirmation from technical
   );
   assert.equal(
     getAssessmentEvidenceHint({ hasVisibleEvidence: false, hasTechnicalResultId: false }),
-    'Для зачета добавьте подтверждение проверки или сохраненный result ID в технических деталях.',
+    'Для зачета добавьте подтверждение проверки. Технические детали можно оставить пустыми.',
+  );
+  assert.doesNotMatch(
+    getAssessmentEvidenceHint({ hasVisibleEvidence: false, hasTechnicalResultId: false }),
+    /result ID/i,
   );
 });

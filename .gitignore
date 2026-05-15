@@ -51,3 +51,5 @@ map-*.png
 map-*-snapshot.md
 ui-*.png
 ui-*-snapshot.md
+output/playwright/
+tasks/**/ux-safety-regression-qa-checklist.md

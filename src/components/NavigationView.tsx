@@ -199,6 +199,12 @@ interface FloatingMapPanelState {
   edgeId?: number;
 }
 
+interface PendingEdgeSelection {
+  sourceNodeId: number;
+  targetNodeId: number;
+  edgeType: GraphEdgeType;
+}
+
 interface PendingNodeArchiveState {
   nodeId: number;
   title: string;
@@ -261,7 +267,7 @@ interface NavigationViewProps {
     sourceNodeId: number;
     targetNodeId: number;
     edgeType: GraphEdgeType;
-  }) => Promise<boolean> | boolean;
+  }) => Promise<boolean | number> | boolean | number;
   onDeleteEdge: (edgeId: number) => Promise<boolean> | boolean;
   onRenameNode: (input: { nodeId: number; title: string }) => Promise<boolean> | boolean;
   onArchiveNode: (input: { nodeId: number }) => Promise<boolean> | boolean;
@@ -398,6 +404,7 @@ export const NavigationView = ({
   const [routeStageDrafts, setRouteStageDrafts] = useState<Record<number, string>>({});
   const [isRouteFilterEnabled, setIsRouteFilterEnabled] = useState(false);
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
+  const [pendingEdgeSelection, setPendingEdgeSelection] = useState<PendingEdgeSelection | null>(null);
   const [mapEditTool, setMapEditTool] = useState<MapEditTool>('select');
   const [connectSourceNodeId, setConnectSourceNodeId] = useState<number | null>(null);
   const [connectEdgeType, setConnectEdgeType] = useState<GraphEdgeType>('supports');
@@ -418,6 +425,7 @@ export const NavigationView = ({
     setInlineNodeEditor(null);
     setFloatingMapPanel(null);
     setSelectedEdgeId(null);
+    setPendingEdgeSelection(null);
     setMapEditTool('select');
     setConnectSourceNodeId(null);
   };
@@ -446,14 +454,14 @@ export const NavigationView = ({
             ),
           )
           .find((entry) => entry.skill.id === branchFilterSkillId) ?? null;
-  const selectedSphereId = focus?.node?.sphere_id ?? branchFilterSkill?.sphere.id ?? spheres[0]?.id ?? null;
+  const selectedSphereId = branchFilterSkill?.sphere.id ?? focus?.node?.sphere_id ?? spheres[0]?.id ?? null;
   const selectedSphere = spheres.find((sphere) => sphere.id === selectedSphereId) ?? spheres[0] ?? null;
-  const selectedDirectionId = focus?.node?.direction_id ?? branchFilterSkill?.direction.id ?? selectedSphere?.directions[0]?.id ?? null;
+  const selectedDirectionId = branchFilterSkill?.direction.id ?? focus?.node?.direction_id ?? selectedSphere?.directions[0]?.id ?? null;
   const selectedDirection =
     selectedSphere?.directions.find((direction) => direction.id === selectedDirectionId) ??
     selectedSphere?.directions[0] ??
     null;
-  const selectedSkillId = focus?.node?.skill_id ?? branchFilterSkill?.skill.id ?? selectedDirection?.skills[0]?.id ?? null;
+  const selectedSkillId = branchFilterSkill?.skill.id ?? focus?.node?.skill_id ?? selectedDirection?.skills[0]?.id ?? null;
   const selectedSkill =
     selectedDirection?.skills.find((skill) => skill.id === selectedSkillId) ??
     selectedDirection?.skills[0] ??
@@ -529,7 +537,27 @@ export const NavigationView = ({
       }
     }
   }
-  const graphEdges = snapshot?.edges ?? [];
+  const graphEdges = useMemo(() => snapshot?.edges ?? [], [snapshot?.edges]);
+  useEffect(() => {
+    if (!pendingEdgeSelection) {
+      return;
+    }
+
+    const createdEdge = graphEdges.find(
+      (edge) =>
+        edge.source_node_id === pendingEdgeSelection.sourceNodeId &&
+        edge.target_node_id === pendingEdgeSelection.targetNodeId &&
+        edge.edge_type === pendingEdgeSelection.edgeType,
+    );
+
+    if (!createdEdge) {
+      return;
+    }
+
+    setSelectedEdgeId(createdEdge.id);
+    setPendingEdgeSelection(null);
+  }, [graphEdges, pendingEdgeSelection]);
+
   const archivedNodes = snapshot?.archivedNodes ?? [];
   const selectedStructureArchivedNodes =
     selectedSphereId == null
@@ -774,6 +802,7 @@ export const NavigationView = ({
     setNodeCreateTitle('');
     setInlineNodeEditor(null);
     setFloatingMapPanel(null);
+    setPendingEdgeSelection(null);
   };
 
   const requestNodeArchive = (input: PendingNodeArchiveState) => {
@@ -1047,14 +1076,22 @@ export const NavigationView = ({
       }
 
       if (connectSourceNodeId !== node.id && !isMapMutating) {
-        const created = await onCreateEdge({
+        const edgeInput = {
           sourceNodeId: connectSourceNodeId,
           targetNodeId: node.id,
           edgeType: connectEdgeType,
-        });
+        };
+        setPendingEdgeSelection(edgeInput);
+        const created = await onCreateEdge(edgeInput);
         if (created) {
           setMapEditTool('select');
           setConnectSourceNodeId(null);
+          if (typeof created === 'number') {
+            setSelectedEdgeId(created);
+            setPendingEdgeSelection(null);
+          }
+        } else {
+          setPendingEdgeSelection(null);
         }
         return;
       }
@@ -3164,12 +3201,18 @@ export const NavigationView = ({
                         return false;
                       }
 
+                      setPendingEdgeSelection(input);
                       const created = await onCreateEdge(input);
                       if (created) {
                         setCanvasContextMenu(null);
-                        setSelectedEdgeId(null);
+                        if (typeof created === 'number') {
+                          setSelectedEdgeId(created);
+                          setPendingEdgeSelection(null);
+                        }
                         setMapEditTool('select');
                         setConnectSourceNodeId(null);
+                      } else {
+                        setPendingEdgeSelection(null);
                       }
                       return created;
                     }}
