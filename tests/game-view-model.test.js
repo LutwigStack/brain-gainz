@@ -428,4 +428,15 @@ test('game view model keeps all detail nodes while marking overview metadata', (
   assert.equal(model.nodes.find((node) => node.id === 8)?.isOverviewVisible, true);
   assert.equal(model.nodes.find((node) => node.id === 9)?.isOverviewVisible, false);
   assert.ok(model.overviewBounds);
+
+  const focusModel = createGameViewModel(
+    snapshot,
+    { node: { id: 9 }, progress: { completionPercent: 10, openActions: 1 } },
+    { visibleSphereId: 1 },
+  );
+
+  assert.equal(focusModel.highlightedNodeId, 9);
+  assert.equal(focusModel.nodes.find((node) => node.id === 9)?.isOnSelectedPath, true);
+  assert.equal(focusModel.nodes.find((node) => node.id === 9)?.isOverviewVisible, true);
+  assert.ok(focusModel.nodes.find((node) => node.id === 9)?.overviewPosition);
 });

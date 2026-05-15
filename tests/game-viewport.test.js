@@ -65,6 +65,29 @@ test('fit camera may zoom below interactive minimum to keep very large graphs in
   assert.ok(camera.zoom < 0.42);
 });
 
+test('fit camera keeps a focused large-graph node away from the viewport edge', () => {
+  const bounds = {
+    minX: -4000,
+    minY: -2800,
+    maxX: 4200,
+    maxY: 3000,
+    width: 8200,
+    height: 5800,
+    center: { x: 100, y: 100 },
+  };
+  const focusPoint = { x: 4200, y: 3000 };
+
+  const camera = fitCameraToBounds(bounds, { width: 1280, height: 720 }, 64, {
+    focusPoint,
+    focusMargin: 144,
+  });
+  const focusScreen = worldToScreen(focusPoint, camera);
+
+  assert.ok(focusScreen.x <= 1280 - 144);
+  assert.ok(focusScreen.y <= 720 - 144);
+  assert.ok(camera.zoom < 0.42);
+});
+
 test('camera pan and reset helpers preserve expected center math', () => {
   const centered = centerCameraOnPoint({ x: 100, y: 40 }, { width: 1000, height: 800 }, 1);
   const panned = panCameraByScreenDelta(centered, { x: -120, y: 45 });

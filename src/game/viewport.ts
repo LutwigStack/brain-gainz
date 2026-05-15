@@ -20,6 +20,12 @@ export const FIT_PADDING = 84;
 
 export const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 
+export interface FitCameraOptions {
+  focusPoint?: GamePoint | null;
+  focusMargin?: number;
+  maxZoom?: number;
+}
+
 export const worldToScreen = (
   point: GamePoint,
   camera: ViewportCamera,
@@ -78,19 +84,43 @@ export const fitCameraToBounds = (
   bounds: GameBounds,
   size: ViewportSize,
   padding = FIT_PADDING,
+  options: FitCameraOptions = {},
 ): ViewportCamera => {
   const availableWidth = Math.max(1, size.width - padding * 2);
   const availableHeight = Math.max(1, size.height - padding * 2);
   const fittedZoom = Math.min(
-    MAX_ZOOM,
+    options.maxZoom ?? MAX_ZOOM,
     Math.min(availableWidth / Math.max(bounds.width, 1), availableHeight / Math.max(bounds.height, 1)),
   );
-
-  return {
+  const camera = {
     zoom: fittedZoom,
     x: size.width / 2 - bounds.center.x * fittedZoom,
     y: size.height / 2 - bounds.center.y * fittedZoom,
   };
+
+  if (!options.focusPoint) {
+    return camera;
+  }
+
+  const focusMargin = Math.min(
+    options.focusMargin ?? padding,
+    Math.max(0, Math.min(size.width, size.height) / 2 - 1),
+  );
+  const focusScreen = worldToScreen(options.focusPoint, camera);
+
+  if (focusScreen.x < focusMargin) {
+    camera.x += focusMargin - focusScreen.x;
+  } else if (focusScreen.x > size.width - focusMargin) {
+    camera.x -= focusScreen.x - (size.width - focusMargin);
+  }
+
+  if (focusScreen.y < focusMargin) {
+    camera.y += focusMargin - focusScreen.y;
+  } else if (focusScreen.y > size.height - focusMargin) {
+    camera.y -= focusScreen.y - (size.height - focusMargin);
+  }
+
+  return camera;
 };
 
 export const getViewportWorldBounds = (

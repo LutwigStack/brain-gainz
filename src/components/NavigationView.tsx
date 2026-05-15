@@ -395,9 +395,10 @@ export const NavigationView = ({
   const [connectEdgeType, setConnectEdgeType] = useState<GraphEdgeType>('supports');
   const [pendingNodeArchive, setPendingNodeArchive] = useState<PendingNodeArchiveState | null>(null);
   const [isMapFocused, setIsMapFocused] = useState(false);
+  const [hasManualMapViewport, setHasManualMapViewport] = useState(false);
   const [mapCommand, setMapCommand] = useState<{
     id: number;
-    type: 'focus-node' | 'fit-graph' | 'center-layer' | 'reset-camera';
+    type: 'focus-node' | 'fit-graph' | 'fit-overview' | 'center-layer' | 'reset-camera';
   } | null>(null);
   const hasInitializedTreeExpansion = useRef(false);
   const handledRouteFilterRequestId = useRef<number | null>(null);
@@ -455,6 +456,7 @@ export const NavigationView = ({
       return;
     }
 
+    setHasManualMapViewport(false);
     setLayerParentNodeId(null);
     setMapCanvasMode('free');
   }, [selectedSphereId]);
@@ -750,7 +752,8 @@ export const NavigationView = ({
     onSelectNode(entryNode);
   };
 
-  const runMapCommand = useCallback((type: 'focus-node' | 'fit-graph' | 'center-layer' | 'reset-camera') => {
+  const runMapCommand = useCallback((type: 'focus-node' | 'fit-graph' | 'fit-overview' | 'center-layer' | 'reset-camera') => {
+    setHasManualMapViewport(false);
     setMapCommand({
       id: Date.now(),
       type,
@@ -820,7 +823,7 @@ export const NavigationView = ({
     setLayerParentNodeId(null);
     setIsRouteFilterEnabled(true);
     clearMapTransientState();
-    runMapCommand('fit-graph');
+    runMapCommand('fit-overview');
   }, [onRouteFilterRequestHandled, routeFilterRequestId, routeNodeIds.size, runMapCommand]);
 
   const isInteractiveTextElement = (target: EventTarget | null) => {
@@ -2095,6 +2098,29 @@ export const NavigationView = ({
       : fallbackLayerParentId;
   const layerParentEntry =
     effectiveLayerParentId != null ? structureHierarchy.entries.get(effectiveLayerParentId) ?? null : null;
+  const activeRouteTargetItem = currentRoute?.nextItem ?? null;
+  const activeRouteTargetIndex =
+    activeRouteTargetItem != null ? routeItems.findIndex((item) => item.id === activeRouteTargetItem.id) : -1;
+  const focusedRouteItem = focus?.node ? routeItemsByNodeId.get(focus.node.id) ?? null : null;
+  const focusedRouteIndex = focusedRouteItem != null ? routeItems.findIndex((item) => item.id === focusedRouteItem.id) : -1;
+  const focusChipScope = isRouteFilterActive
+    ? `Маршрут: ${currentSpecialization?.name ?? 'текущий'}`
+    : mapCanvasMode === 'layers'
+      ? `Слой: ${layerParentEntry?.node.title ?? selectedSphere?.name ?? 'верхний уровень'}`
+      : `Структура: ${selectedSphere?.name ?? 'карта'}`;
+  const focusChipBranch = branchFilterSkill
+    ? `Ветка: ${branchFilterSkill.direction.name} / ${branchFilterSkill.skill.name}`
+    : focus?.node
+      ? `Ветка: ${focus.node.direction_name} / ${focus.node.skill_name}`
+      : selectedDirection && selectedSkill
+        ? `Ветка: ${selectedDirection.name} / ${selectedSkill.name}`
+        : null;
+  const focusChipNode = focus?.node?.title ?? selectedSphere?.name ?? 'Фокус не выбран';
+  const focusChipRoute = activeRouteTargetItem
+    ? `Текущий шаг #${activeRouteTargetIndex + 1}: ${activeRouteTargetItem.title}`
+    : focusedRouteItem
+      ? `В маршруте #${focusedRouteIndex + 1}: ${focusedRouteItem.title}`
+      : null;
   const layerChildIds = layerParentEntry?.childIds ?? structureHierarchy.roots;
   const layerNodeIds =
     mapCanvasMode === 'layers'
@@ -2135,9 +2161,13 @@ export const NavigationView = ({
       return;
     }
 
+    if (hasManualMapViewport) {
+      return;
+    }
+
     handledVisibleMapFitKey.current = visibleMapFitKey;
-    runMapCommand('fit-graph');
-  }, [hasMapNodes, runMapCommand, visibleMapFitKey]);
+    runMapCommand(mapCanvasMode === 'free' ? 'fit-overview' : 'fit-graph');
+  }, [hasManualMapViewport, hasMapNodes, mapCanvasMode, runMapCommand, visibleMapFitKey]);
 
   const layerParentParentId = layerParentEntry?.parentId ?? null;
   const contextNode =
@@ -2599,6 +2629,7 @@ export const NavigationView = ({
                     <PixelButton
                       tone={mapCanvasMode === 'free' ? 'accent' : 'ghost'}
                       onClick={() => {
+                        setHasManualMapViewport(false);
                         setMapCanvasMode('free');
                         clearMapTransientUi();
                       }}
@@ -2610,11 +2641,11 @@ export const NavigationView = ({
                     <PixelButton
                       tone={mapCanvasMode === 'layers' ? 'accent' : 'ghost'}
                       onClick={() => {
+                        setHasManualMapViewport(false);
                         setMapCanvasMode('layers');
                         setIsRouteFilterEnabled(false);
                         setLayerParentNodeId(fallbackLayerParentId);
                         clearMapTransientUi();
-                        runMapCommand('center-layer');
                       }}
                       disabled={!hasMapNodes}
                       style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
@@ -2624,6 +2655,7 @@ export const NavigationView = ({
                     <PixelButton
                       tone={isRouteFilterActive ? 'accent' : 'ghost'}
                       onClick={() => {
+                        setHasManualMapViewport(false);
                         setIsRouteFilterEnabled((value) => {
                           const next = !value;
                           if (next) {
@@ -2633,7 +2665,6 @@ export const NavigationView = ({
                           return next;
                         });
                         clearMapTransientUi();
-                        runMapCommand('fit-graph');
                       }}
                       disabled={routeNodeIds.size === 0}
                       style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
@@ -2895,6 +2926,49 @@ export const NavigationView = ({
               ) : null}
 
               <div className="flex flex-wrap items-center gap-2">
+                <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
+                  <div className="flex max-w-full flex-wrap items-center gap-2">
+                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                      Фокус
+                    </PixelText>
+                    <PixelText as="span" readable size="sm">
+                      {focusChipNode}
+                    </PixelText>
+                    <PixelText as="span" size="xs" color="textMuted">
+                      {focusChipScope}
+                    </PixelText>
+                    {focusChipBranch ? (
+                      <PixelText as="span" size="xs" color="textMuted">
+                        {focusChipBranch}
+                      </PixelText>
+                    ) : null}
+                    {focusChipRoute ? (
+                      <PixelText as="span" size="xs" color="accent" uppercase>
+                        {focusChipRoute}
+                      </PixelText>
+                    ) : null}
+                  </div>
+                </PixelSurface>
+                <PixelButton
+                  tone="ghost"
+                  onClick={() => runMapCommand('fit-overview')}
+                  disabled={!hasMapNodes}
+                  style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                  title="Вернуть карту к общему виду"
+                >
+                  <Compass size={14} /> Обзор
+                </PixelButton>
+                {focus?.node ? (
+                  <PixelButton
+                    tone="ghost"
+                    onClick={() => runMapCommand('focus-node')}
+                    disabled={!hasMapNodes}
+                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    title="Показать текущий узел без смены масштаба"
+                  >
+                    <Target size={14} /> Фокус
+                  </PixelButton>
+                ) : null}
                 {mapMutationPendingAction === 'create-node' ? (
                   <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -2950,6 +3024,7 @@ export const NavigationView = ({
                     routeNodeMetadata={routeNodeMetadata}
                     onSelectNode={handleCanvasNodeSelect}
                     onFocusChange={setIsMapFocused}
+                    onUserCameraControl={() => setHasManualMapViewport(true)}
                     onSelectEdge={(edgeId) => {
                       setSelectedEdgeId(edgeId);
                       setMapEditTool('select');

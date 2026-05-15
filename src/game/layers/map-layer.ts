@@ -17,7 +17,7 @@ const NODE_BOX = {
   minWidth: 150,
   maxWidth: 340,
   height: 42,
-  maxHeight: 96,
+  maxHeight: 112,
   radius: 8,
 };
 
@@ -161,7 +161,7 @@ export const resolveNodeBox = (node: GameNode, overviewMode = false) => {
   const lineHeight = overviewMode ? 18 : 14;
   const width = Math.min(
     box.maxWidth,
-    Math.max(box.minWidth, 74 + node.title.length * charWidth, node.isRouteNode ? 220 : 0),
+    Math.max(box.minWidth, 74 + node.title.length * charWidth, node.isRouteNode ? 248 : 0),
   );
   const routeLineCount = node.isRouteNode && !overviewMode ? 2 : 0;
   const estimatedLines =
@@ -722,13 +722,13 @@ export class MapLayer extends Container {
 
     label.style = {
       fontFamily: 'Trebuchet MS',
-      fontSize: this.overviewMode ? 16 : node.isRouteNode ? 9.5 : node.title.length > 46 ? 9 : 10,
+      fontSize: this.overviewMode ? 16 : node.isRouteNode ? 11 : node.title.length > 46 ? 9 : 10,
       fontWeight: '700',
       fill: palette.text,
       align: 'center',
       wordWrap: true,
-      wordWrapWidth: box.width - (node.isRouteNode ? 42 : 20),
-      lineHeight: this.overviewMode ? 19 : node.isRouteNode ? 13 : undefined,
+      wordWrapWidth: box.width - (node.isRouteNode ? 54 : 20),
+      lineHeight: this.overviewMode ? 19 : node.isRouteNode ? 15 : undefined,
     };
     label.text = formatRouteNodeLabel(node, this.overviewMode);
     label.anchor.set(0.5);

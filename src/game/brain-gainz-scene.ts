@@ -79,6 +79,7 @@ export class BrainGainzScene {
   private connectPreviewTarget: GamePoint | null = null;
   private connectPreviewState: ConnectPreviewState = 'normal';
   private onViewportChange: ((camera: ViewportCamera) => void) | null = null;
+  private onUserViewportChange: ((camera: ViewportCamera) => void) | null = null;
 
   constructor(private readonly app: Application) {
     this.app.stage.eventMode = 'static';
@@ -100,13 +101,18 @@ export class BrainGainzScene {
   render(
     model: GameSceneModel,
     callbacks: SceneCallbacks,
-    options?: { preserveViewport?: boolean; onViewportChange?: (camera: ViewportCamera) => void },
+    options?: {
+      preserveViewport?: boolean;
+      onViewportChange?: (camera: ViewportCamera) => void;
+      onUserViewportChange?: (camera: ViewportCamera) => void;
+    },
   ) {
     const width = this.app.renderer.width;
     const height = this.app.renderer.height;
     this.currentModel = model;
     this.currentCallbacks = callbacks;
     this.onViewportChange = options?.onViewportChange ?? this.onViewportChange;
+    this.onUserViewportChange = options?.onUserViewportChange ?? this.onUserViewportChange;
     if (!callbacks.connectSourceNodeId) {
       this.connectPreviewTarget = null;
       this.connectPreviewState = 'normal';
@@ -120,7 +126,10 @@ export class BrainGainzScene {
       const initialBounds = this.getVisibleBounds();
       const shouldFitInitialView = callbacks.overviewMode || model.isLargeGraph || model.nodes.length > 8;
       this.currentCamera = shouldFitInitialView
-        ? fitCameraToBounds(initialBounds, { width, height }, callbacks.overviewMode ? 64 : 96)
+        ? fitCameraToBounds(initialBounds, { width, height }, callbacks.overviewMode ? 64 : 96, {
+            focusPoint: this.getHighlightedRenderPosition(),
+            focusMargin: callbacks.overviewMode ? 128 : 144,
+          })
         : centerCameraOnPoint(initialBounds.center, { width, height }, this.currentCamera?.zoom ?? DEFAULT_ZOOM);
     }
 
@@ -147,6 +156,7 @@ export class BrainGainzScene {
       this.render(this.currentModel, this.currentCallbacks, {
         preserveViewport: true,
         onViewportChange: this.onViewportChange ?? undefined,
+        onUserViewportChange: this.onUserViewportChange ?? undefined,
       });
     }
   }
@@ -159,6 +169,9 @@ export class BrainGainzScene {
     this.currentCamera = fitCameraToBounds(this.getVisibleBounds(), {
       width: this.app.renderer.width,
       height: this.app.renderer.height,
+    }, undefined, {
+      focusPoint: this.getHighlightedRenderPosition(),
+      focusMargin: 144,
     });
     this.applyViewport();
     return this.currentCamera;
@@ -172,6 +185,9 @@ export class BrainGainzScene {
     this.currentCamera = fitCameraToBounds(this.currentModel.overviewBounds ?? this.currentModel.bounds, {
       width: this.app.renderer.width,
       height: this.app.renderer.height,
+    }, 64, {
+      focusPoint: this.getHighlightedRenderPosition(),
+      focusMargin: 128,
     });
     this.applyViewport();
     return this.currentCamera;
@@ -211,6 +227,19 @@ export class BrainGainzScene {
           height: 360,
           center: { x: 0, y: 0 },
         };
+  }
+
+  private getHighlightedRenderPosition() {
+    if (!this.currentModel?.highlightedNodeId) {
+      return null;
+    }
+
+    const node = this.currentModel.nodes.find((item) => item.id === this.currentModel?.highlightedNodeId);
+    if (!node) {
+      return null;
+    }
+
+    return (this.currentCallbacks?.overviewMode ? node.overviewPosition : null) ?? node.position;
   }
 
   ensurePointVisible(point: GamePoint, margin = 120) {
@@ -262,6 +291,7 @@ export class BrainGainzScene {
 
     this.currentCamera = nextCamera;
     this.applyViewport();
+    this.onUserViewportChange?.(this.currentCamera);
     return this.currentCamera;
   }
 
@@ -272,6 +302,7 @@ export class BrainGainzScene {
 
     this.currentCamera = panCameraByScreenDelta(this.currentCamera, delta);
     this.applyViewport();
+    this.onUserViewportChange?.(this.currentCamera);
     return this.currentCamera;
   }
 

@@ -32,7 +32,7 @@ interface GameMapCanvasProps {
   canvasMode?: 'free' | 'layers';
   visibleNodeIds?: number[] | null;
   routeNodeMetadata?: RouteNodeCanvasMetadata[] | null;
-  mapCommand?: { id: number; type: 'focus-node' | 'fit-graph' | 'center-layer' | 'reset-camera' } | null;
+  mapCommand?: { id: number; type: 'focus-node' | 'fit-graph' | 'fit-overview' | 'center-layer' | 'reset-camera' } | null;
   onCreateEdge?: (input: {
     sourceNodeId: number;
     targetNodeId: number;
@@ -69,6 +69,7 @@ interface GameMapCanvasProps {
     button: number;
   }) => void;
   onFocusChange?: (focused: boolean) => void;
+  onUserCameraControl?: () => void;
   className?: string;
 }
 
@@ -215,6 +216,7 @@ export const GameMapCanvas = ({
   onNodeDoubleClick,
   onCanvasPointerDown,
   onFocusChange,
+  onUserCameraControl,
   className = 'h-[clamp(620px,calc(100dvh-180px),1080px)] w-full overflow-hidden rounded-[1rem] border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)]',
 }: GameMapCanvasProps) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -223,6 +225,7 @@ export const GameMapCanvas = ({
   const sceneRef = useRef<BrainGainzScene | null>(null);
   const modelRef = useRef(createGameViewModel(snapshot, focus, { visibleSphereId, visibleSkillId }));
   const viewportModeKeyRef = useRef<string>('');
+  const hasUserControlledViewportRef = useRef(false);
   const interactionModeRef = useRef(interactionMode);
   const createModeRef = useRef(createMode);
   const snapToGridRef = useRef(snapToGrid);
@@ -238,6 +241,10 @@ export const GameMapCanvas = ({
     setViewportCamera((current) =>
       current && current.x === camera.x && current.y === camera.y && current.zoom === camera.zoom ? current : camera,
     );
+  });
+  const handleUserViewportChange = useEffectEvent(() => {
+    hasUserControlledViewportRef.current = true;
+    onUserCameraControl?.();
   });
   const onCreateNodeAtEvent = useEffectEvent(async (position: { x: number; y: number }) => {
     if (!onCreateNodeAt) {
@@ -309,7 +316,7 @@ export const GameMapCanvas = ({
       connectSourceNodeId == null,
   );
   const shouldRenderOverviewRef = useRef(shouldRenderOverview);
-  const viewportModeKey = `${visibleSphereId ?? 'all'}:${visibleSkillId ?? 'all'}:${canvasMode}:${shouldRenderOverview ? 'overview' : 'detail'}:${visibleNodeIds?.join(',') ?? 'all'}:${routeNodeMetadata?.map((item) => `${item.nodeId}:${item.isComplete ? 1 : 0}:${item.isCurrentTarget ? 1 : 0}`).join(',') ?? 'route-none'}`;
+  const viewportModeKey = `${visibleSphereId ?? 'all'}:${visibleSkillId ?? 'all'}:${canvasMode}:${shouldRenderOverview ? 'overview' : 'detail'}:${visibleNodeIds?.join(',') ?? 'all'}`;
   const getNodeRenderPosition = (node: GameSceneModel['nodes'][number]) =>
     (shouldRenderOverview ? node.overviewPosition : null) ?? node.position;
   const onSelectNodeEvent = useEffectEvent((nodeId: number, input?: { screenX: number; screenY: number }) => {
@@ -406,6 +413,7 @@ export const GameMapCanvas = ({
         {
           preserveViewport: false,
           onViewportChange: handleViewportChange,
+          onUserViewportChange: handleUserViewportChange,
         },
       );
 
@@ -495,8 +503,9 @@ export const GameMapCanvas = ({
           overviewMode: shouldRenderOverview,
       },
       {
-        preserveViewport: shouldPreserveViewport,
+        preserveViewport: shouldPreserveViewport || hasUserControlledViewportRef.current,
         onViewportChange: handleViewportChange,
+        onUserViewportChange: handleUserViewportChange,
       },
     );
   }, [connectEdgeType, connectSourceNodeId, createMode, interactionMode, model, selectedEdgeId, shouldRenderOverview, snapToGrid, viewportModeKey]);
@@ -549,6 +558,8 @@ export const GameMapCanvas = ({
   }, [hostSize, model, viewportCamera]);
 
   const highlightedNode = model.nodes.find((node) => node.id === model.highlightedNodeId) ?? null;
+  const highlightedRenderPosition =
+    highlightedNode != null ? (shouldRenderOverview ? highlightedNode.overviewPosition : null) ?? highlightedNode.position : null;
   const isEmptyMap = model.nodes.length === 0;
   const shouldShowZoomEditHint = Boolean(model.isLargeGraph && viewportCamera && viewportCamera.zoom < 0.24);
 
@@ -650,23 +661,35 @@ export const GameMapCanvas = ({
 
     switch (mapCommand.type) {
       case 'focus-node':
-        if (highlightedNode) {
-          sceneRef.current.ensurePointVisible(highlightedNode.position);
+        hasUserControlledViewportRef.current = false;
+        if (highlightedRenderPosition) {
+          sceneRef.current.ensurePointVisible(highlightedRenderPosition, 148);
         }
         break;
       case 'fit-graph':
+        hasUserControlledViewportRef.current = false;
         sceneRef.current.fitToGraph();
         break;
+      case 'fit-overview':
+        hasUserControlledViewportRef.current = false;
+        sceneRef.current.fitToOverview();
+        break;
       case 'center-layer':
+        hasUserControlledViewportRef.current = false;
         sceneRef.current.fitToGraph();
         break;
       case 'reset-camera':
-        sceneRef.current.resetCamera();
+        hasUserControlledViewportRef.current = false;
+        if (model.isLargeGraph || shouldRenderOverview) {
+          sceneRef.current.fitToOverview();
+        } else {
+          sceneRef.current.resetCamera();
+        }
         break;
       default:
         break;
     }
-  }, [highlightedNode, mapCommand, model.isLargeGraph, visibleSphereId]);
+  }, [highlightedRenderPosition, mapCommand, model.isLargeGraph, shouldRenderOverview, visibleSphereId]);
 
   const recenterFromMinimap = (clientX: number, clientY: number, element: HTMLDivElement) => {
     if (!minimap || !viewportCamera) {
@@ -679,6 +702,8 @@ export const GameMapCanvas = ({
     const worldX = minimap.worldBounds.minX + (localX - (MINIMAP_SIZE.width - minimap.worldBounds.width * minimap.scale) / 2) / minimap.scale;
     const worldY = minimap.worldBounds.minY + (localY - (MINIMAP_SIZE.height - minimap.worldBounds.height * minimap.scale) / 2) / minimap.scale;
     sceneRef.current?.centerOnPoint({ x: worldX, y: worldY }, viewportCamera.zoom);
+    hasUserControlledViewportRef.current = true;
+    onUserCameraControl?.();
   };
 
   return (
