@@ -100,6 +100,10 @@ textarea:disabled {
   overflow: hidden;
 }
 
+.app-brand-block {
+  flex: 0 0 auto;
+}
+
 .app-primary-nav {
   flex-wrap: nowrap;
   scrollbar-gutter: stable;
@@ -123,11 +127,28 @@ textarea:disabled {
 }
 
 .campaign-card--system {
-  opacity: 0.86;
+  opacity: 0.76;
 }
 
 .campaign-card--user {
   border-color: color-mix(in srgb, var(--pixel-accent-muted) 62%, var(--pixel-line)) !important;
+  background:
+    linear-gradient(180deg, rgba(247, 201, 72, 0.055), transparent 70%),
+    var(--pixel-panel) !important;
+}
+
+.campaign-create-strip {
+  background: rgba(18, 23, 32, 0.58) !important;
+}
+
+.campaign-system-section {
+  margin-top: 0.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--pixel-line-soft) 65%, transparent);
+}
+
+.campaign-archive-panel {
+  align-self: start;
 }
 
 .campaign-card__title,
@@ -247,6 +268,20 @@ textarea:disabled {
   background: rgba(247, 201, 72, 0.08);
 }
 
+.wind-branch-card {
+  transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease;
+}
+
+.wind-branch-card:not(.wind-branch-card--selected) {
+  opacity: 0.82;
+}
+
+.wind-branch-card--selected {
+  background:
+    linear-gradient(90deg, rgba(247, 201, 72, 0.08), transparent 72%),
+    rgba(15, 23, 42, 0.72) !important;
+}
+
 @media (max-width: 640px) {
   body {
     background:
@@ -257,22 +292,125 @@ textarea:disabled {
     background-size: 32px 32px;
   }
 
+  .app-shell-header {
+    padding: 4px 8px 4px !important;
+  }
+
+  .app-topbar {
+    padding: 4px !important;
+  }
+
   .app-topbar > div {
-    align-items: flex-start;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .app-top-main {
+    display: contents !important;
+  }
+
+  .app-brand-block {
+    grid-column: 1;
+    grid-row: 1;
+    max-width: 132px;
+    gap: 6px;
+  }
+
+  .app-top-actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .app-brand-mark {
+    padding: 4px !important;
+  }
+
+  .app-brand-mark svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .app-brand-block h1 {
+    font-size: 15px !important;
+  }
+
+  .app-runtime-copy {
+    display: none;
   }
 
   .app-primary-nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    order: 3;
     width: 100%;
-    padding-bottom: 2px;
+    padding-bottom: 0;
   }
 
   .app-primary-nav button {
-    min-height: 32px !important;
-    padding: 6px 9px !important;
+    min-height: 28px !important;
+    padding: 5px 7px !important;
+    gap: 4px !important;
+    font-size: 9px !important;
+  }
+
+  .app-primary-nav button svg,
+  .app-settings-button svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .app-settings-button {
+    min-height: 28px !important;
+    padding: 5px 7px !important;
+  }
+
+  main {
+    padding-top: 0 !important;
+  }
+
+  .campaign-menu {
+    padding-top: 0.25rem !important;
+  }
+
+  .campaign-create-strip {
+    padding: 8px !important;
   }
 
   .navigation-map-shell {
     gap: 0.75rem;
+  }
+
+  .navigation-map-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .navigation-map-body > * {
+    margin-top: 0 !important;
+  }
+
+  .navigation-map-view-controls {
+    order: 1;
+  }
+
+  .navigation-map-canvas-frame {
+    order: 2;
+  }
+
+  .navigation-map-focus-strip {
+    order: 3;
+  }
+
+  .navigation-map-tool-controls {
+    order: 4;
+  }
+
+  .navigation-map-structure-controls {
+    order: 5;
   }
 
   .navigation-map-panel,
@@ -282,7 +420,7 @@ textarea:disabled {
   }
 
   .navigation-map-canvas {
-    height: min(62dvh, 420px) !important;
+    height: min(66dvh, 440px) !important;
     min-height: 320px;
   }
 
@@ -314,7 +452,8 @@ textarea:disabled {
 
 @media (max-width: 420px) {
   .app-primary-nav button {
-    font-size: 9px !important;
+    flex: 1 0 auto;
+    font-size: 8.5px !important;
   }
 
   .campaign-card__title {
@@ -322,6 +461,6 @@ textarea:disabled {
   }
 
   .navigation-map-canvas {
-    height: 360px !important;
+    height: 390px !important;
   }
 }

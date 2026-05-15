@@ -68,6 +68,21 @@ test('user campaigns can be created, archived, and restored while developer main
   assert.equal(campaigns.active.some((campaign) => campaign.id === created.id), true);
 });
 
+test('last opened campaign summary ignores developer main campaign', async (t) => {
+  const { database, campaignStore } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const personal = await campaignStore.createUserCampaign({ name: 'Personal Work' });
+  const developer = (await database.select("SELECT * FROM campaigns WHERE type = 'developer_main' LIMIT 1"))[0];
+
+  await database.execute('UPDATE campaigns SET last_opened_at = ? WHERE id = ?', ['2026-05-15T10:00:00.000Z', personal.id]);
+  await database.execute('UPDATE campaigns SET last_opened_at = ? WHERE id = ?', ['2026-05-15T11:00:00.000Z', developer.id]);
+
+  const campaigns = await campaignStore.listCampaigns();
+  assert.equal(campaigns.lastOpened?.id, personal.id);
+  assert.equal(campaigns.lastOpened?.type, 'user');
+});
+
 test('navigation snapshots are scoped to the selected campaign', async (t) => {
   const { database, campaignStore, nowService } = await setupCampaignService();
   t.after(() => database.close());

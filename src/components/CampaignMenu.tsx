@@ -1,9 +1,8 @@
-import { Archive, Brain, Play, Plus, RotateCcw } from 'lucide-react';
+import { Archive, Play, Plus, RotateCcw } from 'lucide-react';
 
 import {
   PixelButton,
   PixelInput,
-  PixelMeter,
   PixelPanelHeader,
   PixelStack,
   PixelSurface,
@@ -24,11 +23,6 @@ interface CampaignMenuProps {
   onRestoreCampaign: (campaign: CampaignSummary) => void;
 }
 
-const campaignProgress = (campaign: CampaignSummary) => {
-  const xp = Number(campaign.total_xp ?? 0);
-  return Math.min(100, Math.round((xp / 700) * 100));
-};
-
 const modeLabel = (campaign: CampaignSummary) => (campaign.mode === 'career' ? 'Career' : 'Free mode');
 const campaignStateLabel = (campaign: CampaignSummary) =>
   campaign.career_status === 'victory' ? 'Completed route' : campaign.is_archived ? 'Archived' : 'Active';
@@ -47,58 +41,68 @@ const CampaignCard = ({
   const isSystem = campaign.type === 'developer_main';
   const nodeCount = Number(campaign.node_count ?? 0);
   const totalXp = Number(campaign.total_xp ?? 0);
-  const openLabel = isSystem ? 'Открыть систему' : 'Открыть';
+  const openLabel = isSystem ? 'Открыть шаблон' : 'Открыть';
 
   return (
     <PixelSurface
       frame={isSystem ? 'ghost' : 'panel'}
-      padding="md"
+      padding={isSystem ? 'sm' : 'md'}
       className={`campaign-card min-w-0 ${isSystem ? 'campaign-card--system' : 'campaign-card--user'}`}
       style={
         isSystem
           ? {
-              background: 'rgba(148, 163, 184, 0.08)',
+              background: 'rgba(148, 163, 184, 0.035)',
               borderColor: 'var(--pixel-line-soft)',
             }
           : undefined
       }
     >
-      <div className="grid min-w-0 gap-3">
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="min-w-0">
-            <PixelText as="p" size="xs" color="textMuted" uppercase>
-              {isSystem ? 'Системная область' : 'Личная кампания'}
-            </PixelText>
+      <div className={isSystem ? 'grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]' : 'grid min-w-0 gap-3'}>
+        <div className="min-w-0">
+          {!isSystem ? (
             <PixelText
               as="h3"
               readable
               size="lg"
               title={campaign.name}
               className="campaign-card__title"
-              style={{ marginTop: 4, fontWeight: 800 }}
+              style={{ fontWeight: 800 }}
             >
               {campaign.name}
             </PixelText>
-            <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 6 }}>
-              {isSystem ? 'Системный шаблон' : modeLabel(campaign)} · {campaignStateLabel(campaign)}
+          ) : (
+            <PixelText
+              as="h3"
+              readable
+              size="sm"
+              title={campaign.name}
+              className="campaign-card__title"
+              style={{ fontWeight: 700 }}
+            >
+              {campaign.name}
             </PixelText>
-          </div>
-          <div
-            aria-hidden
-            className="grid h-10 w-10 flex-shrink-0 place-items-center border border-[var(--pixel-border-bright)]"
-            style={{ background: `${campaign.color ?? '#58d6ff'}22`, color: campaign.color ?? 'var(--pixel-accent)' }}
-          >
-            <Brain size={18} />
+          )}
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <PixelText as="span" readable size="xs" color={isSystem ? 'textDim' : 'textMuted'}>
+              {isSystem ? 'Системный шаблон' : modeLabel(campaign)}
+            </PixelText>
+            <PixelText as="span" readable size="xs" color="textDim">
+              {campaignStateLabel(campaign)}
+            </PixelText>
+            <PixelText as="span" size="xs" color="textDim" uppercase>
+              {nodeCount} узл. · {totalXp} XP
+            </PixelText>
           </div>
         </div>
 
-        <PixelMeter value={campaignProgress(campaign)} />
-        <PixelText as="p" size="xs" color="textDim" uppercase>
-          {nodeCount} узл. · {totalXp} XP
-        </PixelText>
-
-        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-          <PixelButton tone="accent" onClick={onOpen} disabled={isMutating} aria-label={`${openLabel}: ${campaign.name}`}>
+        <div className={isSystem ? 'flex min-w-0 items-center justify-end' : 'grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]'}>
+          <PixelButton
+            tone={isSystem ? 'ghost' : 'accent'}
+            onClick={onOpen}
+            disabled={isMutating}
+            aria-label={`${openLabel}: ${campaign.name}`}
+            style={isSystem ? { minHeight: 32, padding: '6px 10px', gap: 6 } : undefined}
+          >
             <Play size={15} /> {openLabel}
           </PixelButton>
           {!isSystem ? (
@@ -111,9 +115,7 @@ const CampaignCard = ({
               <Archive size={15} /> В архив
             </PixelButton>
           ) : (
-            <PixelText as="p" readable size="xs" color="textMuted" style={{ alignSelf: 'center' }}>
-              Системный шаблон
-            </PixelText>
+            null
           )}
         </div>
       </div>
@@ -138,16 +140,17 @@ export const CampaignMenu = ({
   const lastOpened = campaigns?.lastOpened ?? null;
   const userCampaigns = activeCampaigns.filter((campaign) => campaign.type !== 'developer_main');
   const systemCampaigns = activeCampaigns.filter((campaign) => campaign.type === 'developer_main');
+  const emptyPersonalCampaigns = !isLoading && userCampaigns.length === 0;
 
   return (
-    <div className="w-full min-w-0 flex-grow pt-3">
+    <div className="campaign-menu w-full min-w-0 flex-grow pt-3">
       <div className="mx-auto grid w-full max-w-6xl gap-4">
         <PixelSurface frame="panel" padding="xl">
           <PixelStack gap="lg">
             <PixelPanelHeader
               eyebrow="Кампании"
-              title="BrainGainz"
-              description="Выберите мир обучения."
+              title="Личные кампании"
+              description="Выберите свой рабочий мир или создайте новый."
               aside={
                 lastOpened ? (
                   <PixelButton
@@ -172,7 +175,34 @@ export const CampaignMenu = ({
               </PixelSurface>
             ) : null}
 
-            <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(260px,340px)]">
+            <PixelSurface frame="ghost" padding="sm" className="campaign-create-strip">
+              <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                <PixelInput
+                  id="new-campaign-name"
+                  label="Новая личная кампания"
+                  value={newCampaignName}
+                  onChange={(event) => onNewCampaignNameChange(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      onCreateCampaign();
+                    }
+                  }}
+                  placeholder="Например: English Foundations"
+                  style={{ minHeight: 36, padding: '6px 10px' }}
+                />
+                <PixelButton
+                  tone="ghost"
+                  onClick={onCreateCampaign}
+                  disabled={isMutating || !newCampaignName.trim()}
+                  style={{ minHeight: 36, padding: '7px 10px', gap: 6 }}
+                >
+                  <Plus size={15} /> Создать
+                </PixelButton>
+              </div>
+            </PixelSurface>
+
+            <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(240px,300px)]">
               <div className="grid min-w-0 gap-3">
                 {userCampaigns.length > 0 ? (
                   <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -188,12 +218,20 @@ export const CampaignMenu = ({
                   </div>
                 ) : null}
 
-                {systemCampaigns.length > 0 ? (
-                  <div className="grid min-w-0 gap-2">
-                    <PixelText as="p" size="xs" color="textMuted" uppercase>
-                      Системные данные
+                {emptyPersonalCampaigns ? (
+                  <PixelSurface frame="inset" padding="md">
+                    <PixelText as="p" readable size="sm" color="textMuted">
+                      Личных кампаний пока нет. Введите название выше, чтобы начать со своего набора.
                     </PixelText>
-                    <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  </PixelSurface>
+                ) : null}
+
+                {systemCampaigns.length > 0 ? (
+                  <div className="campaign-system-section grid min-w-0 gap-2">
+                    <PixelText as="p" size="xs" color="textMuted" uppercase>
+                      Системный шаблон
+                    </PixelText>
+                    <div className="grid min-w-0 gap-2">
                       {systemCampaigns.map((campaign) => (
                         <CampaignCard
                           key={campaign.id}
@@ -208,25 +246,8 @@ export const CampaignMenu = ({
                 ) : null}
               </div>
 
-              <PixelSurface frame="ghost" padding="md">
+              <PixelSurface frame="ghost" padding="md" className="campaign-archive-panel">
                 <PixelStack gap="md">
-                  <PixelInput
-                    id="new-campaign-name"
-                    label="Новая кампания"
-                    value={newCampaignName}
-                    onChange={(event) => onNewCampaignNameChange(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        onCreateCampaign();
-                      }
-                    }}
-                    placeholder="Например: English Foundations"
-                  />
-                  <PixelButton tone="accent" onClick={onCreateCampaign} disabled={isMutating || !newCampaignName.trim()}>
-                    <Plus size={16} /> Создать
-                  </PixelButton>
-
                   {archivedCampaigns.length > 0 ? (
                     <div className="grid gap-2">
                       <PixelText as="p" size="xs" color="textMuted" uppercase>
@@ -252,7 +273,11 @@ export const CampaignMenu = ({
                         </PixelSurface>
                       ))}
                     </div>
-                  ) : null}
+                  ) : (
+                    <PixelText as="p" readable size="sm" color="textDim">
+                      Архив пуст.
+                    </PixelText>
+                  )}
                 </PixelStack>
               </PixelSurface>
             </div>

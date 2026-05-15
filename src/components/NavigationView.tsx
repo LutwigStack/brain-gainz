@@ -2627,8 +2627,8 @@ export const NavigationView = ({
               }
             />
 
-            <div className="mt-3 min-w-0 space-y-3">
-              <PixelSurface frame="ghost" padding="sm" className="navigation-map-controls">
+            <div className="navigation-map-body mt-3 min-w-0 space-y-3">
+              <PixelSurface frame="ghost" padding="sm" className="navigation-map-controls navigation-map-structure-controls">
                 <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(220px,360px)_minmax(0,1fr)] md:items-end">
                   <PixelSelect
                     label="Структура"
@@ -2678,7 +2678,7 @@ export const NavigationView = ({
                 </div>
               </PixelSurface>
 
-              <PixelSurface frame="ghost" padding="sm" className="navigation-map-controls">
+              <PixelSurface frame="ghost" padding="sm" className="navigation-map-controls navigation-map-view-controls">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -2807,7 +2807,7 @@ export const NavigationView = ({
                 </PixelSurface>
               ) : null}
 
-              <PixelSurface frame="ghost" padding="sm" className="navigation-map-controls">
+              <PixelSurface frame="ghost" padding="sm" className="navigation-map-controls navigation-map-tool-controls">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -2990,7 +2990,7 @@ export const NavigationView = ({
                 </PixelSurface>
               ) : null}
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="navigation-map-focus-strip flex flex-wrap items-center gap-2">
                 <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
                   <div className="flex max-w-full flex-wrap items-center gap-2">
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -3078,7 +3078,7 @@ export const NavigationView = ({
                 ) : null}
               </div>
 
-              <PixelSurface frame="inset" padding="xxs" className="min-w-0 overflow-hidden">
+              <PixelSurface frame="inset" padding="xxs" className="navigation-map-canvas-frame min-w-0 overflow-hidden">
                   <GameMapCanvas
                     snapshot={snapshot}
                     focus={focus}

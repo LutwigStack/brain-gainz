@@ -1613,7 +1613,7 @@ export default function App() {
       <header
         inert={showSettings ? true : undefined}
         aria-hidden={showSettings ? true : undefined}
-        className="sticky top-0 z-50 px-3 pb-2 pt-2 sm:px-4"
+        className="app-shell-header sticky top-0 z-50 px-3 pb-2 pt-2 sm:px-4"
         style={{
           paddingTop: runtime.usesSafeAreaInsets ? 'max(0.5rem, env(safe-area-inset-top))' : undefined,
         }}
@@ -1621,16 +1621,16 @@ export default function App() {
         <div className="flex w-full flex-col gap-2">
           <PixelSurface frame="panel" padding="xs" className="app-topbar">
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <div className="flex items-center gap-2">
-                  <PixelSurface frame="accent" padding="xs" fullWidth={false}>
+              <div className="app-top-main flex min-w-0 flex-wrap items-center gap-2">
+                <div className="app-brand-block flex items-center gap-2">
+                  <PixelSurface frame="accent" padding="xs" fullWidth={false} className="app-brand-mark">
                     <Brain size={20} className="text-[var(--pixel-accent-glow)]" />
                   </PixelSurface>
                   <div className="min-w-0">
                     <PixelText as="h1" readable size="lg" style={{ margin: 0, lineHeight: 1.1, fontWeight: 800 }}>
                       BrainGainz
                     </PixelText>
-                    <PixelText as="p" readable size="xs" color="textDim" style={{ marginTop: 2 }}>
+                    <PixelText as="p" readable size="xs" color="textDim" className="app-runtime-copy" style={{ marginTop: 2 }}>
                       {runtime.isLocalFirst ? 'Локальная база' : 'Браузерное хранилище'}
                     </PixelText>
                   </div>
@@ -1648,7 +1648,7 @@ export default function App() {
                     aria-current={!selectedCampaign ? 'page' : undefined}
                     style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                   >
-                    <Globe2 size={14} /> Кампании
+                    <Globe2 size={14} /> <span>Кампании</span>
                   </PixelButton>
                   {selectedCampaign ? (
                     <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="app-campaign-chip hidden md:block">
@@ -1666,7 +1666,7 @@ export default function App() {
                     aria-current={normalizedActiveTab === 'now' ? 'page' : undefined}
                     style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                   >
-                    <Compass size={14} /> Сейчас
+                    <Compass size={14} /> <span>Сейчас</span>
                   </PixelButton>
                   <PixelButton
                     tone={normalizedActiveTab === 'map' ? 'accent' : 'ghost'}
@@ -1675,7 +1675,7 @@ export default function App() {
                     aria-current={normalizedActiveTab === 'map' ? 'page' : undefined}
                     style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                   >
-                    <Map size={14} /> Карта
+                    <Map size={14} /> <span>Карта</span>
                   </PixelButton>
                   <PixelButton
                     tone={normalizedActiveTab === 'wind' ? 'accent' : 'ghost'}
@@ -1684,14 +1684,14 @@ export default function App() {
                     aria-current={normalizedActiveTab === 'wind' ? 'page' : undefined}
                     style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                   >
-                    <Radar size={14} /> Роза ветров
+                    <Radar size={14} /> <span>Роза</span>
                   </PixelButton>
                     </>
                   ) : null}
                 </div>
               </div>
 
-              <div className="flex min-w-0 items-center gap-2">
+              <div className="app-top-actions flex min-w-0 items-center gap-2">
                 <PixelSurface
                   frame="ghost"
                   padding="xs"
@@ -1707,6 +1707,7 @@ export default function App() {
                   tone={showSettings ? 'accent' : 'ghost'}
                   onClick={() => setShowSettings(!showSettings)}
                   aria-label="Настройки"
+                  className="app-settings-button"
                   style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                 >
                   <Settings size={14} />

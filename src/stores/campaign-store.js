@@ -141,6 +141,7 @@ export const createCampaignStore = (database, hierarchyStore) => ({
       archived: archived.filter((campaign) => campaign.type !== 'developer_main'),
       lastOpened:
         active
+          .filter((campaign) => campaign.type !== 'developer_main')
           .filter((campaign) => campaign.last_opened_at != null)
           .sort((left, right) => String(right.last_opened_at).localeCompare(String(left.last_opened_at)))[0] ?? null,
     };
