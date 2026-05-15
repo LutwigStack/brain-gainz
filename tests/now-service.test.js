@@ -531,3 +531,41 @@ test('archive node editor applies persisted patch and archive status in one muta
   assert.equal(persistedArchivedNode.reward, archived.node.reward);
   assert.notEqual(archived.focus.node.id, archived.node.id);
 });
+
+test('node archive and restore preserve identity and refresh archived navigation list', async (t) => {
+  const { database, nowService } = await setupNowService();
+  t.after(() => database.close());
+
+  const snapshot = await nowService.createStarterWorkspace();
+  const nodeId = snapshot.primaryRecommendation.nodeId;
+  const archived = await nowService.archiveNodeEditor(nodeId);
+
+  assert.equal(archived.node.id, nodeId);
+  assert.equal(archived.node.is_archived, 1);
+  assert.equal(archived.navigation.archivedNodes.some((node) => node.id === nodeId), true);
+  assert.equal(
+    archived.navigation.spheres
+      .flatMap((sphere) => sphere.directions)
+      .flatMap((direction) => direction.skills)
+      .flatMap((skill) => skill.nodes)
+      .some((node) => node.id === nodeId),
+    false,
+  );
+
+  const restored = await nowService.restoreNodeEditor(nodeId);
+
+  assert.equal(restored.node.id, nodeId);
+  assert.equal(restored.node.is_archived, 0);
+  assert.equal(restored.node.status, 'active');
+  assert.equal(restored.navigation.archivedNodes.some((node) => node.id === nodeId), false);
+  assert.equal(
+    restored.navigation.spheres
+      .flatMap((sphere) => sphere.directions)
+      .flatMap((direction) => direction.skills)
+      .flatMap((skill) => skill.nodes)
+      .some((node) => node.id === nodeId),
+    true,
+  );
+  assert.equal(restored.selection.nodeId, nodeId);
+  assert.equal(restored.focus.node.id, nodeId);
+});

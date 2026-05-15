@@ -35,3 +35,4 @@ Everything else must be `planned`, `done`, or `parked`.
 ## Planned Epics
 
 - [10 UX Stabilization And Daily Flow](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/10-ux-stabilization-and-daily-flow/README.md)
+- [11 UX Safety And Daily Clarity](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/11-ux-safety-and-daily-clarity/README.md)

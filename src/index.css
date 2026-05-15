@@ -144,10 +144,15 @@ textarea:disabled {
 
 .now-next-work {
   border-color: color-mix(in srgb, var(--pixel-accent-muted) 70%, var(--pixel-line)) !important;
+  background:
+    linear-gradient(180deg, rgba(88, 240, 208, 0.08), transparent 68%),
+    color-mix(in srgb, var(--pixel-panel-inset) 92%, transparent) !important;
+  min-height: 150px;
 }
 
 .now-route-strip {
   background: color-mix(in srgb, var(--pixel-panel-inset) 86%, transparent) !important;
+  opacity: 0.9;
 }
 
 .now-mastery-badge {

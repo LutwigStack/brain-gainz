@@ -182,10 +182,13 @@ export const NowView = ({
   const plannerWeakSpots = routePlanner?.weakSpots ?? [];
   const plannerReadyToVerify = routePlanner?.readyToVerify ?? [];
   const routeItems = routeProgress?.items ?? [];
+  const actionableRouteItems = routeItems.filter((item) => item.is_actionable !== false);
   const routePreviewItems = (plannerNextItems.length > 0 ? plannerNextItems : routeItems)
-    .filter((item) => item.is_required === 1 && !item.is_complete)
+    .filter((item) => item.is_actionable !== false && item.is_required === 1 && !item.is_complete)
     .slice(0, 4);
-  const routeDonePreviewItems = routePreviewItems.length === 0 ? routeItems.filter((item) => item.is_complete).slice(0, 3) : [];
+  const routeDonePreviewItems =
+    routePreviewItems.length === 0 ? actionableRouteItems.filter((item) => item.is_complete).slice(0, 3) : [];
+  const visibleRoutePreviewItems = routePreviewItems.length > 0 ? routePreviewItems : routeDonePreviewItems;
   const city = today?.city ?? null;
   const opponent = today?.opponent ?? null;
   const race = today?.race ?? null;
@@ -215,80 +218,72 @@ export const NowView = ({
     todaySession,
   });
   const modeTitle = currentSpecialization?.name ?? 'Свободный режим';
-  const hasRouteItems = Boolean(routePlanner?.hasRouteItems || routeItems.length > 0);
+  const todayState = today?.state ?? {
+    key: 'content_without_day_plan' as const,
+    label: 'План дня не получен',
+    title: 'Проверьте карту кампании',
+    reason: 'Today не получил готовый дневной план. Кампания не потеряна: откройте карту и выберите безопасный следующий узел.',
+    primaryCta: { action: 'open_route_map' as const, label: 'Открыть карту' },
+    content: {
+      hasContent: metrics.nodes > 0 || metrics.actions > 0,
+      nodeCount: metrics.nodes,
+      openActionCount: metrics.actions,
+      totalXp: 0,
+      verifiedNodeCount: 0,
+      selfMarkedOnlyNodeCount: 0,
+      routeNodeCount: 0,
+    },
+  };
   const hasRouteFocusNode = plannerFocusItem?.node_id != null;
-  const routeFocusMeta = plannerFocusItem
-    ? `${plannerFocusItem.route_stage ? `${plannerFocusItem.route_stage} · ` : ''}${
-        plannerFocusItem.path || 'Концепт маршрута'
-      } · ${plannerFocusItem.current_mastery_rank}/6 · нужно ${plannerFocusItem.required_mastery_level}`
-    : null;
-  const primaryWorkTitle = routeProgress?.isComplete
-    ? 'Маршрут готов к завершению'
-    : plannerFocusItem?.title ?? primaryCandidate?.actionTitle ?? (currentSpecialization ? (hasRouteItems ? 'Нет валидного следующего узла' : 'Маршрут пустой') : 'Стартовый набор');
-  const primaryWorkDescription = routeProgress?.isComplete
-    ? 'Все обязательные узлы закрыты. Завершение засчитает текущий маршрут.'
-    : plannerFocusItem
-      ? routeFocusMeta
-      : primaryCandidate
-        ? `${primaryCandidate.whatDegrades || primaryCandidate.nodeTitle} · ${candidatePath(primaryCandidate)}`
-        : currentSpecialization
-          ? hasRouteItems
-            ? 'Откройте карту и проверьте требования маршрута: сейчас нет безопасного следующего узла.'
-            : 'Добавьте обязательные узлы на карте, чтобы Today начал выбирать следующий ход.'
-          : 'Создайте стартовый набор или откройте карту, чтобы появился первый рабочий шаг.';
-  const primaryActionLabel = isVictory
-    ? 'Новый маршрут'
-    : routeProgress?.isComplete
-      ? 'Завершить'
-      : hasRouteFocusNode
-        ? 'Проверить'
-        : plannerFocusItem
-          ? 'На карту'
-          : primaryCandidate
-            ? 'Открыть карту'
-            : currentSpecialization
-              ? hasRouteItems
-                ? 'Настроить на карте'
-                : 'Добавить узлы на карте'
-              : 'Стартовый набор';
+  const primaryWorkTitle = todayState.title;
+  const primaryWorkDescription = todayState.reason;
+  const primaryActionLabel = todayState.primaryCta.label;
   const primaryActionIcon = isVictory ? (
     <Compass size={16} />
-  ) : routeProgress?.isComplete || hasRouteFocusNode ? (
+  ) : todayState.primaryCta.action === 'complete_route' || todayState.primaryCta.action === 'open_route_node' ? (
     <CheckCircle2 size={16} />
-  ) : primaryCandidate || currentSpecialization ? (
+  ) : todayState.primaryCta.action === 'open_recommendation_map' || todayState.primaryCta.action === 'open_route_map' ? (
     <MapIcon size={16} />
   ) : (
     <Layers size={16} />
   );
   const handlePrimaryAction = () => {
-    if (isVictory) {
-      onContinueSpecialization();
-      return;
+    switch (todayState.primaryCta.action) {
+      case 'continue_route':
+        onContinueSpecialization();
+        return;
+      case 'complete_route':
+        onCompleteSpecialization();
+        return;
+      case 'open_route_node':
+        if (plannerFocusItem?.node_id != null) {
+          onOpenRouteNode(plannerFocusItem.node_id as number);
+        }
+        return;
+      case 'open_recommendation_map':
+        if (primaryCandidate) {
+          onOpenMap(primaryCandidate);
+        }
+        return;
+      case 'open_route_map':
+        onOpenRouteMap();
+        return;
+      case 'create_starter':
+        onCreateStarterWorkspace();
+        return;
+      default:
+        onRefresh();
     }
-
-    if (routeProgress?.isComplete) {
-      onCompleteSpecialization();
-      return;
-    }
-
-    if (hasRouteFocusNode) {
-      onOpenRouteNode(plannerFocusItem.node_id as number);
-      return;
-    }
-
-    if (primaryCandidate) {
-      onOpenMap(primaryCandidate);
-      return;
-    }
-
-    if (currentSpecialization) {
-      onOpenRouteMap();
-      return;
-    }
-
-    onCreateStarterWorkspace();
   };
-  const isPrimaryActionDisabled = isLoading || (!currentSpecialization && !primaryCandidate && isCreatingStarter);
+  const isPrimaryActionDisabled =
+    isLoading ||
+    (todayState.primaryCta.action === 'create_starter' && isCreatingStarter) ||
+    (todayState.primaryCta.action === 'open_recommendation_map' && !primaryCandidate) ||
+    (todayState.primaryCta.action === 'open_route_node' && !hasRouteFocusNode);
+  const dailyDigestText =
+    todayState.key === 'content_without_day_plan' && metrics.nodes === 0 && !primaryCandidate
+      ? 'Today пока не получил дневные метрики; откройте карту, чтобы выбрать следующий безопасный узел.'
+      : digestSummary;
 
   return (
     <div className="now-view space-y-4">
@@ -331,7 +326,7 @@ export const NowView = ({
             <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
               <PixelStack gap="sm" className="min-w-0">
                 <PixelText as="p" size="xs" color="textMuted" uppercase>
-                  Today / текущий режим
+                  Today / {todayState.label}
                 </PixelText>
                 <PixelText as="h3" readable size="lg" style={{ margin: 0, fontWeight: 800 }}>
                   {modeTitle}
@@ -354,8 +349,8 @@ export const NowView = ({
                   {primaryActionIcon} {primaryActionLabel}
                 </PixelButton>
                 {hasRouteFocusNode ? (
-                  <PixelButton tone="ghost" onClick={() => onOpenRouteNode(plannerFocusItem.node_id as number)} disabled={isLoading}>
-                    <MapIcon size={16} /> На карту
+                  <PixelButton tone="ghost" onClick={onOpenRouteMap} disabled={isLoading}>
+                    <MapIcon size={16} /> Карта маршрута
                   </PixelButton>
                 ) : currentSpecialization && !routeProgress?.isComplete ? (
                   <PixelButton tone="ghost" onClick={onOpenRouteMap} disabled={isLoading}>
@@ -549,7 +544,7 @@ export const NowView = ({
                                   onClick={() => onOpenRouteNode(plannerFocusItem.node_id as number)}
                                   style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                                 >
-                                  <CheckCircle2 size={14} /> Проверить
+                                  <CheckCircle2 size={14} /> Открыть узел
                                 </PixelButton>
                                 <PixelButton
                                   tone="ghost"
@@ -667,7 +662,7 @@ export const NowView = ({
               </PixelSurface>
             ) : null}
 
-            {routeProgress && routeItems.length > 0 ? (
+            {routeProgress && visibleRoutePreviewItems.length > 0 ? (
               <div className="mt-4 grid gap-2">
                 <div className="flex items-center justify-between gap-3">
                   <PixelText as="p" size="xs" color="textMuted" uppercase>
@@ -680,7 +675,7 @@ export const NowView = ({
                   ) : null}
                 </div>
                 <div className="grid gap-2 md:grid-cols-2">
-                  {(routePreviewItems.length > 0 ? routePreviewItems : routeDonePreviewItems).map((item) => (
+                  {visibleRoutePreviewItems.map((item) => (
                     <PixelSurface key={item.id} frame={item.is_complete ? 'ghost' : 'inset'} padding="sm">
                       <div className="flex min-w-0 items-center justify-between gap-3">
                         <div className="min-w-0">
@@ -751,18 +746,18 @@ export const NowView = ({
           </div>
 
           <PixelText as="p" readable color="textMuted" size="sm">
-            {digestSummary}
+            {dailyDigestText}
           </PixelText>
         </PixelStack>
       </PixelSurface>
 
-      {!primaryRecommendation && !focusedNode && !isLoading ? (
+      {!primaryRecommendation && !focusedNode && !isLoading && todayState.key === 'truly_empty' ? (
         <PixelSurface frame="ghost" padding="xxl">
           <div className="mx-auto flex h-20 w-20 items-center justify-center text-[var(--pixel-accent)]">
             <Compass size={36} />
           </div>
           <PixelText as="h3" size="lg" style={{ marginTop: 24, textAlign: 'center' }}>
-            Пока пусто
+            Карта еще не собрана
           </PixelText>
           <PixelText
             as="p"
@@ -771,7 +766,7 @@ export const NowView = ({
             size="sm"
             style={{ margin: '16px auto 0', maxWidth: 640, textAlign: 'center' }}
           >
-            Создайте стартовый набор, чтобы появилась первая сводка дня.
+            Создайте стартовый набор, чтобы Today мог выбрать первый рабочий шаг.
           </PixelText>
         </PixelSurface>
       ) : null}

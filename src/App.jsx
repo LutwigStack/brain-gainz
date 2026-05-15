@@ -109,6 +109,7 @@ export default function App() {
   const [routeMutationPending, setRouteMutationPending] = useState(false);
   const [mapRouteFilterRequestId, setMapRouteFilterRequestId] = useState(null);
   const [mapMutationPendingAction, setMapMutationPendingAction] = useState(null);
+  const [mapUndoCount, setMapUndoCount] = useState(0);
   const [windRoseSnapshot, setWindRoseSnapshot] = useState(null);
   const [windRoseLoading, setWindRoseLoading] = useState(false);
   const [windRoseError, setWindRoseError] = useState(null);
@@ -336,6 +337,7 @@ export default function App() {
     setWindRoseSnapshot(null);
     setSelectedWindStatId(null);
     mapUndoStackRef.current = [];
+    setMapUndoCount(0);
   };
 
   const requestMapRouteFilter = () => {
@@ -437,7 +439,7 @@ export default function App() {
       void loadNowDashboard();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedActiveTab]);
+  }, [normalizedActiveTab, selectedCampaignId]);
 
   useEffect(() => {
     if (!selectedCampaignId) {
@@ -729,6 +731,7 @@ export default function App() {
 
   const pushMapUndo = (entry) => {
     mapUndoStackRef.current = [...mapUndoStackRef.current.slice(-49), entry];
+    setMapUndoCount(mapUndoStackRef.current.length);
   };
 
   const persistNodeEditorDraft = async (draft) => {
@@ -797,16 +800,24 @@ export default function App() {
 
   const handleArchiveNodeEditor = async (draft) => {
     if (!navigationFocus?.node) {
-      return;
+      return false;
     }
 
+    if (navigationFocus.node.id !== draft.nodeId) {
+      await loadNavigationSnapshot(navigationSelection);
+      setNavigationError('Фокус узла изменился. Откройте узел заново и повторите архивирование.');
+      return false;
+    }
+
+    const archivedNodeId = draft.nodeId;
+    const archivedNodeTitle = draft.title || navigationFocus.node.title;
     setNodeEditorPendingAction('archive');
     setNavigationError(null);
     setNodeEditorNotice(null);
 
     try {
       const result = await db.archiveNodeRecord(
-        navigationFocus.node.id,
+        archivedNodeId,
         buildNodeEditorUpdatePayload(navigationFocus, draft),
         selectedCampaignId,
       );
@@ -814,13 +825,16 @@ export default function App() {
         result,
         (mutationResult) =>
           mutationResult.focus
-            ? `Узел отправлен в архив. Фокус перенесен на «${mutationResult.focus.node.title}».`
-            : 'Узел отправлен в архив.',
+            ? `Узел «${archivedNodeTitle}» отправлен в архив. Фокус перенесен на «${mutationResult.focus.node.title}».`
+            : `Узел «${archivedNodeTitle}» отправлен в архив.`,
       );
+      pushMapUndo({ type: 'restore-node', nodeId: archivedNodeId });
       setActiveTab('map');
+      return true;
     } catch (error) {
       logUnexpectedActionError('Failed to archive node editor state', error);
       setNavigationError(userActionErrorMessage(error, 'Не удалось архивировать узел.'));
+      return false;
     } finally {
       setNodeEditorPendingAction(null);
     }
@@ -1061,6 +1075,7 @@ export default function App() {
       return false;
     }
 
+    const archivedNodeTitle = findNavigationNodeById(nodeId)?.title ?? 'узел';
     setMapMutationPendingAction('archive-node');
     setNavigationError(null);
     setNodeEditorNotice(null);
@@ -1068,12 +1083,39 @@ export default function App() {
     try {
       const result = await db.archiveNodeRecord(nodeId, {}, selectedCampaignId);
       pushMapUndo({ type: 'restore-node', nodeId });
-      await applyNodeEditorMutationResult(result, 'Узел отправлен в архив.');
+      await applyNodeEditorMutationResult(result, `Узел «${archivedNodeTitle}» отправлен в архив.`);
       setActiveTab('map');
       return true;
     } catch (error) {
       logUnexpectedActionError('Failed to archive node from map', error);
       setNavigationError(userActionErrorMessage(error, 'Не удалось архивировать узел.'));
+      await loadNavigationSnapshot(navigationSelection);
+      return false;
+    } finally {
+      setMapMutationPendingAction(null);
+    }
+  };
+
+  const handleRestoreMapNode = async ({ nodeId }) => {
+    if (mapMutationPendingAction) {
+      return false;
+    }
+
+    const archivedNodeTitle =
+      navigationSnapshot?.archivedNodes?.find((node) => node.id === nodeId)?.title ?? 'узел';
+    setMapMutationPendingAction('restore-node');
+    setNavigationError(null);
+    setNodeEditorNotice(null);
+
+    try {
+      const result = await db.restoreNodeRecord(nodeId, selectedCampaignId);
+      pushMapUndo({ type: 'archive-node', nodeId });
+      await applyNodeEditorMutationResult(result, `Узел «${archivedNodeTitle}» восстановлен из архива.`);
+      setActiveTab('map');
+      return true;
+    } catch (error) {
+      logUnexpectedActionError('Failed to restore node from map', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось восстановить узел.'));
       await loadNavigationSnapshot(navigationSelection);
       return false;
     } finally {
@@ -1120,15 +1162,20 @@ export default function App() {
     }
 
     mapUndoStackRef.current = mapUndoStackRef.current.slice(0, -1);
+    setMapUndoCount(mapUndoStackRef.current.length);
     setMapMutationPendingAction('undo');
     setNavigationError(null);
     setNodeEditorNotice(null);
 
     try {
+      let result = null;
+      let undoNotice = 'Последнее действие на карте отменено.';
       if (entry.type === 'archive-node') {
-        await db.archiveNodeRecord(entry.nodeId, {}, selectedCampaignId);
+        result = await db.archiveNodeRecord(entry.nodeId, {}, selectedCampaignId);
+        undoNotice = 'Восстановление отменено: узел снова в архиве.';
       } else if (entry.type === 'restore-node') {
-        await db.updateNodeRecord(entry.nodeId, { is_archived: 0 }, selectedCampaignId);
+        result = await db.restoreNodeRecord(entry.nodeId, selectedCampaignId);
+        undoNotice = 'Архивация отменена: узел восстановлен.';
       } else if (entry.type === 'move-node') {
         await db.updateNodeRecord(entry.nodeId, { x: entry.x, y: entry.y }, selectedCampaignId);
       } else if (entry.type === 'rename-node') {
@@ -1151,9 +1198,13 @@ export default function App() {
         await db.archiveNodeRecord(entry.nodeId, {}, selectedCampaignId);
       }
 
-      await loadNowDashboard(nowSelection);
-      await loadNavigationSnapshot(navigationSelection);
-      setNodeEditorNotice('Последнее действие на карте отменено.');
+      if (result?.navigation) {
+        await applyNodeEditorMutationResult(result, undoNotice);
+      } else {
+        await loadNowDashboard(nowSelection);
+        await loadNavigationSnapshot(navigationSelection);
+        setNodeEditorNotice(undoNotice);
+      }
       setActiveTab('map');
       return true;
     } catch (error) {
@@ -1867,6 +1918,7 @@ export default function App() {
             onDeleteEdge={handleDeleteMapEdge}
             onRenameNode={handleRenameMapNode}
             onArchiveNode={handleArchiveMapNode}
+            onRestoreNode={handleRestoreMapNode}
             onDuplicateNode={handleDuplicateMapNode}
             onUndoMapMutation={handleUndoMapMutation}
             onMarkSelfMastery={handleMarkNavigationSelfMastery}
@@ -1884,6 +1936,8 @@ export default function App() {
             routeMutationPending={routeMutationPending}
             editorNotice={nodeEditorNotice}
             mapMutationPendingAction={mapMutationPendingAction}
+            canUndoMapMutation={mapUndoCount > 0}
+            isSystemCampaign={selectedCampaign?.type === 'developer_main'}
             branchFilterSkillId={navigationBranchFilterId}
             onCreateFollowUp={() =>
               handleCreateJournalFollowUp({

@@ -1388,6 +1388,7 @@ const loadMetrics = async (database, campaignId) => {
         JOIN directions ON directions.id = skills.direction_id
         JOIN spheres ON spheres.id = directions.sphere_id
         WHERE spheres.campaign_id = ?
+          AND nodes.is_archived = 0
           AND node_actions.status IN ('todo', 'ready', 'doing')
       `,
       [campaignId],
@@ -1402,6 +1403,7 @@ const loadMetrics = async (database, campaignId) => {
         JOIN directions ON directions.id = skills.direction_id
         JOIN spheres ON spheres.id = directions.sphere_id
         WHERE spheres.campaign_id = ?
+          AND nodes.is_archived = 0
           AND (review_states.current_risk = 'high' OR (review_states.next_due_at IS NOT NULL AND review_states.next_due_at <= ?))
       `,
       [campaignId, currentTimestamp()],
@@ -1836,11 +1838,62 @@ const loadActiveGraphEdges = (database, campaignId) =>
     [campaignId, campaignId],
   );
 
+const loadArchivedNavigationNodes = (database, campaignId) =>
+  database.select(
+    `
+      SELECT
+        nodes.id,
+        nodes.skill_id,
+        nodes.title,
+        nodes.type,
+        nodes.status,
+        nodes.x,
+        nodes.y,
+        nodes.updated_at,
+        skills.name AS skill_name,
+        directions.id AS direction_id,
+        directions.name AS direction_name,
+        spheres.id AS sphere_id,
+        spheres.name AS sphere_name,
+        (
+          SELECT COUNT(*)
+          FROM node_actions actions
+          WHERE actions.node_id = nodes.id
+            AND actions.status IN ('todo', 'ready', 'doing')
+        ) AS open_action_count,
+        (
+          SELECT actions.id
+          FROM node_actions actions
+          WHERE actions.node_id = nodes.id
+            AND actions.status IN ('todo', 'ready', 'doing')
+          ORDER BY actions.sort_order ASC, actions.id ASC
+          LIMIT 1
+        ) AS next_action_id,
+        (
+          SELECT actions.title
+          FROM node_actions actions
+          WHERE actions.node_id = nodes.id
+            AND actions.status IN ('todo', 'ready', 'doing')
+          ORDER BY actions.sort_order ASC, actions.id ASC
+          LIMIT 1
+        ) AS next_action_title
+      FROM nodes
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE nodes.is_archived = 1
+        AND spheres.campaign_id = ?
+      ORDER BY nodes.updated_at DESC, nodes.id ASC
+    `,
+    [campaignId],
+  );
+
 const buildNavigationSnapshot = async (database, campaignId) => {
-  const [tree, dashboard, edges] = await Promise.all([
+  const [tree, dashboard, edges, archivedNodes] = await Promise.all([
     loadHierarchyTree(database, campaignId),
     createNowServiceContext(database, campaignId).getDashboard(),
     loadActiveGraphEdges(database, campaignId),
+    loadArchivedNavigationNodes(database, campaignId),
   ]);
   const firstNode =
     dashboard.primaryRecommendation != null
@@ -1855,6 +1908,7 @@ const buildNavigationSnapshot = async (database, campaignId) => {
   return {
     spheres: tree,
     edges,
+    archivedNodes,
     defaultSelection: firstNode,
   };
 };
@@ -2590,6 +2644,7 @@ const computeRouteCompletion = async (database, campaignId, specializationId) =>
         route_nodes.route_order,
         route_nodes.route_stage,
         route_nodes.is_required,
+        nodes.is_archived AS node_is_archived,
         nodes.title AS node_title,
         skills.name AS skill_name,
         directions.name AS direction_name,
@@ -2630,13 +2685,10 @@ const computeRouteCompletion = async (database, campaignId, specializationId) =>
     [campaignId, specializationId],
   );
 
-  const required = rows.filter((row) => Number(row.is_required ?? 1) === 1);
-  const incomplete = required.filter(
-    (row) => Number(row.active_mastery_rank ?? 0) < masteryLevelRank(row.required_mastery_level) + 1,
-  );
   const items = rows.map((row) => {
     const activeMasteryRank = Number(row.active_mastery_rank ?? 0);
     const requiredRank = masteryLevelRank(row.required_mastery_level) + 1;
+    const isArchivedLocalNode = row.node_id != null && Number(row.node_is_archived ?? 0) === 1;
     return {
       id: row.id,
       node_id: row.node_id ?? null,
@@ -2650,8 +2702,11 @@ const computeRouteCompletion = async (database, campaignId, specializationId) =>
       current_mastery_rank: activeMasteryRank,
       is_required: Number(row.is_required ?? 1),
       is_complete: activeMasteryRank >= requiredRank,
+      is_actionable: !isArchivedLocalNode,
     };
   });
+  const required = items.filter((item) => item.is_required === 1);
+  const incomplete = required.filter((item) => !item.is_complete);
 
   return {
     routeNodeCount: rows.length,
@@ -2659,7 +2714,7 @@ const computeRouteCompletion = async (database, campaignId, specializationId) =>
     completedRequiredNodeCount: required.length - incomplete.length,
     isComplete: required.length > 0 && incomplete.length === 0,
     items,
-    nextItem: items.find((item) => item.is_required === 1 && !item.is_complete) ?? null,
+    nextItem: items.find((item) => item.is_required === 1 && !item.is_complete && item.is_actionable) ?? null,
     incomplete,
   };
 };
@@ -2695,7 +2750,9 @@ const buildRoutePlannerProjection = (routeCompletion) => {
     return null;
   }
 
-  const incompleteRequired = routeCompletion.items.filter((item) => item.is_required === 1 && !item.is_complete);
+  const incompleteRequired = routeCompletion.items.filter(
+    (item) => item.is_required === 1 && !item.is_complete && item.is_actionable,
+  );
   const focusItem = routeCompletion.nextItem ?? incompleteRequired[0] ?? null;
   const focusIndex = focusItem
     ? Math.max(0, incompleteRequired.findIndex((item) => item.id === focusItem.id))
@@ -2736,7 +2793,131 @@ const buildRoutePlannerProjection = (routeCompletion) => {
   };
 };
 
-const buildTodayGameSnapshot = async (database, campaignId, career) => {
+const createTodayState = (key, label, title, reason, primaryCta, content) => ({
+  key,
+  label,
+  title,
+  reason,
+  primaryCta,
+  content,
+});
+
+const buildTodayStateProjection = ({ career, metrics, city, route, planner, primaryRecommendation }) => {
+  const currentSpecialization = career.currentSpecialization ?? null;
+  const content = {
+    hasContent: false,
+    nodeCount: Number(metrics?.nodes ?? 0),
+    openActionCount: Number(metrics?.actions ?? 0),
+    totalXp: Number(city?.totalXp ?? 0),
+    verifiedNodeCount: Number(career.mastery?.verifiedNodeCount ?? 0),
+    selfMarkedOnlyNodeCount: Number(career.mastery?.selfMarkedOnlyNodeCount ?? 0),
+    routeNodeCount: Number(route?.routeNodeCount ?? 0),
+  };
+  content.hasContent =
+    content.nodeCount > 0 ||
+    content.openActionCount > 0 ||
+    content.totalXp > 0 ||
+    content.verifiedNodeCount > 0 ||
+    content.selfMarkedOnlyNodeCount > 0 ||
+    content.routeNodeCount > 0;
+
+  if (career.campaign.career_status === 'victory' || currentSpecialization?.status === 'completed') {
+    return createTodayState(
+      'completed_route',
+      'Маршрут закрыт',
+      'Начните следующий маршрут',
+      'Текущий маршрут уже завершен, поэтому Today не выбирает новый узел внутри него.',
+      { action: 'continue_route', label: 'Новый маршрут' },
+      content,
+    );
+  }
+
+  if (route?.isComplete) {
+    return createTodayState(
+      'completed_route',
+      'Готово к закрытию',
+      'Завершите текущий маршрут',
+      'Все обязательные узлы проверены. Завершение закроет только этот активный маршрут.',
+      { action: 'complete_route', label: 'Завершить маршрут' },
+      content,
+    );
+  }
+
+  if (currentSpecialization?.status === 'active') {
+    const focusItem = planner?.focusItem ?? route?.nextItem ?? null;
+    if (focusItem?.node_id != null) {
+      return createTodayState(
+        'active_route',
+        'Следующий узел',
+        focusItem.title,
+        `${focusItem.route_stage ? `${focusItem.route_stage} · ` : ''}${
+          focusItem.path || 'Концепт маршрута'
+        } · сейчас ${focusItem.current_mastery_rank}/6 · нужно ${focusItem.required_mastery_level}`,
+        { action: 'open_route_node', label: 'Открыть узел' },
+        content,
+      );
+    }
+
+    if (route?.routeNodeCount > 0) {
+      return createTodayState(
+        'route_incomplete',
+        'Маршрут требует настройки',
+        'Проверьте узлы маршрута',
+        'В маршруте есть узлы, но Today не нашел безопасный обязательный следующий узел.',
+        { action: 'open_route_map', label: 'Открыть маршрут' },
+        content,
+      );
+    }
+
+    return createTodayState(
+      'no_route',
+      'Маршрут не собран',
+      'Добавьте обязательные узлы',
+      'Специализация активна, но ее дневной маршрут пока пустой.',
+      { action: 'open_route_map', label: 'Добавить узлы' },
+      content,
+    );
+  }
+
+  if (primaryRecommendation) {
+    return createTodayState(
+      'free_mode',
+      'Свободный режим',
+      primaryRecommendation.actionTitle,
+      `${primaryRecommendation.whatDegrades || primaryRecommendation.nodeTitle} · ${[
+        primaryRecommendation.sphereName,
+        primaryRecommendation.directionName,
+        primaryRecommendation.skillName,
+      ]
+        .filter(Boolean)
+        .join(' / ')}`,
+      { action: 'open_recommendation_map', label: 'Открыть рекомендацию' },
+      content,
+    );
+  }
+
+  if (content.hasContent) {
+    return createTodayState(
+      'content_without_day_plan',
+      'План дня не собран',
+      'Выберите маршрут или узел на карте',
+      `В кампании есть ${content.nodeCount} узл. и ${content.totalXp} XP, но нет активного маршрута или готовой рекомендации на сегодня.`,
+      { action: 'open_route_map', label: 'Открыть карту' },
+      content,
+    );
+  }
+
+  return createTodayState(
+    'truly_empty',
+    'Пока нет карты',
+    'Создайте стартовый набор',
+    'В этой кампании еще нет узлов, маршрута и проверенного прогресса.',
+    { action: 'create_starter', label: 'Создать набор' },
+    content,
+  );
+};
+
+const buildTodayGameSnapshot = async (database, campaignId, career, metrics, primaryRecommendation) => {
   const currentSpecialization = career.currentSpecialization ?? null;
   const hasActiveSpecialization = currentSpecialization?.status === 'active';
   const [routeCompletion, city] = await Promise.all([
@@ -2759,6 +2940,7 @@ const buildTodayGameSnapshot = async (database, campaignId, career) => {
         nextItem: routeCompletion.nextItem,
       }
     : null;
+  const planner = hasActiveSpecialization ? buildRoutePlannerProjection(routeCompletion) : null;
 
   return {
     currentSpecialization,
@@ -2766,7 +2948,8 @@ const buildTodayGameSnapshot = async (database, campaignId, career) => {
     mastery: career.mastery,
     race: buildRaceProjection(career.campaign, currentSpecialization),
     route,
-    planner: hasActiveSpecialization ? buildRoutePlannerProjection(routeCompletion) : null,
+    planner,
+    state: buildTodayStateProjection({ career, metrics, city, route, planner, primaryRecommendation }),
     city,
     opponent: buildOpponentProjection(currentSpecialization, routeCompletion),
   };
@@ -3228,7 +3411,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       primaryRecommendation: rankedCandidates[0] ?? null,
       queue: rankedCandidates.slice(1, 1 + MAX_QUEUE_ITEMS),
       todaySession,
-      today: await buildTodayGameSnapshot(database, resolvedCampaignId, career),
+      today: await buildTodayGameSnapshot(database, resolvedCampaignId, career, metrics, rankedCandidates[0] ?? null),
     };
   },
 
@@ -3612,8 +3795,33 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
   },
 
   async archiveNodeEditor(campaignId, nodeId, payload = {}) {
-    if (arguments.length <= 2) {
-      payload = nodeId ?? {};
+    if (arguments.length === 1) {
+      payload = {};
+      nodeId = campaignId;
+      campaignId = null;
+    } else if (arguments.length === 2 && nodeId != null && typeof nodeId === 'object') {
+      payload = nodeId;
+      nodeId = campaignId;
+      campaignId = null;
+    } else if (arguments.length === 2) {
+      payload = {};
+    }
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    const before = await loadNodeMetadata(database, nodeId, resolvedCampaignId);
+    if (!before) {
+      return null;
+    }
+    const node = await hierarchyStore.archiveNode(nodeId, payload);
+
+    if (!node) {
+      return null;
+    }
+
+    return refreshEditorMutationResult(this, resolvedCampaignId, node.id);
+  },
+
+  async restoreNodeEditor(campaignId, nodeId) {
+    if (arguments.length === 1) {
       nodeId = campaignId;
       campaignId = null;
     }
@@ -3622,7 +3830,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     if (!before) {
       return null;
     }
-    const node = await hierarchyStore.archiveNode(nodeId, payload);
+    const node = await hierarchyStore.updateNode(nodeId, { is_archived: 0 });
 
     if (!node) {
       return null;

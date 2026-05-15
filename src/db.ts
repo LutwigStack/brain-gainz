@@ -71,6 +71,7 @@ type StoresRegistry = {
     createNodeEditor: (campaignId: number | null, payload: NodeCreatePayload) => Promise<NodeEditorMutationResult | null>;
     updateNodeEditor: (campaignId: number | null, nodeId: number, payload: NodeUpdatePayload) => Promise<NodeEditorMutationResult | null>;
     archiveNodeEditor: (campaignId: number | null, nodeId: number, payload?: NodeArchivePayload) => Promise<NodeEditorMutationResult | null>;
+    restoreNodeEditor: (campaignId: number | null, nodeId: number) => Promise<NodeEditorMutationResult | null>;
     duplicateNodeEditor: (campaignId: number | null, nodeId: number, payload?: NodeDuplicatePayload) => Promise<NodeEditorMutationResult | null>;
     createGraphEdge: (campaignId: number | null, payload: GraphEdgeCreatePayload) => Promise<GraphEdgeMutationResult | null>;
     updateGraphEdge: (campaignId: number | null, edgeId: number, payload: GraphEdgeUpdatePayload) => Promise<GraphEdgeMutationResult | null>;
@@ -258,6 +259,14 @@ export const archiveNodeRecord = async (
 ): Promise<NodeEditorMutationResult | null> => {
   const { nowService } = await getStores();
   return nowService.archiveNodeEditor(requireCampaignId(campaignId), id, payload);
+};
+
+export const restoreNodeRecord = async (
+  id: number,
+  campaignId: number | null = null,
+): Promise<NodeEditorMutationResult | null> => {
+  const { nowService } = await getStores();
+  return nowService.restoreNodeEditor(requireCampaignId(campaignId), id);
 };
 
 export const duplicateNodeRecord = async (

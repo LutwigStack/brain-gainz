@@ -384,6 +384,139 @@ test('optional-only route does not become completable in Today planner', async (
   );
 });
 
+test('today projection distinguishes empty, content without plan, free mode, and no-route states', async (t) => {
+  const { database, campaignStore, hierarchyStore, nowService } = await setupCareerService();
+  t.after(() => database.close());
+
+  const emptyCampaign = await campaignStore.createUserCampaign({ name: 'Empty Today State' });
+  await database.execute(
+    `
+      UPDATE nodes
+      SET is_archived = 1
+      WHERE id IN (
+        SELECT nodes.id
+        FROM nodes
+        JOIN skills ON skills.id = nodes.skill_id
+        JOIN directions ON directions.id = skills.direction_id
+        JOIN spheres ON spheres.id = directions.sphere_id
+        WHERE spheres.campaign_id = ?
+      )
+    `,
+    [emptyCampaign.id],
+  );
+  const emptyDashboard = await nowService.getDashboard(emptyCampaign.id);
+  assert.equal(emptyDashboard.metrics.nodes, 0);
+  assert.equal(emptyDashboard.today.state.key, 'truly_empty');
+  assert.equal(emptyDashboard.today.state.primaryCta.action, 'create_starter');
+
+  const contentCampaign = await campaignStore.createUserCampaign({ name: 'Content Without Day Plan' });
+  const contentDashboard = await nowService.getDashboard(contentCampaign.id);
+  assert.equal(contentDashboard.metrics.nodes, 1);
+  assert.equal(contentDashboard.today.state.key, 'content_without_day_plan');
+  assert.equal(contentDashboard.today.state.content.nodeCount, contentDashboard.metrics.nodes);
+  assert.equal(contentDashboard.today.state.primaryCta.action, 'open_route_map');
+  assert.match(contentDashboard.today.state.reason, /1 узл\./);
+
+  const freeModeCampaign = await campaignStore.createUserCampaign({ name: 'Free Mode Today State' });
+  const freeNode = await firstNode(nowService, freeModeCampaign.id);
+  await hierarchyStore.createNodeAction({
+    node_id: freeNode.id,
+    title: 'Free mode recommendation',
+    status: 'ready',
+    size_hint: 'small',
+    sort_order: 0,
+    is_minimum_step: 1,
+  });
+  const freeModeDashboard = await nowService.getDashboard(freeModeCampaign.id);
+  assert.equal(freeModeDashboard.today.state.key, 'free_mode');
+  assert.equal(freeModeDashboard.today.state.primaryCta.action, 'open_recommendation_map');
+
+  const noRouteCampaign = await campaignStore.createUserCampaign({ name: 'No Route Today State' });
+  await nowService.createSpecialization(noRouteCampaign.id, {
+    name: 'Empty Active Route',
+    key: 'empty-active-route',
+  });
+  const noRouteDashboard = await nowService.getDashboard(noRouteCampaign.id);
+  assert.equal(noRouteDashboard.today.state.key, 'no_route');
+  assert.equal(noRouteDashboard.today.route.routeNodeCount, 0);
+  assert.equal(noRouteDashboard.today.state.primaryCta.action, 'open_route_map');
+});
+
+test('today projection keeps route incomplete CTA safe when no required next node exists', async (t) => {
+  const { database, campaignStore, nowService } = await setupCareerService();
+  t.after(() => database.close());
+
+  const campaign = await campaignStore.createUserCampaign({ name: 'Incomplete Today State' });
+  const specialization = await nowService.createSpecialization(campaign.id, {
+    name: 'Optional Only',
+    key: 'optional-only-state',
+  });
+  const node = await firstNode(nowService, campaign.id);
+  await nowService.addSpecializationRouteNode(campaign.id, specialization.id, {
+    node_id: node.id,
+    required_mastery_level: 'confirmed',
+    is_required: false,
+  });
+
+  const dashboard = await nowService.getDashboard(campaign.id);
+  assert.equal(dashboard.today.state.key, 'route_incomplete');
+  assert.equal(dashboard.today.route.isComplete, false);
+  assert.equal(dashboard.today.planner.focusItem, null);
+  assert.equal(dashboard.today.state.primaryCta.action, 'open_route_map');
+});
+
+test('today projection does not open archived route nodes as the next step', async (t) => {
+  const { database, campaignStore, nowService } = await setupCareerService();
+  t.after(() => database.close());
+
+  const campaign = await campaignStore.createUserCampaign({ name: 'Archived Route Focus' });
+  const node = await firstNode(nowService, campaign.id);
+  const specialization = await nowService.createSpecialization(campaign.id, {
+    name: 'Route With Archived Node',
+    key: 'route-with-archived-node',
+  });
+  await nowService.addSpecializationRouteNode(campaign.id, specialization.id, {
+    node_id: node.id,
+    required_mastery_level: 'confirmed',
+  });
+
+  await nowService.archiveNodeEditor(campaign.id, node.id, {});
+
+  const dashboard = await nowService.getDashboard(campaign.id);
+  assert.equal(dashboard.today.route.routeNodeCount, 1);
+  assert.equal(dashboard.today.route.requiredNodeCount, 1);
+  assert.equal(dashboard.today.route.isComplete, false);
+  assert.equal(dashboard.today.route.items[0].is_actionable, false);
+  assert.equal(dashboard.today.route.nextItem, null);
+  assert.equal(dashboard.today.planner.focusItem, null);
+  assert.equal(dashboard.today.state.key, 'route_incomplete');
+  assert.equal(dashboard.today.state.primaryCta.action, 'open_route_map');
+});
+
+test('today projection ignores archived-only actions as active daily content', async (t) => {
+  const { database, campaignStore, hierarchyStore, nowService } = await setupCareerService();
+  t.after(() => database.close());
+
+  const campaign = await campaignStore.createUserCampaign({ name: 'Archived Actions Only' });
+  const node = await firstNode(nowService, campaign.id);
+  await hierarchyStore.createNodeAction({
+    node_id: node.id,
+    title: 'Archived node action',
+    status: 'ready',
+    size_hint: 'small',
+    sort_order: 0,
+    is_minimum_step: 1,
+  });
+
+  await nowService.archiveNodeEditor(campaign.id, node.id, {});
+
+  const dashboard = await nowService.getDashboard(campaign.id);
+  assert.equal(dashboard.metrics.nodes, 0);
+  assert.equal(dashboard.metrics.actions, 0);
+  assert.equal(dashboard.today.state.key, 'truly_empty');
+  assert.equal(dashboard.today.state.content.hasContent, false);
+});
+
 test('today projection exposes route, race, city, and specialization-scoped opponent', async (t) => {
   const { database, campaignStore, nowService } = await setupCareerService();
   t.after(() => database.close());
@@ -411,6 +544,8 @@ test('today projection exposes route, race, city, and specialization-scoped oppo
   assert.equal(openDashboard.today.planner.focusItem.node_id, node.id);
   assert.equal(openDashboard.today.planner.hasRouteItems, true);
   assert.equal(openDashboard.today.planner.readyToVerify.length, 0);
+  assert.equal(openDashboard.today.state.key, 'active_route');
+  assert.equal(openDashboard.today.state.primaryCta.action, 'open_route_node');
 
   await nowService.updateNodeEditor(campaign.id, node.id, { status: 'done' });
 
@@ -425,6 +560,8 @@ test('today projection exposes route, race, city, and specialization-scoped oppo
   assert.equal(dashboard.today.route.items[0].current_mastery_level, 'confirmed');
   assert.equal(dashboard.today.route.nextItem, null);
   assert.equal(dashboard.today.planner.focusItem, null);
+  assert.equal(dashboard.today.state.key, 'completed_route');
+  assert.equal(dashboard.today.state.primaryCta.action, 'complete_route');
   assert.ok(dashboard.today.race.key);
   assert.ok(dashboard.today.city.level >= 1);
   assert.ok(dashboard.today.city.totalXp > 0);
@@ -436,6 +573,8 @@ test('today projection exposes route, race, city, and specialization-scoped oppo
   assert.equal(victoryDashboard.today.currentSpecialization.status, 'completed');
   assert.equal(victoryDashboard.today.route.isComplete, true);
   assert.equal(victoryDashboard.today.planner, null);
+  assert.equal(victoryDashboard.today.state.key, 'completed_route');
+  assert.equal(victoryDashboard.today.state.primaryCta.action, 'continue_route');
 
   const next = await nowService.continueWithSpecialization(campaign.id, {
     name: 'Backend Route',

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  AlertTriangle,
   Archive,
   ArrowDown,
   ArrowUp,
@@ -15,6 +16,7 @@ import {
   Plus,
   Play,
   RefreshCw,
+  RotateCcw,
   Save,
   Scissors,
   ShieldCheck,
@@ -189,6 +191,13 @@ interface FloatingMapPanelState {
   edgeId?: number;
 }
 
+interface PendingNodeArchiveState {
+  nodeId: number;
+  title: string;
+  source: 'map' | 'context-menu' | 'inspector' | 'editor' | 'shortcut';
+  draft?: NodeEditorDraft | null;
+}
+
 interface GraphRailEdgeEntry {
   edge: NavigationGraphEdge;
   node: NavigationNodeSummary;
@@ -223,7 +232,7 @@ interface NavigationViewProps {
   onCreateFollowUp: () => void;
   onSaveEditor: (draft: NodeEditorDraft) => void;
   onDuplicateEditor: (draft: NodeEditorDraft) => void;
-  onArchiveEditor: (draft: NodeEditorDraft) => void;
+  onArchiveEditor: (draft: NodeEditorDraft) => Promise<boolean> | boolean;
   onCreateNodeAt: (input: {
     skillId: number;
     existingNodeCount: number;
@@ -248,6 +257,7 @@ interface NavigationViewProps {
   onDeleteEdge: (edgeId: number) => Promise<boolean> | boolean;
   onRenameNode: (input: { nodeId: number; title: string }) => Promise<boolean> | boolean;
   onArchiveNode: (input: { nodeId: number }) => Promise<boolean> | boolean;
+  onRestoreNode: (input: { nodeId: number }) => Promise<boolean> | boolean;
   onDuplicateNode: (input: { nodeId: number; x: number; y: number }) => Promise<boolean> | boolean;
   onUndoMapMutation: () => Promise<boolean> | boolean;
   onMarkSelfMastery: (masteryLevel: MasteryLevel) => Promise<void> | void;
@@ -287,10 +297,13 @@ interface NavigationViewProps {
     | 'delete-edge'
     | 'rename-node'
     | 'archive-node'
+    | 'restore-node'
     | 'duplicate-node'
     | 'undo'
     | 'layout'
     | null;
+  canUndoMapMutation: boolean;
+  isSystemCampaign: boolean;
   branchFilterSkillId?: number | null;
 }
 
@@ -330,6 +343,7 @@ export const NavigationView = ({
   onDeleteEdge,
   onRenameNode,
   onArchiveNode,
+  onRestoreNode,
   onDuplicateNode,
   onUndoMapMutation,
   onMarkSelfMastery,
@@ -347,6 +361,8 @@ export const NavigationView = ({
   routeMutationPending,
   editorNotice,
   mapMutationPendingAction,
+  canUndoMapMutation,
+  isSystemCampaign,
   branchFilterSkillId = null,
 }: NavigationViewProps) => {
   const [editorOverride, setEditorOverride] = useState<Partial<NodeEditorDraft> | null>(null);
@@ -377,6 +393,7 @@ export const NavigationView = ({
   const [mapEditTool, setMapEditTool] = useState<MapEditTool>('select');
   const [connectSourceNodeId, setConnectSourceNodeId] = useState<number | null>(null);
   const [connectEdgeType, setConnectEdgeType] = useState<GraphEdgeType>('supports');
+  const [pendingNodeArchive, setPendingNodeArchive] = useState<PendingNodeArchiveState | null>(null);
   const [isMapFocused, setIsMapFocused] = useState(false);
   const [mapCommand, setMapCommand] = useState<{
     id: number;
@@ -503,6 +520,11 @@ export const NavigationView = ({
     }
   }
   const graphEdges = snapshot?.edges ?? [];
+  const archivedNodes = snapshot?.archivedNodes ?? [];
+  const selectedStructureArchivedNodes =
+    selectedSphereId == null
+      ? archivedNodes
+      : archivedNodes.filter((node) => node.sphere_id === selectedSphereId);
   const visibleSkillId = branchFilterSkill?.skill.id ?? null;
   const routeItems = useMemo(() => currentRoute?.items ?? [], [currentRoute]);
   const routeItemsByNodeId = useMemo(() => {
@@ -743,6 +765,45 @@ export const NavigationView = ({
     setFloatingMapPanel(null);
   };
 
+  const requestNodeArchive = (input: PendingNodeArchiveState) => {
+    setPendingNodeArchive(input);
+    setCanvasContextMenu(null);
+  };
+
+  const requestFocusedNodeArchive = (source: PendingNodeArchiveState['source']) => {
+    if (!focus?.node || isMapMutating || isEditorArchived) {
+      return;
+    }
+
+    requestNodeArchive({
+      nodeId: focus.node.id,
+      title: editorDraft?.title || focus.node.title,
+      source,
+    });
+  };
+
+  const confirmPendingNodeArchive = async () => {
+    if (!pendingNodeArchive || isMapMutating || isEditorBusy) {
+      return;
+    }
+
+    const archived =
+      pendingNodeArchive.source === 'editor' && pendingNodeArchive.draft
+        ? await onArchiveEditor(pendingNodeArchive.draft)
+        : await onArchiveNode({ nodeId: pendingNodeArchive.nodeId });
+
+    if (archived) {
+      setPendingNodeArchive(null);
+      clearMapTransientState();
+      setIsEditorExpanded(false);
+      setIsSummaryExpanded(false);
+    }
+  };
+
+  const cancelPendingNodeArchive = () => {
+    setPendingNodeArchive(null);
+  };
+
   useEffect(() => {
     if (routeFilterRequestId == null || routeFilterRequestId === handledRouteFilterRequestId.current) {
       return;
@@ -774,6 +835,14 @@ export const NavigationView = ({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (pendingNodeArchive != null) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          setPendingNodeArchive(null);
+        }
+        return;
+      }
+
       const intent = resolveMapShortcutIntent(
         {
           key: event.key,
@@ -786,11 +855,11 @@ export const NavigationView = ({
           isMapFocused,
           hasTextInputFocus:
             isInteractiveTextElement(event.target) || isInteractiveTextElement(document.activeElement),
-          hasOverlayOpen: isEditorExpanded || isSummaryExpanded,
+          hasOverlayOpen: isEditorExpanded || isSummaryExpanded || pendingNodeArchive != null,
           hasFocusNode: Boolean(focus?.node),
           hasSelectedEdge: resolvedSelectedEdgeId != null,
           hasSelectedNode: Boolean(focus?.node),
-          canUndo: true,
+          canUndo: canUndoMapMutation,
         },
       );
 
@@ -831,8 +900,13 @@ export const NavigationView = ({
           }
           break;
         case 'archive-selected-node':
-          if (focus?.node && !isMapMutating) {
-            void onArchiveNode({ nodeId: focus.node.id });
+          if (focus?.node && !isMapMutating && !isEditorArchived) {
+            setPendingNodeArchive({
+              nodeId: focus.node.id,
+              title: editorDraft?.title || focus.node.title,
+              source: 'shortcut',
+            });
+            setCanvasContextMenu(null);
           }
           break;
         case 'duplicate-selected-node':
@@ -861,6 +935,8 @@ export const NavigationView = ({
     };
   }, [
     focus?.node,
+    canUndoMapMutation,
+    isEditorArchived,
     isEditorExpanded,
     isLoading,
     isMapFocused,
@@ -871,8 +947,10 @@ export const NavigationView = ({
     onDuplicateNode,
     onRefresh,
     onUndoMapMutation,
+    pendingNodeArchive,
     resolvedSelectedEdgeId,
     runMapCommand,
+    editorDraft?.title,
   ]);
   const startInlineRename = (
     node: NavigationNodeSummary,
@@ -2689,16 +2767,7 @@ export const NavigationView = ({
                     </PixelButton>
                     <PixelButton
                       tone="ghost"
-                      onClick={async () => {
-                        if (!focus?.node || isMapMutating) {
-                          return;
-                        }
-
-                        const archived = await onArchiveNode({ nodeId: focus.node.id });
-                        if (archived) {
-                          clearMapTransientState();
-                        }
-                      }}
+                      onClick={() => requestFocusedNodeArchive('map')}
                       disabled={!focus?.node || isMapMutating || isEditorArchived}
                       style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                     >
@@ -2767,6 +2836,64 @@ export const NavigationView = ({
                 ) : null}
               </PixelSurface>
 
+              {(editorNotice || canUndoMapMutation) ? (
+                <PixelSurface frame="inset" padding="sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: 0 }}>
+                      {editorNotice ?? 'Последнее действие можно отменить.'}
+                    </PixelText>
+                    <PixelButton
+                      tone="ghost"
+                      onClick={() => void onUndoMapMutation()}
+                      disabled={!canUndoMapMutation || isMapMutating}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <RotateCcw size={14} /> Отменить
+                    </PixelButton>
+                  </div>
+                </PixelSurface>
+              ) : null}
+
+              {selectedStructureArchivedNodes.length > 0 ? (
+                <PixelSurface frame="inset" padding="sm">
+                  <PixelStack gap="xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                        Архив структуры
+                      </PixelText>
+                      <PixelText as="span" size="xs" color="textMuted" uppercase>
+                        {selectedStructureArchivedNodes.length} узл.
+                      </PixelText>
+                    </div>
+                    <div className="grid gap-2">
+                      {selectedStructureArchivedNodes.slice(0, 5).map((node) => (
+                        <div
+                          key={node.id}
+                          className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                        >
+                          <div className="min-w-0">
+                            <PixelText as="p" readable size="sm" style={{ margin: 0 }}>
+                              {node.title}
+                            </PixelText>
+                            <PixelText as="p" size="xs" color="textMuted" style={{ marginTop: 2 }}>
+                              {node.direction_name} / {node.skill_name}
+                            </PixelText>
+                          </div>
+                          <PixelButton
+                            tone="ghost"
+                            onClick={() => void onRestoreNode({ nodeId: node.id })}
+                            disabled={isMapMutating}
+                            style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                          >
+                            <RotateCcw size={14} /> Восстановить
+                          </PixelButton>
+                        </div>
+                      ))}
+                    </div>
+                  </PixelStack>
+                </PixelSurface>
+              ) : null}
+
               <div className="flex flex-wrap items-center gap-2">
                 {mapMutationPendingAction === 'create-node' ? (
                   <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
@@ -2793,6 +2920,13 @@ export const NavigationView = ({
                   <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
                       Удаляю связь…
+                    </PixelText>
+                  </PixelSurface>
+                ) : null}
+                {mapMutationPendingAction === 'restore-node' ? (
+                  <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
+                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                      Восстанавливаю узел...
                     </PixelText>
                   </PixelSurface>
                 ) : null}
@@ -3122,13 +3256,13 @@ export const NavigationView = ({
                           </PixelButton>
                           <PixelButton
                             tone="ghost"
-                            onClick={async () => {
-                              const archived = await onArchiveNode({ nodeId: contextNode.id });
-                              if (archived) {
-                                setCanvasContextMenu(null);
-                                clearMapTransientState();
-                              }
-                            }}
+                            onClick={() =>
+                              requestNodeArchive({
+                                nodeId: contextNode.id,
+                                title: contextNode.title,
+                                source: 'context-menu',
+                              })
+                            }
                             disabled={isMapMutating || contextNode.status === 'archived'}
                             style={{
                               justifyContent: 'flex-start',
@@ -3346,14 +3480,8 @@ export const NavigationView = ({
                     ) : null}
                     <PixelButton
                       tone="ghost"
-                      onClick={async () => {
-                        const archived = await onArchiveNode({ nodeId: focus.node.id });
-                        if (archived) {
-                          setFloatingMapPanel(null);
-                          setSelectedEdgeId(null);
-                        }
-                      }}
-                      disabled={isMapMutating}
+                      onClick={() => requestFocusedNodeArchive('inspector')}
+                      disabled={isMapMutating || isEditorArchived}
                       style={{
                         justifyContent: 'center',
                         minHeight: 30,
@@ -3614,7 +3742,12 @@ export const NavigationView = ({
                     <PixelButton
                       onClick={() => {
                         if (editorDraft) {
-                          onArchiveEditor(editorDraft);
+                          requestNodeArchive({
+                            nodeId: editorDraft.nodeId,
+                            title: editorDraft.title,
+                            source: 'editor',
+                            draft: editorDraft,
+                          });
                         }
                       }}
                       disabled={!editorDraft || isEditorBusy || isEditorArchived}
@@ -3668,6 +3801,74 @@ export const NavigationView = ({
         </div>
         ) : null}
       </section>
+
+      {pendingNodeArchive ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="absolute inset-0" onClick={cancelPendingNodeArchive} aria-hidden="true" />
+          <PixelSurface
+            frame="panel"
+            padding="lg"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Подтвердить архивирование: ${pendingNodeArchive.title}`}
+            className="relative w-full max-w-[520px]"
+          >
+            <PixelStack gap="md">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={22} className="mt-1 flex-shrink-0 text-[var(--pixel-danger)]" />
+                <div className="min-w-0">
+                  <PixelText as="p" size="xs" color="textDim" uppercase>
+                    Архивировать узел
+                  </PixelText>
+                  <PixelText as="h2" readable size="lg" style={{ marginTop: 4, fontWeight: 800 }}>
+                    {pendingNodeArchive.title}
+                  </PixelText>
+                </div>
+              </div>
+              <PixelText as="p" readable size="sm" color="textMuted">
+                Узел исчезнет с карты и из инспектора. Связи и маршрутные данные останутся в базе, а восстановление будет доступно через архив структуры.
+              </PixelText>
+              {isSystemCampaign ? (
+                <PixelSurface frame="ghost" padding="xs">
+                  <PixelText as="p" readable size="sm" color="textMuted">
+                    Это системная кампания. Проверьте название узла перед подтверждением.
+                  </PixelText>
+                </PixelSurface>
+              ) : null}
+              {error ? (
+                <PixelSurface frame="ghost" padding="xs">
+                  <PixelText as="p" readable size="sm" color="textMuted">
+                    {error}
+                  </PixelText>
+                </PixelSurface>
+              ) : null}
+              <div className="flex flex-wrap justify-end gap-2">
+                <PixelButton
+                  tone="ghost"
+                  onClick={cancelPendingNodeArchive}
+                  disabled={isMapMutating || isEditorBusy}
+                  style={{ minHeight: 34, padding: '7px 12px', gap: 6 }}
+                >
+                  <X size={15} /> Отмена
+                </PixelButton>
+                <PixelButton
+                  onClick={() => void confirmPendingNodeArchive()}
+                  disabled={isMapMutating || isEditorBusy}
+                  style={{
+                    minHeight: 34,
+                    padding: '7px 12px',
+                    gap: 6,
+                    color: 'var(--pixel-danger)',
+                    borderColor: 'var(--pixel-danger)',
+                  }}
+                >
+                  <Archive size={15} /> Подтвердить архив
+                </PixelButton>
+              </div>
+            </PixelStack>
+          </PixelSurface>
+        </div>
+      ) : null}
 
       {modalEditorDraft && focus?.node ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-200/10 p-4 backdrop-blur-md">
@@ -3880,7 +4081,14 @@ export const NavigationView = ({
                   <Copy size={16} /> {editorPendingAction === 'duplicate' ? 'Дублирую...' : 'Дублировать'}
                 </PixelButton>
                 <PixelButton
-                  onClick={() => onArchiveEditor(modalEditorDraft)}
+                  onClick={() =>
+                    requestNodeArchive({
+                      nodeId: modalEditorDraft.nodeId,
+                      title: modalEditorDraft.title,
+                      source: 'editor',
+                      draft: modalEditorDraft,
+                    })
+                  }
                   disabled={isEditorBusy || isEditorArchived}
                   style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                 >

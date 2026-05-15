@@ -154,12 +154,45 @@ export interface RouteProgressItem {
   current_mastery_rank: number;
   is_required: number;
   is_complete: boolean;
+  is_actionable?: boolean;
 }
 
 export interface TodaySnapshot {
   currentSpecialization: CareerSpecialization | null;
   careerStatus: 'active' | 'victory';
   mastery: CareerSnapshot['mastery'];
+  state: {
+    key:
+      | 'truly_empty'
+      | 'content_without_day_plan'
+      | 'free_mode'
+      | 'no_route'
+      | 'active_route'
+      | 'route_incomplete'
+      | 'completed_route';
+    label: string;
+    title: string;
+    reason: string;
+    primaryCta: {
+      action:
+        | 'create_starter'
+        | 'open_recommendation_map'
+        | 'open_route_map'
+        | 'open_route_node'
+        | 'complete_route'
+        | 'continue_route';
+      label: string;
+    };
+    content: {
+      hasContent: boolean;
+      nodeCount: number;
+      openActionCount: number;
+      totalXp: number;
+      verifiedNodeCount: number;
+      selfMarkedOnlyNodeCount: number;
+      routeNodeCount: number;
+    };
+  };
   race: {
     key: string;
     title: string;
@@ -483,6 +516,15 @@ export interface NavigationNodeSummary {
   next_action_title?: string | null;
 }
 
+export interface ArchivedNavigationNodeSummary extends NavigationNodeSummary {
+  sphere_id: number;
+  sphere_name: string;
+  direction_id: number;
+  direction_name: string;
+  skill_name: string;
+  updated_at?: string;
+}
+
 export interface NavigationGraphEdge {
   id: number;
   source_node_id: number;
@@ -520,6 +562,7 @@ export interface NavigationSphere {
 export interface NavigationSnapshot {
   spheres: NavigationSphere[];
   edges: NavigationGraphEdge[];
+  archivedNodes: ArchivedNavigationNodeSummary[];
   defaultSelection: RecommendationSelection | null;
 }
 

@@ -85,6 +85,38 @@ test('navigation snapshots are scoped to the selected campaign', async (t) => {
   assert.equal(secondNavigation.spheres[0].name, 'Campaign B');
 });
 
+test('node restore keeps archive operations scoped to the selected campaign', async (t) => {
+  const { database, campaignStore, nowService } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const first = await campaignStore.createUserCampaign({ name: 'Archive Scope A' });
+  const second = await campaignStore.createUserCampaign({ name: 'Archive Scope B' });
+  const firstDashboard = await nowService.createStarterWorkspace(first.id);
+  const secondDashboard = await nowService.createStarterWorkspace(second.id);
+
+  const firstNodeId = firstDashboard.primaryRecommendation.nodeId;
+  const secondNodeId = secondDashboard.primaryRecommendation.nodeId;
+  await nowService.archiveNodeEditor(first.id, firstNodeId);
+
+  const wrongCampaignRestore = await nowService.restoreNodeEditor(second.id, firstNodeId);
+  assert.equal(wrongCampaignRestore, null);
+
+  const secondNavigation = await nowService.getNavigationSnapshot(second.id);
+  assert.equal(secondNavigation.archivedNodes.some((node) => node.id === firstNodeId), false);
+  assert.equal(
+    secondNavigation.spheres
+      .flatMap((sphere) => sphere.directions)
+      .flatMap((direction) => direction.skills)
+      .flatMap((skill) => skill.nodes)
+      .some((node) => node.id === secondNodeId),
+    true,
+  );
+
+  const restored = await nowService.restoreNodeEditor(first.id, firstNodeId);
+  assert.equal(restored.node.id, firstNodeId);
+  assert.equal(restored.node.is_archived, 0);
+});
+
 test('starter and linear algebra workspaces can be created in multiple campaigns', async (t) => {
   const { database, campaignStore, nowService } = await setupCampaignService();
   t.after(() => database.close());
