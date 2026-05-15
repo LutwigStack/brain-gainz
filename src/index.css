@@ -185,6 +185,54 @@ textarea:disabled {
   background: color-mix(in srgb, var(--pixel-panel-inset) 88%, transparent) !important;
 }
 
+.inspector-primary-action {
+  border-color: color-mix(in srgb, var(--pixel-accent-muted) 68%, var(--pixel-line-soft)) !important;
+  background:
+    linear-gradient(180deg, rgba(247, 201, 72, 0.07), transparent 76%),
+    color-mix(in srgb, var(--pixel-panel-inset) 88%, transparent) !important;
+}
+
+.inspector-compact-details {
+  max-width: 100%;
+  color: var(--pixel-text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.inspector-compact-details summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.inspector-compact-details__body {
+  display: grid;
+  gap: 3px;
+  margin-top: 6px;
+  min-width: min(220px, 72vw);
+  color: var(--pixel-text-dim);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.inspector-danger-button {
+  background: rgba(248, 113, 113, 0.045) !important;
+  box-shadow: inset 2px 2px 0 rgba(248, 113, 113, 0.22), inset -2px -2px 0 var(--pixel-line) !important;
+}
+
+.inspector-self-mark-button {
+  border-style: dashed !important;
+  color: var(--pixel-text-muted) !important;
+}
+
+.inspector-mastery-status--verified {
+  box-shadow: inset 3px 0 0 var(--pixel-success);
+}
+
+.inspector-mastery-status--self {
+  border-style: dashed !important;
+  opacity: 0.88;
+}
+
 .debug-label {
   opacity: 0.72;
 }
@@ -252,6 +300,15 @@ textarea:disabled {
   .now-mastery-badge,
   .navigation-node-summary .grid {
     min-width: 0;
+  }
+
+  .inspector-compact-details__body {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .inspector-primary-action button {
+    width: 100%;
   }
 }
 
