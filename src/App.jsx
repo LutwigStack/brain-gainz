@@ -41,9 +41,6 @@ const WindRoseView = lazy(() =>
   import('./components/WindRoseView').then((module) => ({ default: module.WindRoseView })),
 );
 
-const rawPersistenceErrorPattern =
-  /\b(sql|sqlite|constraint|transaction|rollback|commit|begin|foreign key|database)\b|cannot rollback/i;
-
 const domainErrorMessages = new globalThis.Map([
   ['Passed assessment requires evidence payload.', 'Зачет требует результата проверки. Заполните evidence и повторите попытку.'],
   ['Assessment submit requires an idempotency key.', 'Не удалось подготовить попытку проверки. Повторите действие.'],
@@ -55,16 +52,12 @@ const domainErrorMessages = new globalThis.Map([
 
 const userActionErrorMessage = (error, fallback) => {
   const message = String(error?.message ?? error ?? '').trim();
-  if (!message || rawPersistenceErrorPattern.test(message)) {
-    return fallback;
-  }
-
-  return domainErrorMessages.get(message) ?? message;
+  return domainErrorMessages.get(message) ?? fallback;
 };
 
 const isExpectedActionError = (error) => {
   const message = String(error?.message ?? error ?? '').trim();
-  return !message || rawPersistenceErrorPattern.test(message) || domainErrorMessages.has(message);
+  return domainErrorMessages.has(message);
 };
 
 const logUnexpectedActionError = (label, error) => {
@@ -367,8 +360,8 @@ export default function App() {
       setActiveTab('now');
       await loadCampaigns();
     } catch (error) {
-      console.error('Failed to open campaign', error);
-      setCampaignError(error.message || 'Не удалось открыть кампанию.');
+      logUnexpectedActionError('Failed to open campaign', error);
+      setCampaignError(userActionErrorMessage(error, 'Не удалось открыть кампанию.'));
     } finally {
       setCampaignMutationPending(false);
     }
@@ -396,8 +389,8 @@ export default function App() {
         await handleOpenCampaign(campaign);
       }
     } catch (error) {
-      console.error('Failed to create campaign', error);
-      setCampaignError(error.message || 'Не удалось создать кампанию.');
+      logUnexpectedActionError('Failed to create campaign', error);
+      setCampaignError(userActionErrorMessage(error, 'Не удалось создать кампанию.'));
     } finally {
       setCampaignMutationPending(false);
     }
@@ -414,8 +407,8 @@ export default function App() {
       }
       await loadCampaigns();
     } catch (error) {
-      console.error('Failed to archive campaign', error);
-      setCampaignError(error.message || 'Не удалось архивировать кампанию.');
+      logUnexpectedActionError('Failed to archive campaign', error);
+      setCampaignError(userActionErrorMessage(error, 'Не удалось архивировать кампанию.'));
     } finally {
       setCampaignMutationPending(false);
     }
@@ -429,8 +422,8 @@ export default function App() {
       await db.restoreCampaign(campaign.id);
       await loadCampaigns();
     } catch (error) {
-      console.error('Failed to restore campaign', error);
-      setCampaignError(error.message || 'Не удалось восстановить кампанию.');
+      logUnexpectedActionError('Failed to restore campaign', error);
+      setCampaignError(userActionErrorMessage(error, 'Не удалось восстановить кампанию.'));
     } finally {
       setCampaignMutationPending(false);
     }
@@ -484,8 +477,8 @@ export default function App() {
         await loadNavigationFocus(nextSelection);
       }
     } catch (error) {
-      console.error('Failed to create starter workspace', error);
-      const message = error.message || 'Не удалось создать стартовый набор.';
+      logUnexpectedActionError('Failed to create starter workspace', error);
+      const message = userActionErrorMessage(error, 'Не удалось создать стартовый набор.');
       setNowError(message);
       setNavigationError(message);
     } finally {
@@ -563,8 +556,8 @@ export default function App() {
       await loadNavigationFocus(nextSelection);
       setActiveTab('map');
     } catch (error) {
-      console.error('Failed to create linear algebra graph', error);
-      const message = error.message || 'Не удалось создать граф алгебры.';
+      logUnexpectedActionError('Failed to create linear algebra graph', error);
+      const message = userActionErrorMessage(error, 'Не удалось создать граф алгебры.');
       setNowError(message);
       setNavigationError(message);
     } finally {
@@ -597,8 +590,8 @@ export default function App() {
       await loadNavigationFocus(nextSelection);
       setActiveTab('map');
     } catch (error) {
-      console.error('Failed to create structure', error);
-      const message = error.message || 'Не удалось создать структуру.';
+      logUnexpectedActionError('Failed to create structure', error);
+      const message = userActionErrorMessage(error, 'Не удалось создать структуру.');
       setNowError(message);
       setNavigationError(message);
     } finally {
@@ -759,8 +752,8 @@ export default function App() {
       const result = await persistNodeEditorDraft(draft);
       await applyNodeEditorMutationResult(result, 'Изменения узла сохранены в базе.');
     } catch (error) {
-      console.error('Failed to save node editor state', error);
-      setNavigationError(error.message || 'Не удалось сохранить узел.');
+      logUnexpectedActionError('Failed to save node editor state', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось сохранить узел.'));
     } finally {
       setNodeEditorPendingAction(null);
     }
@@ -795,8 +788,8 @@ export default function App() {
       );
       setActiveTab('map');
     } catch (error) {
-      console.error('Failed to duplicate node editor state', error);
-      setNavigationError(error.message || 'Не удалось создать дубль узла.');
+      logUnexpectedActionError('Failed to duplicate node editor state', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось создать дубль узла.'));
     } finally {
       setNodeEditorPendingAction(null);
     }
@@ -826,8 +819,8 @@ export default function App() {
       );
       setActiveTab('map');
     } catch (error) {
-      console.error('Failed to archive node editor state', error);
-      setNavigationError(error.message || 'Не удалось архивировать узел.');
+      logUnexpectedActionError('Failed to archive node editor state', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось архивировать узел.'));
     } finally {
       setNodeEditorPendingAction(null);
     }
@@ -859,8 +852,8 @@ export default function App() {
       setActiveTab('map');
       return true;
     } catch (error) {
-      console.error('Failed to create node from map', error);
-      setNavigationError(error.message || 'Не удалось создать узел на карте.');
+      logUnexpectedActionError('Failed to create node from map', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось создать узел на карте.'));
       await loadNavigationSnapshot(navigationSelection);
       return false;
     } finally {
@@ -921,8 +914,8 @@ export default function App() {
       setActiveTab('map');
       return true;
     } catch (error) {
-      console.error('Failed to create linked child node from map', error);
-      setNavigationError(error.message || 'Не удалось создать дочерний узел на карте.');
+      logUnexpectedActionError('Failed to create linked child node from map', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось создать дочерний узел на карте.'));
       await loadNavigationSnapshot(navigationSelection);
       return false;
     } finally {
@@ -952,8 +945,8 @@ export default function App() {
       }
       await applyNodeEditorMutationResult(result);
     } catch (error) {
-      console.error('Failed to move node on map', error);
-      setNavigationError(error.message || 'Не удалось сохранить новую позицию узла.');
+      logUnexpectedActionError('Failed to move node on map', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось сохранить новую позицию узла.'));
       await loadNavigationSnapshot(navigationSelection);
     } finally {
       setMapMutationPendingAction(null);
@@ -989,8 +982,8 @@ export default function App() {
       setActiveTab('map');
       return true;
     } catch (error) {
-      console.error('Failed to create edge from map', error);
-      setNavigationError(error.message || 'Не удалось создать связь на карте.');
+      logUnexpectedActionError('Failed to create edge from map', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось создать связь на карте.'));
       await loadNavigationSnapshot(navigationSelection);
       return false;
     } finally {
@@ -1026,8 +1019,8 @@ export default function App() {
       setActiveTab('map');
       return true;
     } catch (error) {
-      console.error('Failed to delete edge from map', error);
-      setNavigationError(error.message || 'Не удалось удалить связь.');
+      logUnexpectedActionError('Failed to delete edge from map', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось удалить связь.'));
       await loadNavigationSnapshot(navigationSelection);
       return false;
     } finally {
@@ -1054,8 +1047,8 @@ export default function App() {
       setActiveTab('map');
       return true;
     } catch (error) {
-      console.error('Failed to rename node from map', error);
-      setNavigationError(error.message || 'Не удалось переименовать узел.');
+      logUnexpectedActionError('Failed to rename node from map', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось переименовать узел.'));
       await loadNavigationSnapshot(navigationSelection);
       return false;
     } finally {
@@ -1079,8 +1072,8 @@ export default function App() {
       setActiveTab('map');
       return true;
     } catch (error) {
-      console.error('Failed to archive node from map', error);
-      setNavigationError(error.message || 'Не удалось архивировать узел.');
+      logUnexpectedActionError('Failed to archive node from map', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось архивировать узел.'));
       await loadNavigationSnapshot(navigationSelection);
       return false;
     } finally {
@@ -1106,8 +1099,8 @@ export default function App() {
       setActiveTab('map');
       return true;
     } catch (error) {
-      console.error('Failed to duplicate node from map', error);
-      setNavigationError(error.message || 'Не удалось дублировать узел.');
+      logUnexpectedActionError('Failed to duplicate node from map', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось дублировать узел.'));
       await loadNavigationSnapshot(navigationSelection);
       return false;
     } finally {
@@ -1164,8 +1157,8 @@ export default function App() {
       setActiveTab('map');
       return true;
     } catch (error) {
-      console.error('Failed to undo map mutation', error);
-      setNavigationError(error.message || 'Не удалось отменить последнее действие.');
+      logUnexpectedActionError('Failed to undo map mutation', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось отменить последнее действие.'));
       await loadNavigationSnapshot(navigationSelection);
       return false;
     } finally {
@@ -1186,8 +1179,8 @@ export default function App() {
       await loadNowDashboard(navigationSelection);
       await loadNavigationSnapshot(navigationSelection);
     } catch (error) {
-      console.error('Failed to start navigation session', error);
-      setNavigationError(error.message || 'Не удалось запустить сессию для узла.');
+      logUnexpectedActionError('Failed to start navigation session', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось запустить сессию для узла.'));
     } finally {
       setMapStartingSession(false);
     }
@@ -1205,8 +1198,8 @@ export default function App() {
       const result = await operation();
       await applyOutcomeResult(result);
     } catch (error) {
-      console.error(`Failed to ${type} navigation action`, error);
-      setNavigationError(error.message || 'Не удалось изменить шаг узла.');
+      logUnexpectedActionError(`Failed to ${type} navigation action`, error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось изменить шаг узла.'));
     } finally {
       setMapActiveOutcomeAction(null);
     }
@@ -1224,8 +1217,8 @@ export default function App() {
       const result = await db.completeNowActionInTodaySession(navigationSelection.actionId, selectedCampaignId);
       await applyOutcomeResult(result);
     } catch (error) {
-      console.error('Failed to complete navigation action', error);
-      setNavigationError(error.message || 'Не удалось завершить шаг узла.');
+      logUnexpectedActionError('Failed to complete navigation action', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось завершить шаг узла.'));
     } finally {
       setMapCompletingAction(false);
     }
@@ -1330,8 +1323,8 @@ export default function App() {
       await db.markSelfMastery(navigationFocus.node.id, masteryLevel, selectedCampaignId);
       await refreshNavigationMasterySurfaces('Отмечено без проверки: XP и завершение маршрута не начислены.');
     } catch (error) {
-      console.error('Failed to mark self mastery', error);
-      setNavigationError(error.message || 'Не удалось отметить прогресс узла.');
+      logUnexpectedActionError('Failed to mark self mastery', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось отметить прогресс узла.'));
     } finally {
       setNodeMasteryPendingAction(null);
     }
@@ -1429,8 +1422,8 @@ export default function App() {
       await loadNavigationSnapshot(navigationSelection);
       setNodeEditorNotice('Узел добавлен в текущий маршрут.');
     } catch (error) {
-      console.error('Failed to add node to specialization route', error);
-      setNavigationError(error.message || 'Не удалось добавить узел в маршрут.');
+      logUnexpectedActionError('Failed to add node to specialization route', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось добавить узел в маршрут.'));
     } finally {
       setRouteMutationPending(false);
     }
@@ -1478,8 +1471,8 @@ export default function App() {
       await loadNavigationSnapshot(navigationSelection);
       setNodeEditorNotice('Требование маршрута обновлено.');
     } catch (error) {
-      console.error('Failed to update specialization route node', error);
-      setNavigationError(error.message || 'Не удалось обновить требование маршрута.');
+      logUnexpectedActionError('Failed to update specialization route node', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось обновить требование маршрута.'));
     } finally {
       setRouteMutationPending(false);
     }
@@ -1500,8 +1493,8 @@ export default function App() {
       await loadNavigationSnapshot(navigationSelection);
       setNodeEditorNotice('Порядок маршрута обновлен.');
     } catch (error) {
-      console.error('Failed to reorder specialization route nodes', error);
-      setNavigationError(error.message || 'Не удалось изменить порядок маршрута.');
+      logUnexpectedActionError('Failed to reorder specialization route nodes', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось изменить порядок маршрута.'));
     } finally {
       setRouteMutationPending(false);
     }
@@ -1522,8 +1515,8 @@ export default function App() {
       await loadNavigationSnapshot(navigationSelection);
       setNodeEditorNotice('Узел убран из текущего маршрута.');
     } catch (error) {
-      console.error('Failed to remove specialization route node', error);
-      setNavigationError(error.message || 'Не удалось убрать узел из маршрута.');
+      logUnexpectedActionError('Failed to remove specialization route node', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось убрать узел из маршрута.'));
     } finally {
       setRouteMutationPending(false);
     }
@@ -1546,8 +1539,8 @@ export default function App() {
       await applyOutcomeResult(result);
       setActiveTab('map');
     } catch (error) {
-      console.error('Failed to create journal follow-up', error);
-      setNavigationError(error.message || 'Не удалось создать следующий шаг.');
+      logUnexpectedActionError('Failed to create journal follow-up', error);
+      setNavigationError(userActionErrorMessage(error, 'Не удалось создать следующий шаг.'));
     }
   };
 

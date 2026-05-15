@@ -3297,10 +3297,10 @@ export const NavigationView = ({
 
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label="Режим инспектора">
                     {([
-                      { id: 'overview', label: 'Overview' },
-                      { id: 'route', label: 'Route' },
-                      { id: 'assessment', label: 'Check' },
-                      { id: 'graph', label: 'Graph' },
+                      { id: 'overview', label: 'Обзор' },
+                      { id: 'route', label: 'Маршрут' },
+                      { id: 'assessment', label: 'Проверка' },
+                      { id: 'graph', label: 'Граф' },
                     ] as Array<{ id: InspectorMode; label: string }>).map((item) => (
                       <PixelButton
                         key={item.id}
