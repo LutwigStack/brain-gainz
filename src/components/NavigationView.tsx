@@ -49,6 +49,14 @@ import {
 import { resolveMapShortcutIntent } from '../application/map-shortcuts';
 import { buildGraphHierarchyIndex } from '../application/graph-hierarchy';
 import {
+  getAssessmentCheckTypeLabel,
+  getAssessmentEvidenceHint,
+  getAssessmentExpectedInputText,
+  getAssessmentResultIdLabel,
+  getAssessmentResultIdPlaceholder,
+  getAssessmentValidationState,
+} from './assessment-copy';
+import {
   canDuplicateNodeEditorDraft,
   createNodeEditorDraft,
   emptyCheckMetadataDraft,
@@ -1290,7 +1298,7 @@ export const NavigationView = ({
                   label="Критерий внешней строгой проверки"
                   value={check.expectedSummary}
                   onChange={(event) => updateCheck({ expectedSummary: event.target.value })}
-                  placeholder="Какой verifier result/verdict/evidence должен подтвердить зачет"
+                  placeholder="Какой результат внешней проверки подтверждает зачет"
                   disabled={isEditorBusy}
                   style={{ minHeight: 70, marginTop: 8 }}
                 />
@@ -1298,10 +1306,10 @@ export const NavigationView = ({
 
               {check.kind === 'llm_assisted' ? (
                 <PixelTextarea
-                  label="Rubric для ИИ-проверки"
+                  label="Критерии для ИИ-проверки"
                   value={check.rubric}
                   onChange={(event) => updateCheck({ rubric: event.target.value })}
-                  placeholder="По каким критериям verifier должен зачесть объяснение"
+                  placeholder="По каким критериям проверка должна зачесть объяснение"
                   disabled={isEditorBusy}
                   style={{ minHeight: 70, marginTop: 8 }}
                 />
@@ -1340,7 +1348,9 @@ export const NavigationView = ({
     const trimmedAnswer = assessmentAnswer.trim();
     const trimmedResultId = assessmentResultId.trim();
     const trimmedEvidence = assessmentEvidence.trim();
-    const hasVerifierEvidence = trimmedResultId.length >= 2 || trimmedEvidence.length >= 3;
+    const hasTechnicalResultId = trimmedResultId.length >= 2;
+    const hasVisibleEvidence = trimmedEvidence.length >= 3;
+    const hasVerifierEvidence = hasTechnicalResultId || hasVisibleEvidence;
     const hasChecklistSelection = checklistItems.some((item) => assessmentChecklistValues[item.id]);
     const canRunAutoStrictCheck = isAutoStrictCheck && (isChecklistCheck ? hasChecklistSelection : trimmedAnswer.length > 0);
     const canSubmitAssessmentPass = isAutoStrictCheck ? canRunAutoStrictCheck : hasVerifierEvidence;
@@ -1377,50 +1387,30 @@ export const NavigationView = ({
     const showAssessmentControls = !compact && mode === 'assessment';
     const hasAnswer = trimmedAnswer.length > 0;
     const requiresVerifierEvidence = !isAutoStrictCheck;
-    const checkTypeLabel =
-      strictCheckType === 'exact'
-        ? 'Точный ответ'
-        : strictCheckType === 'number'
-          ? 'Число'
-          : strictCheckType === 'contains'
-            ? 'Текст с обязательными терминами'
-            : strictCheckType === 'checklist'
-              ? 'Чек-лист'
-              : resolvedCheckMethod === 'strict'
-                ? 'Ручная строгая'
-                : 'ИИ-проверка';
-    const expectedInputText = isChecklistCheck
-      ? `Отметьте обязательные пункты: ${checklistItems.filter((item) => item.required).length}/${checklistItems.length}.`
-      : strictCheckType === 'exact'
-        ? `Введите точный ответ${mastery?.check.expectedSummary ? `: ${mastery.check.expectedSummary}` : '.'}`
-        : strictCheckType === 'number'
-          ? `Введите число${mastery?.check.expectedSummary ? `: ${mastery.check.expectedSummary}` : ''}.`
-          : strictCheckType === 'contains'
-            ? `Введите ответ с терминами: ${(mastery?.check.requiredTerms ?? []).join(', ') || 'термины не заданы'}.`
-            : resolvedCheckMethod === 'strict'
-              ? 'Приложите verifier result, verdict или evidence внешней строгой проверки.'
-              : 'Приложите verifier result, verdict или evidence ИИ-проверки.';
-    const verifierEvidenceHint = hasVerifierEvidence
-      ? 'Verifier evidence заполнен. Можно зачесть попытку.'
-      : 'Для зачета нужен verifier result, verdict или evidence.';
-    const assessmentValidationMessage = pendingAssessment
-      ? 'Проверка выполняется.'
-      : isAutoStrictCheck
-        ? canSubmitAssessmentPass
-          ? 'Готово: локальная строгая проверка сохранит попытку и результат.'
-          : isChecklistCheck
-            ? 'Отметьте выполненные пункты чек-листа.'
-            : `Заполните ответ для проверки: ${checkTypeLabel.toLocaleLowerCase()}.`
-        : hasVerifierEvidence
-          ? 'Готово: verifier evidence заполнен, можно зачесть.'
-          : hasAnswer
-            ? 'Ответ заполнен. Для зачета еще нужен verifier result, verdict или evidence.'
-            : 'Для зачета нужен verifier result, verdict или evidence. Ответ можно приложить как контекст.';
-    const assessmentValidationTone = pendingAssessment
-      ? 'var(--pixel-accent)'
-      : canSubmitAssessmentPass
-        ? 'var(--pixel-success)'
-        : 'var(--pixel-accent)';
+    const checkTypeLabel = getAssessmentCheckTypeLabel({ strictCheckType, resolvedCheckMethod });
+    const expectedInputText = getAssessmentExpectedInputText({
+      isChecklistCheck,
+      checklistItems,
+      strictCheckType,
+      expectedSummary: mastery?.check.expectedSummary,
+      requiredTerms: mastery?.check.requiredTerms,
+      resolvedCheckMethod,
+    });
+    const verifierEvidenceHint = getAssessmentEvidenceHint({ hasVisibleEvidence, hasTechnicalResultId });
+    const assessmentValidationState = getAssessmentValidationState({
+      pendingAssessment,
+      pendingSelfMark,
+      isEditorArchived,
+      isAutoStrictCheck,
+      isChecklistCheck,
+      canSubmitAssessmentPass,
+      checkTypeLabel,
+      hasAnswer,
+      hasVerifierEvidence,
+      resolvedCheckMethod,
+    });
+    const assessmentValidationTone =
+      assessmentValidationState.tone === 'success' ? 'var(--pixel-success)' : 'var(--pixel-accent)';
 
     return (
       <PixelSurface frame="inset" padding="sm">
@@ -1638,7 +1628,7 @@ export const NavigationView = ({
             <div className="grid gap-2">
               <div className="grid gap-2 sm:grid-cols-2">
                 <PixelSelect
-                  label="Цель проверки"
+                  label="Проверенный уровень"
                   value={assessmentTargetLevel}
                   onChange={(event) => setAssessmentTargetLevel(event.target.value as MasteryLevel)}
                   disabled={pendingAssessment}
@@ -1654,12 +1644,12 @@ export const NavigationView = ({
                 </PixelSelect>
 
                 <PixelSelect
-                  label="Тип проверки"
+                  label="Способ проверки"
                   value={resolvedCheckMethod}
                   onChange={(event) => setAssessmentCheckMethod(event.target.value as 'strict' | 'llm_assisted')}
                   disabled={pendingAssessment || strictLocked}
                   style={{ minHeight: 34, padding: '4px 8px' }}
-                  hint={strictLocked ? `Строгая: ${mastery?.check.strictCheckType}` : null}
+                  hint={strictLocked ? `Задан в критериях: ${checkTypeLabel}` : null}
                 >
                   <option value="strict">Строгая</option>
                   <option value="llm_assisted">ИИ-проверка</option>
@@ -1668,14 +1658,14 @@ export const NavigationView = ({
 
               <PixelSurface frame="ghost" padding="sm">
                 <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
-                  Что ожидается · {checkTypeLabel}
+                  Критерии · {checkTypeLabel}
                 </PixelText>
                 <PixelText as="p" readable size="sm" color="textMuted" style={{ marginTop: 6 }}>
                   {expectedInputText}
                 </PixelText>
                 {requiresVerifierEvidence ? (
                   <PixelText as="p" readable size="xs" color="accent" style={{ marginTop: 6 }}>
-                    Manual/LLM зачет требует внешнего verifier result/verdict/evidence.
+                    Для проверенного прогресса нужно подтверждение проверки.
                   </PixelText>
                 ) : null}
                   {mastery?.check.prompt ? (
@@ -1685,7 +1675,7 @@ export const NavigationView = ({
                   ) : null}
                   {mastery?.check.expectedSummary ? (
                     <PixelText as="p" size="xs" color="textMuted" style={{ marginTop: 6 }}>
-                      Ожидается: {mastery.check.expectedSummary}
+                      Критерий: {mastery.check.expectedSummary}
                     </PixelText>
                   ) : null}
                   {(mastery?.check.requiredTerms?.length ?? 0) > 0 ? (
@@ -1731,7 +1721,7 @@ export const NavigationView = ({
                 </div>
               ) : (
               <PixelTextarea
-                label={isAutoStrictCheck ? `Ответ для проверки · ${checkTypeLabel}` : 'Ответ / артефакт'}
+                label={isAutoStrictCheck ? `Ответ · ${checkTypeLabel}` : 'Ответ / артефакт'}
                 value={assessmentAnswer}
                 onChange={(event) => setAssessmentAnswer(event.target.value)}
                 placeholder={
@@ -1750,33 +1740,40 @@ export const NavigationView = ({
 
               {!isAutoStrictCheck ? (
                 <>
-              <PixelInput
-                label={resolvedCheckMethod === 'strict' ? 'ID strict-result' : 'ID LLM-result'}
-                value={assessmentResultId}
-                onChange={(event) => setAssessmentResultId(event.target.value)}
-                placeholder={resolvedCheckMethod === 'strict' ? 'strict_result_id / checker_run_id' : 'llm_result_id'}
-                disabled={pendingAssessment || isEditorArchived}
-                hint="Необязательно, если verdict/evidence заполнен ниже."
-                style={{ minHeight: 34, padding: '4px 8px' }}
-              />
-
               <PixelTextarea
-                label={resolvedCheckMethod === 'strict' ? 'Результат строгой проверки' : 'Результат ИИ-проверки'}
+                label="Подтверждение проверки"
                 value={assessmentEvidence}
                 onChange={(event) => setAssessmentEvidence(event.target.value)}
                 placeholder={
                   resolvedCheckMethod === 'strict'
-                    ? 'Например: checker run id, совпавший ответ, критерий пройден'
-                    : 'Например: id/вывод проверки, почему ответ засчитан'
+                    ? 'Например: внешний результат совпал с критерием, ответ подтвержден'
+                    : 'Например: краткий вывод проверки, почему ответ засчитан'
                 }
                 disabled={pendingAssessment || isEditorArchived}
                 hint={verifierEvidenceHint}
                 style={{ minHeight: 78 }}
               />
+
+              <details className="border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] px-2 py-2">
+                <summary className="cursor-pointer text-xs uppercase text-[var(--pixel-text-muted)]">
+                  Технические детали
+                </summary>
+                <div className="mt-2 grid gap-2">
+                  <PixelInput
+                    label={getAssessmentResultIdLabel(resolvedCheckMethod)}
+                    value={assessmentResultId}
+                    onChange={(event) => setAssessmentResultId(event.target.value)}
+                    placeholder={getAssessmentResultIdPlaceholder(resolvedCheckMethod)}
+                    disabled={pendingAssessment || isEditorArchived}
+                    hint="Для authoring и аудита. Обычному flow достаточно подтверждения проверки выше."
+                    style={{ minHeight: 34, padding: '4px 8px' }}
+                  />
+                </div>
+              </details>
                 </>
               ) : (
                 <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
-                  Локальная строгая проверка сама сохранит попытку, verdict и evidence.
+                  Локальная строгая проверка сама сохранит попытку и подтверждение проверки.
                 </PixelText>
               )}
 
@@ -1796,10 +1793,10 @@ export const NavigationView = ({
                   )}
                   <div>
                     <PixelText as="p" size="xs" color="textMuted" uppercase style={{ margin: 0 }}>
-                      Статус перед «Проверить»
+                      Готовность к действию
                     </PixelText>
                     <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
-                      {assessmentValidationMessage}
+                      {assessmentValidationState.message}
                     </PixelText>
                   </div>
                 </div>
@@ -1828,10 +1825,10 @@ export const NavigationView = ({
                       usesAutomaticStrictCheck: isAutoStrictCheck,
                     })
                   }
-                  disabled={!canSubmitAssessmentPass || pendingAssessment || pendingSelfMark || isEditorArchived}
+                  disabled={!assessmentValidationState.ready}
                   style={{ minHeight: 30, padding: '6px 8px', gap: 6 }}
                 >
-                  <ShieldCheck size={14} /> {pendingAssessment ? 'Проверяю…' : 'Проверить'}
+                  <ShieldCheck size={14} /> {pendingAssessment ? 'Проверяю…' : 'Сохранить прогресс'}
                 </PixelButton>
                 <PixelButton
                   tone="ghost"
@@ -1841,7 +1838,7 @@ export const NavigationView = ({
                       checkMethod: resolvedCheckMethod,
                       passed: false,
                       submittedAnswer: trimmedAnswer,
-                      feedbackSummary: trimmedEvidence || 'Проверка не пройдена.',
+                      feedbackSummary: trimmedEvidence || 'Попытка сохранена: пока не зачтено.',
                       evidencePayload: null,
                     })
                   }
@@ -1868,10 +1865,10 @@ export const NavigationView = ({
                     )}
                     <div>
                       <PixelText as="p" size="xs" color="textMuted" uppercase style={{ margin: 0 }}>
-                        Последняя попытка
+                        Попытка сохранена
                       </PixelText>
                       <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
-                        {mastery.latestAttempt.passed ? 'Зачтено' : 'Не зачтено · можно повторить'} ·{' '}
+                        {mastery.latestAttempt.passed ? 'Проверенный прогресс обновлен' : 'Учебный результат сохранен · можно повторить'} ·{' '}
                         {masteryLabel(mastery.latestAttempt.target_mastery_level)}
                       </PixelText>
                       {mastery.latestAttempt.feedback_summary ? (
@@ -1879,12 +1876,22 @@ export const NavigationView = ({
                           {mastery.latestAttempt.feedback_summary}
                         </PixelText>
                       ) : null}
+                      {mastery.latestAttempt.evidence_payload ? (
+                        <details className="mt-2 border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] px-2 py-2">
+                          <summary className="cursor-pointer text-xs uppercase text-[var(--pixel-text-muted)]">
+                            Технические детали попытки
+                          </summary>
+                          <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 6, wordBreak: 'break-word' }}>
+                            {mastery.latestAttempt.evidence_payload}
+                          </PixelText>
+                        </details>
+                      ) : null}
                     </div>
                   </div>
                 </PixelSurface>
               ) : null}
               <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
-                Самооценка нужна для памяти, но XP и маршрут закрывает только проверенный уровень с evidence.
+                Самооценка нужна для памяти. XP, маршрут и verified mastery обновляет только проверенный прогресс.
               </PixelText>
             </div>
           ) : null}

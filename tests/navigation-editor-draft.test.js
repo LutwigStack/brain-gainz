@@ -7,6 +7,9 @@ import {
   canDuplicateNodeEditorDraft,
   createNodeEditorDraft,
   emptyCheckMetadataDraft,
+  getCheckMetadataCriterionHint,
+  getCheckMetadataCriterionLabel,
+  getCheckMetadataPreview,
   getCheckMetadataValidationMessage,
   getNodeEditorCompletionCriteriaPreview,
   getNodeEditorLinksPreview,
@@ -401,6 +404,25 @@ test('check metadata draft parses and serializes supported check types', () => {
   };
   assert.equal(serializeCheckMetadataDraft(emptyChecklist), null);
   assert.match(getCheckMetadataValidationMessage(emptyChecklist), /обязательный пункт/);
+});
+
+test('check metadata authoring copy keeps technical verifier terms out of primary labels', () => {
+  const manualStrict = {
+    ...emptyCheckMetadataDraft('node:7:manual'),
+    kind: 'manual_strict',
+    expectedSummary: 'External proof review passes',
+  };
+  const llmAssisted = {
+    ...emptyCheckMetadataDraft('node:7:llm'),
+    kind: 'llm_assisted',
+    rubric: '',
+  };
+
+  assert.equal(getCheckMetadataCriterionLabel(manualStrict), 'Критерий внешней проверки');
+  assert.doesNotMatch(getCheckMetadataCriterionHint(manualStrict), /verifier|verdict|evidence|raw ID/i);
+  assert.equal(getCheckMetadataCriterionLabel(llmAssisted), 'Критерии для ИИ-проверки');
+  assert.doesNotMatch(getCheckMetadataCriterionHint(llmAssisted), /verifier|verdict|evidence|raw ID/i);
+  assert.equal(getCheckMetadataPreview(llmAssisted), 'ИИ-проверка: критерии не заданы');
 });
 
 test('invalid check metadata stays raw and is not lost', () => {

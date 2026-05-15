@@ -364,15 +364,15 @@ export const getCheckMetadataPreview = (draft: CheckMetadataDraft) => {
   if (draft.kind === 'contains') return `Термины: ${draft.requiredTerms.split(/\n|,/).filter((item) => item.trim()).length}`;
   if (draft.kind === 'checklist') return `Чек-лист: ${draft.checklistItems.length}`;
   if (draft.kind === 'manual_strict') return `Ручная строгая: ${draft.expectedSummary || 'критерий не задан'}`;
-  return `ИИ-проверка: ${draft.rubric || 'rubric не задан'}`;
+  return `ИИ-проверка: ${draft.rubric || 'критерии не заданы'}`;
 };
 
 export const getCheckMetadataValidationMessage = (draft: CheckMetadataDraft) => {
   if (draft.kind === 'exact' && !normalizeTextValue(draft.expectedAnswer)) {
-    return 'Добавьте ожидаемый точный ответ, иначе strict exact не сможет зачесть попытку.';
+    return 'Добавьте ожидаемый точный ответ, иначе точная проверка не сможет зачесть попытку.';
   }
   if (draft.kind === 'number' && parseFiniteNumber(draft.expectedNumber) == null) {
-    return 'Добавьте ожидаемое число, иначе strict number не сможет зачесть попытку.';
+    return 'Добавьте ожидаемое число, иначе числовая проверка не сможет зачесть попытку.';
   }
   if (
     draft.kind === 'contains' &&
@@ -381,7 +381,7 @@ export const getCheckMetadataValidationMessage = (draft: CheckMetadataDraft) => 
       .map((item) => item.trim())
       .filter(Boolean).length === 0
   ) {
-    return 'Добавьте хотя бы один обязательный термин, иначе strict contains не сможет зачесть попытку.';
+    return 'Добавьте хотя бы один обязательный термин, иначе проверка по терминам не сможет зачесть попытку.';
   }
   if (
     draft.kind === 'checklist' &&
@@ -394,7 +394,7 @@ export const getCheckMetadataValidationMessage = (draft: CheckMetadataDraft) => 
       .filter((item) => item.label)
       .some((item) => item.required)
   ) {
-    return 'Добавьте хотя бы один обязательный пункт чек-листа, иначе strict checklist не сможет зачесть попытку.';
+    return 'Добавьте хотя бы один обязательный пункт чек-листа, иначе проверка по чек-листу не сможет зачесть попытку.';
   }
   return null;
 };
@@ -404,8 +404,8 @@ export const getCheckMetadataCriterionLabel = (draft: CheckMetadataDraft) => {
   if (draft.kind === 'number') return 'Ожидаемое число и допуск';
   if (draft.kind === 'contains') return 'Обязательные элементы ответа';
   if (draft.kind === 'checklist') return 'Пункты чек-листа';
-  if (draft.kind === 'manual_strict') return 'Внешний verifier verdict';
-  if (draft.kind === 'llm_assisted') return 'Rubric для verifier';
+  if (draft.kind === 'manual_strict') return 'Критерий внешней проверки';
+  if (draft.kind === 'llm_assisted') return 'Критерии для ИИ-проверки';
   return 'Критерий';
 };
 
@@ -414,8 +414,8 @@ export const getCheckMetadataCriterionHint = (draft: CheckMetadataDraft) => {
   if (draft.kind === 'number') return 'Пользователь вводит число; проверка принимает значение в пределах допуска.';
   if (draft.kind === 'contains') return 'Пользователь вводит текст, где должны присутствовать все перечисленные термины.';
   if (draft.kind === 'checklist') return 'Пользователь отмечает выполненные пункты; обязательные пункты нужны для зачета.';
-  if (draft.kind === 'manual_strict') return 'Зачет требует ID или verdict внешней строгой проверки.';
-  if (draft.kind === 'llm_assisted') return 'Зачет требует результата ИИ-проверки или сохраненного verifier verdict.';
+  if (draft.kind === 'manual_strict') return 'Зачет требует подтверждения внешней строгой проверки; служебные значения можно хранить в технических деталях попытки.';
+  if (draft.kind === 'llm_assisted') return 'Зачет требует результата ИИ-проверки; служебные значения можно хранить в технических деталях попытки.';
   return 'Выберите тип проверки, чтобы задать критерий.';
 };
 
