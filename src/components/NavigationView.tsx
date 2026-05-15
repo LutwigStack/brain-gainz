@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Archive,
+  ArrowDown,
+  ArrowUp,
   CheckCircle2,
   ChevronRight,
   Compass,
   Copy,
+  Eye,
   GitBranch,
   Map as MapIcon,
   PauseCircle,
@@ -14,6 +17,7 @@ import {
   RefreshCw,
   Save,
   Scissors,
+  ShieldCheck,
   Target,
   X,
 } from 'lucide-react';
@@ -45,11 +49,17 @@ import { buildGraphHierarchyIndex } from '../application/graph-hierarchy';
 import {
   canDuplicateNodeEditorDraft,
   createNodeEditorDraft,
+  emptyCheckMetadataDraft,
+  getCheckMetadataCriterionHint,
+  getCheckMetadataCriterionLabel,
+  getCheckMetadataPreview,
+  getCheckMetadataValidationMessage,
   getNodeEditorCompletionCriteriaPreview,
   getNodeEditorLinksPreview,
   getNodeEditorRewardPreview,
   hasNodeEditorPersistedChanges,
   type NodeEditorDraft,
+  type CheckMetadataKind,
 } from './navigation-editor-draft';
 import type {
   BarrierType,
@@ -57,6 +67,9 @@ import type {
   NavigationGraphEdge,
   NavigationNodeSummary,
   NavigationSnapshot,
+  CareerSpecialization,
+  MasteryLevel,
+  TodaySnapshot,
   NodeAction,
   NodeFocusSnapshot,
   OutcomeAction,
@@ -114,12 +127,36 @@ const editorStatusOptions = [
   { value: 'done', label: 'Завершен' },
 ];
 
+const checkMetadataKindOptions: Array<{ value: CheckMetadataKind; label: string }> = [
+  { value: 'none', label: 'Нет проверки' },
+  { value: 'exact', label: 'Точный ответ' },
+  { value: 'number', label: 'Число' },
+  { value: 'contains', label: 'Содержит термины' },
+  { value: 'checklist', label: 'Чек-лист' },
+  { value: 'manual_strict', label: 'Ручная строгая' },
+  { value: 'llm_assisted', label: 'ИИ-проверка' },
+];
+
 const statusLabel = (value: string) => statusLabels[value] ?? value;
 const typeLabel = (value: string) => typeLabels[value] ?? value;
 const riskLabel = (value: string) => riskLabels[value] ?? value;
 
+const masteryLevelItems: Array<{ value: MasteryLevel; label: string; short: string }> = [
+  { value: 'seen', label: 'Видел', short: '1' },
+  { value: 'understood', label: 'Понял', short: '2' },
+  { value: 'remembered', label: 'Помню', short: '3' },
+  { value: 'applied', label: 'Применил', short: '4' },
+  { value: 'confirmed', label: 'Подтвердил', short: '5' },
+  { value: 'retained', label: 'Удержал', short: '6' },
+];
+
+const masteryLabel = (value: string | null | undefined) =>
+  masteryLevelItems.find((item) => item.value === value)?.label ?? 'Нет';
+
 const linearAlgebraTemplateValue = 'template:linear-algebra';
 type MapCanvasMode = 'free' | 'layers';
+type MapEditTool = 'select' | 'create' | 'connect';
+type InspectorMode = 'overview' | 'route' | 'assessment' | 'graph';
 type LayerParentSelection = number | 'top' | null;
 
 interface CanvasContextMenuState {
@@ -213,7 +250,35 @@ interface NavigationViewProps {
   onArchiveNode: (input: { nodeId: number }) => Promise<boolean> | boolean;
   onDuplicateNode: (input: { nodeId: number; x: number; y: number }) => Promise<boolean> | boolean;
   onUndoMapMutation: () => Promise<boolean> | boolean;
+  onMarkSelfMastery: (masteryLevel: MasteryLevel) => Promise<void> | void;
+  onSubmitAssessment: (input: {
+    targetMasteryLevel: MasteryLevel;
+    checkMethod: 'strict' | 'llm_assisted';
+    passed: boolean;
+    submittedAnswer?: string;
+    feedbackSummary?: string;
+    evidencePayload?: Record<string, unknown> | null;
+    checklistResults?: Record<string, boolean> | null;
+    usesAutomaticStrictCheck?: boolean;
+  }) => Promise<void> | void;
+  currentSpecialization: CareerSpecialization | null;
+  currentRoute: TodaySnapshot['route'] | null;
+  routeFilterRequestId?: number | null;
+  onRouteFilterRequestHandled?: () => void;
+  onAddNodeToRoute: (input: { nodeId: number; requiredMasteryLevel: MasteryLevel }) => Promise<void> | void;
+  onUpdateRouteNode: (input: {
+    routeNodeId: number;
+    requiredMasteryLevel?: MasteryLevel;
+    routeOrder?: number;
+    routeStage?: string | null;
+    routeLabel?: string | null;
+    isRequired?: boolean;
+  }) => Promise<void> | void;
+  onReorderRouteNodes: (input: { firstRouteNodeId: number; secondRouteNodeId: number }) => Promise<void> | void;
+  onRemoveRouteNode: (input: { routeNodeId: number }) => Promise<void> | void;
   editorPendingAction: 'save' | 'duplicate' | 'archive' | null;
+  masteryPendingAction: 'self-mark' | 'assessment' | null;
+  routeMutationPending: boolean;
   editorNotice: string | null;
   mapMutationPendingAction:
     | 'create-node'
@@ -267,7 +332,19 @@ export const NavigationView = ({
   onArchiveNode,
   onDuplicateNode,
   onUndoMapMutation,
+  onMarkSelfMastery,
+  onSubmitAssessment,
+  currentSpecialization,
+  currentRoute,
+  routeFilterRequestId = null,
+  onRouteFilterRequestHandled,
+  onAddNodeToRoute,
+  onUpdateRouteNode,
+  onReorderRouteNodes,
+  onRemoveRouteNode,
   editorPendingAction,
+  masteryPendingAction,
+  routeMutationPending,
   editorNotice,
   mapMutationPendingAction,
   branchFilterSkillId = null,
@@ -285,13 +362,29 @@ export const NavigationView = ({
   const [floatingMapPanel, setFloatingMapPanel] = useState<FloatingMapPanelState | null>(null);
   const [expandedTreeNodeIds, setExpandedTreeNodeIds] = useState<Set<number>>(new Set());
   const [isCreatingStructure, setIsCreatingStructure] = useState(false);
+  const [inspectorMode, setInspectorMode] = useState<InspectorMode>('overview');
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
+  const [assessmentTargetLevel, setAssessmentTargetLevel] = useState<MasteryLevel>('understood');
+  const [assessmentCheckMethod, setAssessmentCheckMethod] = useState<'strict' | 'llm_assisted'>('strict');
+  const [assessmentAnswer, setAssessmentAnswer] = useState('');
+  const [assessmentResultId, setAssessmentResultId] = useState('');
+  const [assessmentEvidence, setAssessmentEvidence] = useState('');
+  const [assessmentChecklistValues, setAssessmentChecklistValues] = useState<Record<string, boolean>>({});
+  const [routeRequiredLevel, setRouteRequiredLevel] = useState<MasteryLevel>('confirmed');
+  const [routeStageDrafts, setRouteStageDrafts] = useState<Record<number, string>>({});
+  const [isRouteFilterEnabled, setIsRouteFilterEnabled] = useState(false);
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
+  const [mapEditTool, setMapEditTool] = useState<MapEditTool>('select');
+  const [connectSourceNodeId, setConnectSourceNodeId] = useState<number | null>(null);
+  const [connectEdgeType, setConnectEdgeType] = useState<GraphEdgeType>('supports');
   const [isMapFocused, setIsMapFocused] = useState(false);
   const [mapCommand, setMapCommand] = useState<{
     id: number;
     type: 'focus-node' | 'fit-graph' | 'center-layer' | 'reset-camera';
   } | null>(null);
   const hasInitializedTreeExpansion = useRef(false);
+  const handledRouteFilterRequestId = useRef<number | null>(null);
+  const handledVisibleMapFitKey = useRef<string | null>(null);
 
   const clearMapTransientUi = () => {
     setCanvasContextMenu(null);
@@ -299,6 +392,8 @@ export const NavigationView = ({
     setInlineNodeEditor(null);
     setFloatingMapPanel(null);
     setSelectedEdgeId(null);
+    setMapEditTool('select');
+    setConnectSourceNodeId(null);
   };
 
   const updateDraft = (patch: Partial<NodeEditorDraft>) => {
@@ -379,6 +474,23 @@ export const NavigationView = ({
   const hasAuthoredCompletionCriteria = Boolean(editorDraft?.completionCriteria.trim());
   const hasAuthoredLinks = Boolean(editorDraft?.links.trim());
   const hasAuthoredReward = Boolean(editorDraft?.reward.trim());
+
+  useEffect(() => {
+    const routeTarget = focus?.mastery?.routeRequirement?.required_mastery_level;
+    setAssessmentTargetLevel(routeTarget ?? 'understood');
+    setRouteRequiredLevel(routeTarget ?? 'confirmed');
+    setAssessmentCheckMethod(focus?.mastery?.check?.isStrictCheckable ? 'strict' : 'llm_assisted');
+    setAssessmentAnswer('');
+    setAssessmentResultId('');
+    setAssessmentEvidence('');
+    setAssessmentChecklistValues({});
+  }, [
+    focus?.node?.id,
+    focus?.mastery?.routeRequirement?.required_mastery_level,
+    focus?.mastery?.check?.isStrictCheckable,
+    focus?.mastery?.latestAttempt?.id,
+  ]);
+
   const navigationNodeIndex = new globalThis.Map<number, NavigationNodeSummary>();
 
   for (const sphere of spheres) {
@@ -392,7 +504,104 @@ export const NavigationView = ({
   }
   const graphEdges = snapshot?.edges ?? [];
   const visibleSkillId = branchFilterSkill?.skill.id ?? null;
-  const mapModel = createGameViewModel(snapshot, focus, { visibleSphereId: selectedSphereId, visibleSkillId });
+  const routeItems = useMemo(() => currentRoute?.items ?? [], [currentRoute]);
+  const routeItemsByNodeId = useMemo(() => {
+    const items = new globalThis.Map<number, NonNullable<TodaySnapshot['route']>['items'][number]>();
+    for (const item of routeItems) {
+      if (item.node_id != null) {
+        items.set(item.node_id, item);
+      }
+    }
+    return items;
+  }, [routeItems]);
+  const routeNodeIds = useMemo(() => new Set(routeItemsByNodeId.keys()), [routeItemsByNodeId]);
+  const isRouteFilterActive = isRouteFilterEnabled && routeNodeIds.size > 0;
+  const routeNodeMetadata = useMemo(
+    () =>
+      routeItems
+        .filter((item) => item.node_id != null)
+        .map((item) => ({
+          nodeId: item.node_id as number,
+          routeNodeId: item.id,
+          isComplete: item.is_complete,
+          isCurrentTarget: currentRoute?.nextItem?.id === item.id,
+          routeOrder: item.route_order,
+          routeStage: item.route_stage,
+          requiredMasteryLevel: item.required_mastery_level,
+          currentMasteryRank: item.current_mastery_rank,
+        })),
+    [currentRoute?.nextItem?.id, routeItems],
+  );
+  const routeStageDraftValue = (item: NonNullable<TodaySnapshot['route']>['items'][number]) =>
+    Object.prototype.hasOwnProperty.call(routeStageDrafts, item.id)
+      ? routeStageDrafts[item.id]
+      : item.route_stage ?? '';
+  const saveRouteStageDraft = (item: NonNullable<TodaySnapshot['route']>['items'][number]) => {
+    const nextStage = routeStageDraftValue(item).trim();
+    const currentStage = item.route_stage ?? '';
+    if (nextStage !== currentStage) {
+      void onUpdateRouteNode({
+        routeNodeId: item.id,
+        routeStage: nextStage || null,
+      });
+    }
+    setRouteStageDrafts((current) => {
+      const next = { ...current };
+      delete next[item.id];
+      return next;
+    });
+  };
+  const moveRouteItem = async (itemIndex: number, direction: -1 | 1) => {
+    const currentItem = routeItems[itemIndex];
+    const targetItem = routeItems[itemIndex + direction];
+    if (!currentItem || !targetItem || routeMutationPending || currentSpecialization?.status !== 'active') {
+      return;
+    }
+
+    await onReorderRouteNodes({
+      firstRouteNodeId: currentItem.id,
+      secondRouteNodeId: targetItem.id,
+    });
+  };
+  const selectRouteItemOnMap = (item: NonNullable<TodaySnapshot['route']>['items'][number]) => {
+    if (item.node_id == null) {
+      return;
+    }
+    const node = navigationNodeIndex.get(item.node_id);
+    if (!node) {
+      return;
+    }
+    setMapCanvasMode('free');
+    setLayerParentNodeId(null);
+    setIsRouteFilterEnabled(true);
+    clearMapTransientState();
+    void handleCanvasNodeSelect(node);
+  };
+  const baseMapModel = createGameViewModel(snapshot, focus, {
+    visibleSphereId: isRouteFilterActive ? null : selectedSphereId,
+    visibleSkillId: isRouteFilterActive ? null : visibleSkillId,
+    visibleNodeIds: isRouteFilterActive ? routeNodeIds : null,
+  });
+  const mapModel = {
+    ...baseMapModel,
+    nodes: baseMapModel.nodes.map((node) => {
+      const routeItem = routeItemsByNodeId.get(node.id);
+      return routeItem
+        ? {
+            ...node,
+            isRouteNode: true,
+            isRouteComplete: routeItem.is_complete,
+            routeRequiredMasteryLevel: routeItem.required_mastery_level,
+            routeCurrentMasteryRank: routeItem.current_mastery_rank,
+          }
+        : node;
+    }),
+  };
+  useEffect(() => {
+    if (routeNodeIds.size === 0 && isRouteFilterEnabled) {
+      setIsRouteFilterEnabled(false);
+    }
+  }, [isRouteFilterEnabled, routeNodeIds.size]);
   const structureHierarchy = useMemo(
     () => buildGraphHierarchyIndex(snapshot, selectedSphereId, focus?.node?.id ?? null),
     [snapshot, selectedSphereId, focus?.node?.id],
@@ -510,15 +719,18 @@ export const NavigationView = ({
     }
 
     clearMapTransientState();
+    setMapCanvasMode('free');
+    setLayerParentNodeId(null);
+    setIsRouteFilterEnabled(false);
     onSelectNode(entryNode);
   };
 
-  const runMapCommand = (type: 'focus-node' | 'fit-graph' | 'center-layer' | 'reset-camera') => {
+  const runMapCommand = useCallback((type: 'focus-node' | 'fit-graph' | 'center-layer' | 'reset-camera') => {
     setMapCommand({
       id: Date.now(),
       type,
     });
-  };
+  }, []);
 
   const clearMapTransientState = () => {
     setSelectedEdgeId(null);
@@ -527,6 +739,25 @@ export const NavigationView = ({
     setInlineNodeEditor(null);
     setFloatingMapPanel(null);
   };
+
+  useEffect(() => {
+    if (routeFilterRequestId == null || routeFilterRequestId === handledRouteFilterRequestId.current) {
+      return;
+    }
+
+    handledRouteFilterRequestId.current = routeFilterRequestId;
+    onRouteFilterRequestHandled?.();
+
+    if (routeNodeIds.size === 0) {
+      return;
+    }
+
+    setMapCanvasMode('free');
+    setLayerParentNodeId(null);
+    setIsRouteFilterEnabled(true);
+    clearMapTransientState();
+    runMapCommand('fit-graph');
+  }, [onRouteFilterRequestHandled, routeFilterRequestId, routeNodeIds.size, runMapCommand]);
 
   const isInteractiveTextElement = (target: EventTarget | null) => {
     if (!(target instanceof Element)) {
@@ -638,6 +869,7 @@ export const NavigationView = ({
     onRefresh,
     onUndoMapMutation,
     resolvedSelectedEdgeId,
+    runMapCommand,
   ]);
   const startInlineRename = (
     node: NavigationNodeSummary,
@@ -714,6 +946,28 @@ export const NavigationView = ({
     setCanvasContextMenu(null);
     setInlineNodeEditor(null);
     setFloatingMapPanel(null);
+
+    if (mapEditTool === 'connect') {
+      if (connectSourceNodeId == null) {
+        setConnectSourceNodeId(node.id);
+        onSelectNode(node);
+        return;
+      }
+
+      if (connectSourceNodeId !== node.id && !isMapMutating) {
+        const created = await onCreateEdge({
+          sourceNodeId: connectSourceNodeId,
+          targetNodeId: node.id,
+          edgeType: connectEdgeType,
+        });
+        if (created) {
+          setMapEditTool('select');
+          setConnectSourceNodeId(null);
+        }
+        return;
+      }
+    }
+
     onSelectNode(node);
   };
 
@@ -724,6 +978,1027 @@ export const NavigationView = ({
     : selectedSphere
       ? `${selectedSphere.name} / ${totalDirections} направл. / ${totalSkills} навык.`
       : 'Создайте стартовый набор, чтобы карта стала рабочей.';
+  const renderCheckMetadataEditor = (draft: NodeEditorDraft) => {
+    const check = draft.checkMetadata;
+    const updateCheck = (patch: Partial<NodeEditorDraft['checkMetadata']>) =>
+      updateDraft({ checkMetadata: { ...check, ...patch } });
+    const resetKind = (kind: CheckMetadataKind) => {
+      if (kind === 'none') {
+        updateDraft({ checkMetadata: emptyCheckMetadataDraft(check.taskId) });
+        return;
+      }
+      updateDraft({
+        checkMetadata: {
+          ...emptyCheckMetadataDraft(check.taskId),
+          kind,
+          prompt: check.prompt,
+        },
+      });
+    };
+    const selectedKindLabel =
+      checkMetadataKindOptions.find((item) => item.value === check.kind)?.label ?? 'Проверка';
+    const checkValidationMessage = getCheckMetadataValidationMessage(check);
+
+    if (check.kind === 'raw') {
+      return (
+        <PixelSurface frame="inset" padding="sm">
+          <PixelStack gap="sm">
+            <PixelText as="p" size="xs" color="textDim" uppercase>
+              Проверка
+            </PixelText>
+            <PixelText as="p" readable size="xs" color="textMuted">
+              {check.invalidRaw
+                ? 'Метаданные проверки не разобраны. Raw JSON скрыт и сохранится без изменений.'
+                : 'Формат проверки пока не поддержан формой. Raw JSON скрыт и сохранится без изменений.'}
+            </PixelText>
+            <PixelButton
+              tone="ghost"
+              onClick={() => updateDraft({ checkMetadata: emptyCheckMetadataDraft(check.taskId) })}
+              disabled={isEditorBusy}
+              style={{ minHeight: 30, padding: '6px 10px', justifySelf: 'start' }}
+            >
+              Очистить проверку
+            </PixelButton>
+          </PixelStack>
+        </PixelSurface>
+      );
+    }
+
+    return (
+      <PixelSurface frame="inset" padding="sm">
+        <PixelStack gap="sm">
+          <PixelSurface frame="ghost" padding="xs">
+            <PixelText as="p" size="xs" color="textDim" uppercase>
+              1 · Тип
+            </PixelText>
+            <PixelSelect
+              label="Тип проверки"
+              value={check.kind}
+              onChange={(event) => resetKind(event.target.value as CheckMetadataKind)}
+              disabled={isEditorBusy}
+              style={{ marginTop: 8 }}
+            >
+              {checkMetadataKindOptions.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </PixelSelect>
+            <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 8 }}>
+              {selectedKindLabel}
+              {check.kind === 'none'
+                ? ': форма проверки скрыта, пока не выбран тип.'
+                : `: ${getCheckMetadataCriterionHint(check)}`}
+            </PixelText>
+          </PixelSurface>
+
+          {check.kind !== 'none' ? (
+            <PixelSurface frame="ghost" padding="xs">
+              <PixelText as="p" size="xs" color="textDim" uppercase>
+                2 · Задание
+              </PixelText>
+              <PixelTextarea
+                label="Task prompt"
+                value={check.prompt}
+                onChange={(event) => updateCheck({ prompt: event.target.value })}
+                placeholder="Что пользователь должен сделать перед проверкой"
+                disabled={isEditorBusy}
+                style={{ minHeight: 58, marginTop: 8 }}
+              />
+            </PixelSurface>
+          ) : null}
+
+          {check.kind !== 'none' ? (
+            <PixelSurface frame="ghost" padding="xs">
+              <PixelText as="p" size="xs" color="textDim" uppercase>
+                3 · {getCheckMetadataCriterionLabel(check)}
+              </PixelText>
+              <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 4 }}>
+                {getCheckMetadataCriterionHint(check)}
+              </PixelText>
+              {checkValidationMessage ? (
+                <PixelText as="p" readable size="xs" color="accent" style={{ marginTop: 6 }}>
+                  {checkValidationMessage}
+                </PixelText>
+              ) : null}
+
+              {check.kind === 'exact' ? (
+                <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <PixelInput
+                    label="Правильный ответ"
+                    value={check.expectedAnswer}
+                    onChange={(event) => updateCheck({ expectedAnswer: event.target.value })}
+                    placeholder="Например: determinant"
+                    disabled={isEditorBusy}
+                  />
+                  <label className="flex items-center gap-2 self-end border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={check.caseSensitive}
+                      onChange={(event) => updateCheck({ caseSensitive: event.target.checked })}
+                      disabled={isEditorBusy}
+                    />
+                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                      регистр важен
+                    </PixelText>
+                  </label>
+                </div>
+              ) : null}
+
+              {check.kind === 'number' ? (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <PixelInput
+                    label="Ожидаемое число"
+                    value={check.expectedNumber}
+                    onChange={(event) => updateCheck({ expectedNumber: event.target.value })}
+                    placeholder="42"
+                    disabled={isEditorBusy}
+                  />
+                  <PixelInput
+                    label="Допуск"
+                    value={check.tolerance}
+                    onChange={(event) => updateCheck({ tolerance: event.target.value })}
+                    placeholder="0"
+                    disabled={isEditorBusy}
+                  />
+                </div>
+              ) : null}
+
+              {check.kind === 'contains' ? (
+                <PixelTextarea
+                  label="Обязательные термины"
+                  value={check.requiredTerms}
+                  onChange={(event) => updateCheck({ requiredTerms: event.target.value })}
+                  placeholder="Один термин на строку или через запятую"
+                  disabled={isEditorBusy}
+                  style={{ minHeight: 70, marginTop: 8 }}
+                />
+              ) : null}
+
+              {check.kind === 'checklist' ? (
+                <div className="mt-2 grid gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                      Пункты чек-листа
+                    </PixelText>
+                    <PixelButton
+                      tone="ghost"
+                      onClick={() =>
+                        updateCheck({
+                          checklistItems: [
+                            ...check.checklistItems,
+                            { id: `item-${check.checklistItems.length + 1}`, label: '', required: true },
+                          ],
+                        })
+                      }
+                      disabled={isEditorBusy}
+                      style={{ minHeight: 28, padding: '4px 8px' }}
+                    >
+                      <Plus size={13} /> Добавить
+                    </PixelButton>
+                  </div>
+                  {check.checklistItems.map((item, index) => (
+                    <div key={`${item.id}-${index}`} className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                      <PixelInput
+                        label={`Пункт ${index + 1}`}
+                        value={item.label}
+                        onChange={(event) => {
+                          const nextItems = [...check.checklistItems];
+                          nextItems[index] = { ...item, label: event.target.value };
+                          updateCheck({ checklistItems: nextItems });
+                        }}
+                        disabled={isEditorBusy}
+                      />
+                      <label className="flex items-center gap-2 self-end border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={item.required}
+                          onChange={(event) => {
+                            const nextItems = [...check.checklistItems];
+                            nextItems[index] = { ...item, required: event.target.checked };
+                            updateCheck({ checklistItems: nextItems });
+                          }}
+                          disabled={isEditorBusy}
+                        />
+                        <PixelText as="span" size="xs" color="textMuted" uppercase>
+                          нужно
+                        </PixelText>
+                      </label>
+                      <PixelButton
+                        tone="ghost"
+                        onClick={() =>
+                          updateCheck({
+                            checklistItems: check.checklistItems.filter((_, itemIndex) => itemIndex !== index),
+                          })
+                        }
+                        disabled={isEditorBusy}
+                        style={{ minHeight: 34, alignSelf: 'end', padding: '6px 8px' }}
+                      >
+                        <X size={13} /> Убрать
+                      </PixelButton>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {check.kind === 'manual_strict' ? (
+                <PixelTextarea
+                  label="Критерий внешней строгой проверки"
+                  value={check.expectedSummary}
+                  onChange={(event) => updateCheck({ expectedSummary: event.target.value })}
+                  placeholder="Какой verifier result/verdict/evidence должен подтвердить зачет"
+                  disabled={isEditorBusy}
+                  style={{ minHeight: 70, marginTop: 8 }}
+                />
+              ) : null}
+
+              {check.kind === 'llm_assisted' ? (
+                <PixelTextarea
+                  label="Rubric для ИИ-проверки"
+                  value={check.rubric}
+                  onChange={(event) => updateCheck({ rubric: event.target.value })}
+                  placeholder="По каким критериям verifier должен зачесть объяснение"
+                  disabled={isEditorBusy}
+                  style={{ minHeight: 70, marginTop: 8 }}
+                />
+              ) : null}
+            </PixelSurface>
+          ) : null}
+
+          <PixelSurface frame="ghost" padding="xs">
+            <PixelText as="p" size="xs" color="textDim" uppercase>
+              4 · Preview
+            </PixelText>
+            <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 4 }}>
+              {getCheckMetadataPreview(check)}
+            </PixelText>
+          </PixelSurface>
+        </PixelStack>
+      </PixelSurface>
+    );
+  };
+
+  const renderMasteryPanel = (nodeFocus: NodeFocusSnapshot, mode: InspectorMode = 'overview', compact = false) => {
+    const mastery = nodeFocus.mastery ?? null;
+    const currentRank = mastery?.currentRank ?? 0;
+    const routeRequirement = mastery?.routeRequirement ?? null;
+    const routeItem = routeItemsByNodeId.get(nodeFocus.node.id) ?? null;
+    const activeRouteSpecialization =
+      currentSpecialization?.status === 'active' ? currentSpecialization : null;
+    const strictLocked = Boolean(mastery?.check.isStrictCheckable);
+    const resolvedCheckMethod = strictLocked ? 'strict' : assessmentCheckMethod;
+    const strictCheckType = mastery?.check.strictCheckType ?? null;
+    const isAutoStrictCheck = resolvedCheckMethod === 'strict' && Boolean(mastery?.check.isAutoStrictCheck);
+    const checklistItems = mastery?.check.checklistItems ?? [];
+    const isChecklistCheck = isAutoStrictCheck && strictCheckType === 'checklist' && checklistItems.length > 0;
+    const pendingSelfMark = masteryPendingAction === 'self-mark';
+    const pendingAssessment = masteryPendingAction === 'assessment';
+    const trimmedAnswer = assessmentAnswer.trim();
+    const trimmedResultId = assessmentResultId.trim();
+    const trimmedEvidence = assessmentEvidence.trim();
+    const hasVerifierEvidence = trimmedResultId.length >= 2 || trimmedEvidence.length >= 3;
+    const hasChecklistSelection = checklistItems.some((item) => assessmentChecklistValues[item.id]);
+    const canRunAutoStrictCheck = isAutoStrictCheck && (isChecklistCheck ? hasChecklistSelection : trimmedAnswer.length > 0);
+    const canSubmitAssessmentPass = isAutoStrictCheck ? canRunAutoStrictCheck : hasVerifierEvidence;
+    const evidencePayload = !isAutoStrictCheck && canSubmitAssessmentPass
+      ? resolvedCheckMethod === 'strict'
+        ? {
+            method: 'strict',
+            source: 'node-inspector',
+            strict_result_id: trimmedResultId || null,
+            result: trimmedEvidence || trimmedResultId,
+            answer: trimmedAnswer || null,
+            strict_check_type: strictLocked ? strictCheckType : null,
+            captured_at: new Date().toISOString(),
+          }
+        : {
+            method: 'llm_assisted',
+            source: 'node-inspector',
+            llm_result_id: trimmedResultId || null,
+            result: trimmedEvidence || trimmedResultId,
+            answer: trimmedAnswer || null,
+            captured_at: new Date().toISOString(),
+          }
+      : null;
+    const assessmentSubmittedAnswer = isChecklistCheck
+      ? JSON.stringify(
+          Object.entries(assessmentChecklistValues)
+            .filter(([, selected]) => selected)
+            .map(([id]) => id),
+        )
+      : trimmedAnswer;
+    const verifiedRank = mastery?.isVerified ? currentRank : 0;
+    const selfMarkedRank = mastery?.isSelfMarkedOnly ? currentRank : 0;
+    const showRouteControls = !compact && mode === 'route';
+    const showAssessmentControls = !compact && mode === 'assessment';
+    const hasAnswer = trimmedAnswer.length > 0;
+    const requiresVerifierEvidence = !isAutoStrictCheck;
+    const checkTypeLabel =
+      strictCheckType === 'exact'
+        ? 'Точный ответ'
+        : strictCheckType === 'number'
+          ? 'Число'
+          : strictCheckType === 'contains'
+            ? 'Текст с обязательными терминами'
+            : strictCheckType === 'checklist'
+              ? 'Чек-лист'
+              : resolvedCheckMethod === 'strict'
+                ? 'Ручная строгая'
+                : 'ИИ-проверка';
+    const expectedInputText = isChecklistCheck
+      ? `Отметьте обязательные пункты: ${checklistItems.filter((item) => item.required).length}/${checklistItems.length}.`
+      : strictCheckType === 'exact'
+        ? `Введите точный ответ${mastery?.check.expectedSummary ? `: ${mastery.check.expectedSummary}` : '.'}`
+        : strictCheckType === 'number'
+          ? `Введите число${mastery?.check.expectedSummary ? `: ${mastery.check.expectedSummary}` : ''}.`
+          : strictCheckType === 'contains'
+            ? `Введите ответ с терминами: ${(mastery?.check.requiredTerms ?? []).join(', ') || 'термины не заданы'}.`
+            : resolvedCheckMethod === 'strict'
+              ? 'Приложите verifier result, verdict или evidence внешней строгой проверки.'
+              : 'Приложите verifier result, verdict или evidence ИИ-проверки.';
+    const verifierEvidenceHint = hasVerifierEvidence
+      ? 'Verifier evidence заполнен. Можно зачесть попытку.'
+      : 'Для зачета нужен verifier result, verdict или evidence.';
+    const assessmentValidationMessage = pendingAssessment
+      ? 'Проверка выполняется.'
+      : isAutoStrictCheck
+        ? canSubmitAssessmentPass
+          ? 'Готово: локальная строгая проверка сохранит попытку и результат.'
+          : isChecklistCheck
+            ? 'Отметьте выполненные пункты чек-листа.'
+            : `Заполните ответ для проверки: ${checkTypeLabel.toLocaleLowerCase()}.`
+        : hasVerifierEvidence
+          ? 'Готово: verifier evidence заполнен, можно зачесть.'
+          : hasAnswer
+            ? 'Ответ заполнен. Для зачета еще нужен verifier result, verdict или evidence.'
+            : 'Для зачета нужен verifier result, verdict или evidence. Ответ можно приложить как контекст.';
+    const assessmentValidationTone = pendingAssessment
+      ? 'var(--pixel-accent)'
+      : canSubmitAssessmentPass
+        ? 'var(--pixel-success)'
+        : 'var(--pixel-accent)';
+
+    return (
+      <PixelSurface frame="inset" padding="sm">
+        <PixelStack gap="sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                Освоение
+              </PixelText>
+              <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
+                {masteryLabel(mastery?.currentLevel)}
+                {mastery?.isVerified ? ' · проверено' : mastery?.isSelfMarkedOnly ? ' · самооценка' : ' · нет проверки'}
+              </PixelText>
+            </div>
+            <div
+              className="inline-flex h-9 w-9 items-center justify-center border-2 text-xs font-bold"
+              style={{
+                borderColor: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-line-soft)',
+                color: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-text-muted)',
+                background: 'var(--pixel-panel-inset)',
+              }}
+            >
+              {currentRank || '-'}
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div
+              className="flex items-center justify-between gap-2 border p-2"
+              style={{
+                borderColor: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-line-soft)',
+                background: mastery?.isVerified ? 'rgba(110, 231, 183, 0.08)' : 'var(--pixel-panel-inset)',
+              }}
+            >
+              <span className="flex items-center gap-2">
+                <ShieldCheck size={14} style={{ color: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-text-dim)' }} />
+                <PixelText as="span" size="xs" color="textMuted" uppercase>
+                  проверено
+                </PixelText>
+              </span>
+              <PixelText as="span" size="xs" color={mastery?.isVerified ? 'success' : 'textDim'} uppercase>
+                {verifiedRank || '-'} · XP
+              </PixelText>
+            </div>
+            <div
+              className="flex items-center justify-between gap-2 border p-2"
+              style={{
+                borderColor: mastery?.isSelfMarkedOnly ? 'var(--pixel-accent)' : 'var(--pixel-line-soft)',
+                background: mastery?.isSelfMarkedOnly ? 'rgba(247, 201, 72, 0.08)' : 'var(--pixel-panel-inset)',
+              }}
+            >
+              <span className="flex items-center gap-2">
+                <Eye size={14} style={{ color: mastery?.isSelfMarkedOnly ? 'var(--pixel-accent)' : 'var(--pixel-text-dim)' }} />
+                <PixelText as="span" size="xs" color="textMuted" uppercase>
+                  сам отметил
+                </PixelText>
+              </span>
+              <PixelText as="span" size="xs" color={mastery?.isSelfMarkedOnly ? 'accent' : 'textDim'} uppercase>
+                {selfMarkedRank || '-'} · без XP
+              </PixelText>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-6 gap-1">
+            {masteryLevelItems.map((item, index) => {
+              const isReached = currentRank >= index + 1;
+              const isVerifiedReached = Boolean(mastery?.isVerified && isReached);
+              const isSelfReached = Boolean(mastery?.isSelfMarkedOnly && isReached);
+              const isRequired = routeRequirement?.required_mastery_level === item.value;
+              return (
+                <div
+                  key={item.value}
+                  title={item.label}
+                  className="flex h-8 items-center justify-center border text-[10px] font-bold"
+                  style={{
+                    borderColor: isRequired
+                      ? 'var(--pixel-accent)'
+                      : isVerifiedReached
+                        ? 'var(--pixel-success)'
+                        : isSelfReached
+                          ? 'var(--pixel-accent-muted)'
+                        : 'var(--pixel-line-soft)',
+                    background: isVerifiedReached
+                      ? 'rgba(45, 212, 191, 0.14)'
+                      : isSelfReached
+                        ? 'rgba(247, 201, 72, 0.12)'
+                        : 'var(--pixel-panel-inset)',
+                    color: isRequired
+                      ? 'var(--pixel-accent-glow)'
+                      : isVerifiedReached
+                        ? 'var(--pixel-success)'
+                        : isSelfReached
+                          ? 'var(--pixel-accent)'
+                        : 'var(--pixel-text-dim)',
+                  }}
+                >
+                  {item.short}
+                </div>
+              );
+            })}
+          </div>
+
+          {routeRequirement ? (
+            <div className="flex items-center justify-between gap-2">
+              <PixelText as="span" size="xs" color="textMuted">
+                Маршрут: {routeRequirement.specialization_name}
+              </PixelText>
+              <PixelText as="span" size="xs" color="accent" uppercase>
+                нужно {masteryLabel(routeRequirement.required_mastery_level)}
+              </PixelText>
+            </div>
+          ) : null}
+
+          {showRouteControls && routeItem && activeRouteSpecialization ? (
+            <div className="grid gap-2 border p-2" style={{ borderColor: 'var(--pixel-line-soft)' }}>
+              <div className="flex items-center justify-between gap-2">
+                <PixelText as="span" size="xs" color="textMuted">
+                  Настройка маршрута
+                </PixelText>
+                <PixelText as="span" size="xs" color={routeItem.is_complete ? 'success' : 'accent'} uppercase>
+                  {routeItem.is_complete ? 'готово' : 'в работе'}
+                </PixelText>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                <PixelSelect
+                  label="Требование"
+                  value={routeRequiredLevel}
+                  onChange={(event) => setRouteRequiredLevel(event.target.value as MasteryLevel)}
+                  disabled={routeMutationPending || isEditorArchived}
+                  style={{ minHeight: 34, padding: '4px 8px' }}
+                >
+                  {masteryLevelItems
+                    .filter((item) => item.value !== 'seen')
+                    .map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                </PixelSelect>
+                <PixelButton
+                  tone="accent"
+                  onClick={() =>
+                    void onUpdateRouteNode({
+                      routeNodeId: routeItem.id,
+                      requiredMasteryLevel: routeRequiredLevel,
+                    })
+                  }
+                  disabled={routeMutationPending || isEditorArchived}
+                  style={{ minHeight: 34, padding: '6px 10px', alignSelf: 'end', gap: 6 }}
+                >
+                  <Save size={14} /> Сохранить
+                </PixelButton>
+                <PixelButton
+                  tone="ghost"
+                  onClick={() => void onRemoveRouteNode({ routeNodeId: routeItem.id })}
+                  disabled={routeMutationPending || isEditorArchived}
+                  style={{ minHeight: 34, padding: '6px 10px', alignSelf: 'end', gap: 6 }}
+                >
+                  <X size={14} /> Убрать
+                </PixelButton>
+              </div>
+            </div>
+          ) : null}
+
+          {showRouteControls && !routeRequirement && activeRouteSpecialization ? (
+            <div className="grid gap-2 border p-2" style={{ borderColor: 'var(--pixel-line-soft)' }}>
+              <div className="flex items-center justify-between gap-2">
+                <PixelText as="span" size="xs" color="textMuted">
+                  Маршрут: {activeRouteSpecialization.name}
+                </PixelText>
+                <PixelText as="span" size="xs" color="accent" uppercase>
+                  не в маршруте
+                </PixelText>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <PixelSelect
+                  label="Требование"
+                  value={routeRequiredLevel}
+                  onChange={(event) => setRouteRequiredLevel(event.target.value as MasteryLevel)}
+                  disabled={routeMutationPending || isEditorArchived}
+                  style={{ minHeight: 34, padding: '4px 8px' }}
+                >
+                  {masteryLevelItems
+                    .filter((item) => item.value !== 'seen')
+                    .map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                </PixelSelect>
+                <PixelButton
+                  tone="accent"
+                  onClick={() =>
+                    void onAddNodeToRoute({
+                      nodeId: nodeFocus.node.id,
+                      requiredMasteryLevel: routeRequiredLevel,
+                    })
+                  }
+                  disabled={routeMutationPending || isEditorArchived}
+                  style={{ minHeight: 34, padding: '6px 10px', alignSelf: 'end', gap: 6 }}
+                >
+                  <GitBranch size={14} /> {routeMutationPending ? 'Добавляю…' : 'В маршрут'}
+                </PixelButton>
+              </div>
+            </div>
+          ) : null}
+
+          {showRouteControls && !routeRequirement && currentSpecialization && currentSpecialization.status !== 'active' ? (
+            <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+              Текущий маршрут завершен. Новый маршрут можно начать в Today.
+            </PixelText>
+          ) : null}
+
+          {showAssessmentControls ? (
+            <div className="grid gap-2">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <PixelSelect
+                  label="Цель проверки"
+                  value={assessmentTargetLevel}
+                  onChange={(event) => setAssessmentTargetLevel(event.target.value as MasteryLevel)}
+                  disabled={pendingAssessment}
+                  style={{ minHeight: 34, padding: '4px 8px' }}
+                >
+                  {masteryLevelItems
+                    .filter((item) => item.value !== 'seen')
+                    .map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                </PixelSelect>
+
+                <PixelSelect
+                  label="Тип проверки"
+                  value={resolvedCheckMethod}
+                  onChange={(event) => setAssessmentCheckMethod(event.target.value as 'strict' | 'llm_assisted')}
+                  disabled={pendingAssessment || strictLocked}
+                  style={{ minHeight: 34, padding: '4px 8px' }}
+                  hint={strictLocked ? `Строгая: ${mastery?.check.strictCheckType}` : null}
+                >
+                  <option value="strict">Строгая</option>
+                  <option value="llm_assisted">ИИ-проверка</option>
+                </PixelSelect>
+              </div>
+
+              <PixelSurface frame="ghost" padding="sm">
+                <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                  Что ожидается · {checkTypeLabel}
+                </PixelText>
+                <PixelText as="p" readable size="sm" color="textMuted" style={{ marginTop: 6 }}>
+                  {expectedInputText}
+                </PixelText>
+                {requiresVerifierEvidence ? (
+                  <PixelText as="p" readable size="xs" color="accent" style={{ marginTop: 6 }}>
+                    Manual/LLM зачет требует внешнего verifier result/verdict/evidence.
+                  </PixelText>
+                ) : null}
+                  {mastery?.check.prompt ? (
+                    <PixelText as="p" readable size="sm" style={{ marginTop: 8 }}>
+                      {mastery.check.prompt}
+                    </PixelText>
+                  ) : null}
+                  {mastery?.check.expectedSummary ? (
+                    <PixelText as="p" size="xs" color="textMuted" style={{ marginTop: 6 }}>
+                      Ожидается: {mastery.check.expectedSummary}
+                    </PixelText>
+                  ) : null}
+                  {(mastery?.check.requiredTerms?.length ?? 0) > 0 ? (
+                    <PixelText as="p" size="xs" color="textMuted" style={{ marginTop: 6 }}>
+                      Обязательные элементы: {mastery.check.requiredTerms?.join(', ')}
+                    </PixelText>
+                  ) : null}
+                </PixelSurface>
+
+              {isChecklistCheck ? (
+                <div className="grid gap-2">
+                  <PixelText as="p" size="xs" color="textMuted" uppercase style={{ margin: 0 }}>
+                    Чек-лист проверки
+                  </PixelText>
+                  <div className="grid gap-1">
+                    {checklistItems.map((item) => (
+                      <label
+                        key={item.id}
+                        className="flex items-center gap-2 border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] px-2 py-2"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={Boolean(assessmentChecklistValues[item.id])}
+                          onChange={(event) =>
+                            setAssessmentChecklistValues((current) => ({
+                              ...current,
+                              [item.id]: event.target.checked,
+                            }))
+                          }
+                          disabled={pendingAssessment || isEditorArchived}
+                        />
+                        <PixelText as="span" readable size="sm">
+                          {item.label}
+                        </PixelText>
+                        {item.required ? (
+                          <PixelText as="span" size="xs" color="accent" uppercase>
+                            нужно
+                          </PixelText>
+                        ) : null}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+              <PixelTextarea
+                label={isAutoStrictCheck ? `Ответ для проверки · ${checkTypeLabel}` : 'Ответ / артефакт'}
+                value={assessmentAnswer}
+                onChange={(event) => setAssessmentAnswer(event.target.value)}
+                placeholder={
+                  strictCheckType === 'exact'
+                    ? 'Введите точный ответ'
+                    : strictCheckType === 'number'
+                      ? 'Введите число'
+                      : strictCheckType === 'contains'
+                        ? 'Введите текст с обязательными терминами'
+                        : 'Коротко: что сделал пользователь, ссылка, формула, решение или проверяемый результат'
+                }
+                disabled={pendingAssessment || isEditorArchived}
+                style={{ minHeight: 68 }}
+              />
+              )}
+
+              {!isAutoStrictCheck ? (
+                <>
+              <PixelInput
+                label={resolvedCheckMethod === 'strict' ? 'ID strict-result' : 'ID LLM-result'}
+                value={assessmentResultId}
+                onChange={(event) => setAssessmentResultId(event.target.value)}
+                placeholder={resolvedCheckMethod === 'strict' ? 'strict_result_id / checker_run_id' : 'llm_result_id'}
+                disabled={pendingAssessment || isEditorArchived}
+                hint="Необязательно, если verdict/evidence заполнен ниже."
+                style={{ minHeight: 34, padding: '4px 8px' }}
+              />
+
+              <PixelTextarea
+                label={resolvedCheckMethod === 'strict' ? 'Результат строгой проверки' : 'Результат ИИ-проверки'}
+                value={assessmentEvidence}
+                onChange={(event) => setAssessmentEvidence(event.target.value)}
+                placeholder={
+                  resolvedCheckMethod === 'strict'
+                    ? 'Например: checker run id, совпавший ответ, критерий пройден'
+                    : 'Например: id/вывод проверки, почему ответ засчитан'
+                }
+                disabled={pendingAssessment || isEditorArchived}
+                hint={verifierEvidenceHint}
+                style={{ minHeight: 78 }}
+              />
+                </>
+              ) : (
+                <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+                  Локальная строгая проверка сама сохранит попытку, verdict и evidence.
+                </PixelText>
+              )}
+
+              <PixelSurface
+                frame="ghost"
+                padding="xs"
+                style={{
+                  borderColor: assessmentValidationTone,
+                  boxShadow: `inset 2px 2px 0 var(--pixel-line), inset -2px -2px 0 ${assessmentValidationTone}`,
+                }}
+              >
+                <div className="flex items-start gap-2">
+                  {canSubmitAssessmentPass ? (
+                    <CheckCircle2 size={14} style={{ color: 'var(--pixel-success)', marginTop: 2 }} />
+                  ) : (
+                    <ShieldCheck size={14} style={{ color: assessmentValidationTone, marginTop: 2 }} />
+                  )}
+                  <div>
+                    <PixelText as="p" size="xs" color="textMuted" uppercase style={{ margin: 0 }}>
+                      Статус перед «Проверить»
+                    </PixelText>
+                    <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
+                      {assessmentValidationMessage}
+                    </PixelText>
+                  </div>
+                </div>
+              </PixelSurface>
+
+              <div className="grid grid-cols-3 gap-2">
+                <PixelButton
+                  tone="ghost"
+                  onClick={() => void onMarkSelfMastery('seen')}
+                  disabled={pendingSelfMark || pendingAssessment || isEditorArchived}
+                  style={{ minHeight: 30, padding: '6px 8px', gap: 6 }}
+                >
+                  <Eye size={14} /> Сам отметил
+                </PixelButton>
+                <PixelButton
+                  tone="accent"
+                  onClick={() =>
+                    void onSubmitAssessment({
+                      targetMasteryLevel: assessmentTargetLevel,
+                      checkMethod: resolvedCheckMethod,
+                      passed: true,
+                      submittedAnswer: assessmentSubmittedAnswer,
+                      feedbackSummary: trimmedEvidence || trimmedResultId,
+                      evidencePayload,
+                      checklistResults: isChecklistCheck ? assessmentChecklistValues : null,
+                      usesAutomaticStrictCheck: isAutoStrictCheck,
+                    })
+                  }
+                  disabled={!canSubmitAssessmentPass || pendingAssessment || pendingSelfMark || isEditorArchived}
+                  style={{ minHeight: 30, padding: '6px 8px', gap: 6 }}
+                >
+                  <ShieldCheck size={14} /> {pendingAssessment ? 'Проверяю…' : 'Проверить'}
+                </PixelButton>
+                <PixelButton
+                  tone="ghost"
+                  onClick={() =>
+                    void onSubmitAssessment({
+                      targetMasteryLevel: assessmentTargetLevel,
+                      checkMethod: resolvedCheckMethod,
+                      passed: false,
+                      submittedAnswer: trimmedAnswer,
+                      feedbackSummary: trimmedEvidence || 'Проверка не пройдена.',
+                      evidencePayload: null,
+                    })
+                  }
+                  disabled={isAutoStrictCheck || pendingAssessment || pendingSelfMark || isEditorArchived}
+                  style={{ minHeight: 30, padding: '6px 8px', gap: 6 }}
+                >
+                  <X size={14} /> Не прошел
+                </PixelButton>
+              </div>
+
+              {mastery?.latestAttempt ? (
+                <PixelSurface
+                  frame="ghost"
+                  padding="xs"
+                  style={{
+                    borderColor: mastery.latestAttempt.passed ? 'var(--pixel-success)' : 'var(--pixel-accent)',
+                  }}
+                >
+                  <div className="flex items-start gap-2">
+                    {mastery.latestAttempt.passed ? (
+                      <CheckCircle2 size={14} style={{ color: 'var(--pixel-success)', marginTop: 2 }} />
+                    ) : (
+                      <X size={14} style={{ color: 'var(--pixel-accent)', marginTop: 2 }} />
+                    )}
+                    <div>
+                      <PixelText as="p" size="xs" color="textMuted" uppercase style={{ margin: 0 }}>
+                        Последняя попытка
+                      </PixelText>
+                      <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
+                        {mastery.latestAttempt.passed ? 'Зачтено' : 'Не зачтено · можно повторить'} ·{' '}
+                        {masteryLabel(mastery.latestAttempt.target_mastery_level)}
+                      </PixelText>
+                      {mastery.latestAttempt.feedback_summary ? (
+                        <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 4 }}>
+                          {mastery.latestAttempt.feedback_summary}
+                        </PixelText>
+                      ) : null}
+                    </div>
+                  </div>
+                </PixelSurface>
+              ) : null}
+              <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+                Самооценка нужна для памяти, но XP и маршрут закрывает только проверенный уровень с evidence.
+              </PixelText>
+            </div>
+          ) : null}
+        </PixelStack>
+      </PixelSurface>
+    );
+  };
+  const renderRouteAuthoringPanel = () => {
+    if (!currentSpecialization) {
+      return null;
+    }
+
+    const isRouteEditable = currentSpecialization.status === 'active';
+
+    return (
+      <PixelSurface frame="panel" padding="sm" className="min-w-0">
+        <PixelPanelHeader
+          eyebrow={
+            <span className="flex items-center gap-2">
+              <Target size={14} className="text-[var(--pixel-accent)]" /> Маршрут
+            </span>
+          }
+          title={currentSpecialization.name}
+          description={
+            isRouteEditable
+              ? 'Порядок, этапы и требования текущего маршрута.'
+              : 'Завершенный маршрут доступен только для просмотра.'
+          }
+          aside={
+            routeNodeIds.size > 0 ? (
+              <PixelButton
+                tone={isRouteFilterActive ? 'accent' : 'ghost'}
+                onClick={() => {
+                  setMapCanvasMode('free');
+                  setLayerParentNodeId(null);
+                  setIsRouteFilterEnabled((value) => !value);
+                  clearMapTransientState();
+                }}
+                style={{ minHeight: 28, padding: '5px 8px', gap: 6 }}
+              >
+                <MapIcon size={13} /> {isRouteFilterActive ? 'Вся карта' : 'На карте'}
+              </PixelButton>
+            ) : null
+          }
+        />
+
+        {routeItems.length === 0 ? (
+          <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 12 }}>
+            В маршруте пока нет узлов. Выберите узел на карте и добавьте его через инспектор.
+          </PixelText>
+        ) : (
+          <div
+            className="mt-3 grid max-h-[34dvh] min-w-0 gap-2 overflow-y-auto overflow-x-hidden pr-1"
+            style={{ scrollbarGutter: 'stable' }}
+          >
+            {routeItems.map((item, index) => {
+              const node = item.node_id != null ? navigationNodeIndex.get(item.node_id) : null;
+              const isFocused = focus?.node?.id != null && item.node_id === focus.node.id;
+              const stageDraft = routeStageDraftValue(item);
+              return (
+                <PixelSurface
+                  key={item.id}
+                  frame={isFocused ? 'ghost' : 'inset'}
+                  padding="xs"
+                  style={{
+                    borderColor: isFocused ? 'var(--pixel-accent)' : undefined,
+                  }}
+                >
+                  <div className="grid gap-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => selectRouteItemOnMap(item)}
+                        disabled={!node}
+                        className="min-w-0 text-left"
+                        style={{
+                          color: node ? 'var(--pixel-text)' : 'var(--pixel-text-muted)',
+                          cursor: node ? 'pointer' : 'default',
+                        }}
+                      >
+                        <PixelText as="span" size="xs" color="textDim" uppercase>
+                          #{index + 1} · {item.is_required ? 'обяз.' : 'опц.'}
+                        </PixelText>
+                        <PixelText as="p" readable size="sm" style={{ margin: '3px 0 0' }}>
+                          {item.title}
+                        </PixelText>
+                        <PixelText as="p" size="xs" color={item.is_complete ? 'success' : 'textMuted'} style={{ margin: '2px 0 0' }}>
+                          нужно {masteryLabel(item.required_mastery_level)} · сейчас {masteryLabel(item.current_mastery_level)}
+                        </PixelText>
+                      </button>
+                      {isRouteEditable ? (
+                        <div className="flex shrink-0 gap-1">
+                          <PixelButton
+                            tone="ghost"
+                            onClick={() => void moveRouteItem(index, -1)}
+                            disabled={routeMutationPending || index === 0}
+                            style={{ minHeight: 26, minWidth: 28, padding: 4 }}
+                            title="Выше"
+                          >
+                            <ArrowUp size={13} />
+                          </PixelButton>
+                          <PixelButton
+                            tone="ghost"
+                            onClick={() => void moveRouteItem(index, 1)}
+                            disabled={routeMutationPending || index === routeItems.length - 1}
+                            style={{ minHeight: 26, minWidth: 28, padding: 4 }}
+                            title="Ниже"
+                          >
+                            <ArrowDown size={13} />
+                          </PixelButton>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="grid grid-cols-[1fr_1fr] gap-2">
+                      <PixelSelect
+                        label="Требование"
+                        value={item.required_mastery_level}
+                        onChange={(event) =>
+                          void onUpdateRouteNode({
+                            routeNodeId: item.id,
+                            requiredMasteryLevel: event.target.value as MasteryLevel,
+                          })
+                        }
+                        disabled={!isRouteEditable || routeMutationPending}
+                        style={{ minHeight: 30, padding: '4px 7px' }}
+                      >
+                        {masteryLevelItems
+                          .filter((level) => level.value !== 'seen')
+                          .map((level) => (
+                            <option key={level.value} value={level.value}>
+                              {level.label}
+                            </option>
+                          ))}
+                      </PixelSelect>
+                      <PixelSelect
+                        label="Тип"
+                        value={String(item.is_required)}
+                        onChange={(event) =>
+                          void onUpdateRouteNode({
+                            routeNodeId: item.id,
+                            isRequired: event.target.value === '1',
+                          })
+                        }
+                        disabled={!isRouteEditable || routeMutationPending}
+                        style={{ minHeight: 30, padding: '4px 7px' }}
+                      >
+                        <option value="1">Обязательный</option>
+                        <option value="0">Опциональный</option>
+                      </PixelSelect>
+                    </div>
+
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <PixelInput
+                        label="Этап"
+                        value={stageDraft}
+                        onChange={(event) =>
+                          setRouteStageDrafts((current) => ({
+                            ...current,
+                            [item.id]: event.target.value,
+                          }))
+                        }
+                        onBlur={() => saveRouteStageDraft(item)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            saveRouteStageDraft(item);
+                          }
+                        }}
+                        disabled={!isRouteEditable || routeMutationPending}
+                        placeholder="База / Практика / Финал"
+                        style={{ minHeight: 30, padding: '4px 7px' }}
+                      />
+                      {isRouteEditable ? (
+                        <PixelButton
+                          tone="ghost"
+                          onClick={() => void onRemoveRouteNode({ routeNodeId: item.id })}
+                          disabled={routeMutationPending}
+                          style={{
+                            alignSelf: 'end',
+                            minHeight: 30,
+                            padding: '5px 8px',
+                            color: 'var(--pixel-danger)',
+                          }}
+                        >
+                          <X size={13} />
+                        </PixelButton>
+                      ) : null}
+                    </div>
+                  </div>
+                </PixelSurface>
+              );
+            })}
+          </div>
+        )}
+      </PixelSurface>
+    );
+  };
   const fallbackLayerParentId =
     focus?.node && structureHierarchy.entries.get(focus.node.id)?.childIds.length
       ? focus.node.id
@@ -744,6 +2019,8 @@ export const NavigationView = ({
     mapCanvasMode === 'layers'
       ? [...(layerParentEntry ? [layerParentEntry.node.id] : []), ...layerChildIds]
       : null;
+  const canvasRouteNodeIds = isRouteFilterActive && mapCanvasMode === 'free' ? [...routeNodeIds] : null;
+  const canvasVisibleNodeIds = layerNodeIds ?? canvasRouteNodeIds;
   const layerPreviewPositions =
     mapCanvasMode === 'layers' && layerNodeIds
       ? Object.fromEntries(
@@ -764,6 +2041,23 @@ export const NavigationView = ({
           }),
         )
       : null;
+  const visibleMapFitKey = [
+    selectedSphereId ?? 'all',
+    visibleSkillId ?? 'all',
+    mapCanvasMode,
+    isRouteFilterActive ? 'route' : 'map',
+    canvasVisibleNodeIds?.join(',') ?? 'all',
+  ].join(':');
+
+  useEffect(() => {
+    if (!hasMapNodes || handledVisibleMapFitKey.current === visibleMapFitKey) {
+      return;
+    }
+
+    handledVisibleMapFitKey.current = visibleMapFitKey;
+    runMapCommand('fit-graph');
+  }, [hasMapNodes, runMapCommand, visibleMapFitKey]);
+
   const layerParentParentId = layerParentEntry?.parentId ?? null;
   const contextNode =
     canvasContextMenu?.nodeId != null ? navigationNodeIndex.get(canvasContextMenu.nodeId) ?? null : null;
@@ -930,6 +2224,68 @@ export const NavigationView = ({
     }
   };
   const layerCreateParent = getLayerCreateParent();
+  const selectedConnectSourceNode =
+    connectSourceNodeId != null ? navigationNodeIndex.get(connectSourceNodeId) ?? null : null;
+  const canUseVisibleCreateTool = Boolean(selectedSkill || layerCreateParent);
+  const createToolLabel =
+    mapCanvasMode === 'layers'
+      ? layerCreateParent
+        ? 'Добавить в слой'
+        : 'Добавить раздел'
+      : 'Создать узел';
+  const createToolStatus =
+    mapCanvasMode === 'layers'
+      ? layerCreateParent
+        ? `Новый узел попадет внутрь: ${layerCreateParent.title}.`
+        : 'Новый узел станет разделом верхнего уровня.'
+      : selectedSkill
+        ? `Новый узел попадет в навык: ${selectedSkill.name}.`
+        : 'Выберите структуру или навык перед созданием узла.';
+  const selectMapTool = () => {
+    setMapEditTool('select');
+    setConnectSourceNodeId(null);
+    setFloatingMapPanel(null);
+    setCanvasContextMenu(null);
+    setInlineNodeEditor(null);
+  };
+  const startCreateMapTool = () => {
+    if (!canUseVisibleCreateTool || isMapMutating) {
+      return;
+    }
+
+    setMapEditTool('create');
+    setConnectSourceNodeId(null);
+    setSelectedEdgeId(null);
+    setFloatingMapPanel(null);
+    setCanvasContextMenu(null);
+    setInlineNodeEditor(null);
+  };
+  const startConnectMapTool = () => {
+    setMapEditTool('connect');
+    setConnectSourceNodeId(focus?.node?.id ?? null);
+    setSelectedEdgeId(null);
+    setFloatingMapPanel(null);
+    setCanvasContextMenu(null);
+    setInlineNodeEditor(null);
+  };
+  const createNodeFromVisibleTool = async () => {
+    if (!canUseVisibleCreateTool || isMapMutating) {
+      return;
+    }
+
+    const anchorNode = layerCreateParent ?? focus?.node ?? selectedSkill?.nodes[0] ?? null;
+    await createNodeFromCanvasPoint(
+      {
+        worldX: (anchorNode?.x ?? 0) + 160,
+        worldY: (anchorNode?.y ?? 0) + 80,
+      },
+      undefined,
+      mapCanvasMode === 'layers' ? 'layer-child' : 'free-node',
+      selectedSkill,
+      mapCanvasMode,
+      mapCanvasMode === 'layers' ? layerCreateParent?.id ?? null : null,
+    );
+  };
   const canCreateNodeFromContext = Boolean(
     contextSkill || (mapCanvasMode === 'layers' && layerCreateParent),
   );
@@ -1050,6 +2406,15 @@ export const NavigationView = ({
     );
   };
 
+  const mapShellClassName = isInspectorCollapsed
+    ? 'grid min-w-0 items-start gap-3 xl:grid-cols-1'
+    : 'grid min-w-0 items-start gap-3 xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]';
+  const inspectorRailClassName =
+    'min-w-0 max-w-full self-start xl:sticky xl:top-3 xl:justify-self-end xl:w-[380px] 2xl:w-[420px]';
+  const mapCanvasClassName = `${
+    focus?.node && !isInspectorCollapsed ? 'h-[340px]' : 'h-[420px]'
+  } min-w-0 max-w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] sm:h-[clamp(680px,calc(100dvh-220px),1040px)]`;
+
   return (
     <div className="space-y-3">
       {error ? (
@@ -1060,7 +2425,7 @@ export const NavigationView = ({
         </PixelSurface>
       ) : null}
 
-      <section className="grid min-w-0 items-start gap-3 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+      <section className={mapShellClassName}>
         <div className="min-w-0 space-y-4">
           <PixelSurface frame="panel" padding="md">
             <PixelPanelHeader
@@ -1073,6 +2438,15 @@ export const NavigationView = ({
               description={`${mapFocusTitle} · ${mapFocusPath}`}
               aside={
                 <div className="flex flex-wrap items-center gap-2">
+                  <PixelButton
+                    tone={isInspectorCollapsed ? 'accent' : 'ghost'}
+                    onClick={() => setIsInspectorCollapsed((value) => !value)}
+                    aria-expanded={!isInspectorCollapsed}
+                    aria-controls="navigation-inspector-rail"
+                    style={{ minHeight: 32, padding: '6px 12px', gap: 6 }}
+                  >
+                    <Eye size={16} /> {isInspectorCollapsed ? 'Показать инспектор' : 'Скрыть инспектор'}
+                  </PixelButton>
                   <PixelButton
                     onClick={onRefresh}
                     disabled={isLoading || isMapMutating}
@@ -1156,6 +2530,7 @@ export const NavigationView = ({
                       tone={mapCanvasMode === 'layers' ? 'accent' : 'ghost'}
                       onClick={() => {
                         setMapCanvasMode('layers');
+                        setIsRouteFilterEnabled(false);
                         setLayerParentNodeId(fallbackLayerParentId);
                         clearMapTransientUi();
                         runMapCommand('center-layer');
@@ -1165,7 +2540,34 @@ export const NavigationView = ({
                     >
                       <GitBranch size={14} /> Слои
                     </PixelButton>
+                    <PixelButton
+                      tone={isRouteFilterActive ? 'accent' : 'ghost'}
+                      onClick={() => {
+                        setIsRouteFilterEnabled((value) => {
+                          const next = !value;
+                          if (next) {
+                            setMapCanvasMode('free');
+                            setLayerParentNodeId(null);
+                          }
+                          return next;
+                        });
+                        clearMapTransientUi();
+                        runMapCommand('fit-graph');
+                      }}
+                      disabled={routeNodeIds.size === 0}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                      title={routeNodeIds.size === 0 ? 'В текущем маршруте пока нет узлов карты' : undefined}
+                    >
+                      <Target size={14} /> Маршрут
+                    </PixelButton>
                   </div>
+                  {routeNodeIds.size > 0 ? (
+                    <PixelText as="span" size="xs" color={isRouteFilterActive ? 'accent' : 'textMuted'} uppercase>
+                      {isRouteFilterActive
+                        ? `Фильтр: ${routeNodeIds.size} узл.`
+                        : `В маршруте: ${routeNodeIds.size} узл.`}
+                    </PixelText>
+                  ) : null}
                 </div>
               </PixelSurface>
 
@@ -1235,6 +2637,133 @@ export const NavigationView = ({
                 </PixelSurface>
               ) : null}
 
+              <PixelSurface frame="ghost" padding="sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                      Инструменты
+                    </PixelText>
+                    <PixelButton
+                      tone={mapEditTool === 'select' ? 'accent' : 'ghost'}
+                      onClick={selectMapTool}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <MapIcon size={14} /> Выбор
+                    </PixelButton>
+                    <PixelButton
+                      tone={mapEditTool === 'create' ? 'accent' : 'ghost'}
+                      onClick={startCreateMapTool}
+                      disabled={!canUseVisibleCreateTool || isMapMutating}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <Plus size={14} /> {createToolLabel}
+                    </PixelButton>
+                    <PixelButton
+                      tone={mapEditTool === 'connect' ? 'accent' : 'ghost'}
+                      onClick={startConnectMapTool}
+                      disabled={!focus?.node || isMapMutating}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <GitBranch size={14} /> Соединить
+                    </PixelButton>
+                    <PixelButton
+                      tone="ghost"
+                      onClick={async () => {
+                        if (!selectedEdge || isMapMutating) {
+                          return;
+                        }
+
+                        const deleted = await onDeleteEdge(selectedEdge.id);
+                        if (deleted) {
+                          setSelectedEdgeId(null);
+                          setFloatingMapPanel(null);
+                        }
+                      }}
+                      disabled={!selectedEdge || isMapMutating}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6, color: selectedEdge ? 'var(--pixel-danger)' : undefined }}
+                    >
+                      <X size={14} /> Удалить связь
+                    </PixelButton>
+                    <PixelButton
+                      tone="ghost"
+                      onClick={async () => {
+                        if (!focus?.node || isMapMutating) {
+                          return;
+                        }
+
+                        const archived = await onArchiveNode({ nodeId: focus.node.id });
+                        if (archived) {
+                          clearMapTransientState();
+                        }
+                      }}
+                      disabled={!focus?.node || isMapMutating || isEditorArchived}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <Archive size={14} /> Архивировать узел
+                    </PixelButton>
+                  </div>
+                  {mapEditTool !== 'select' ? (
+                    <PixelButton
+                      tone="ghost"
+                      onClick={selectMapTool}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <X size={14} /> Отмена
+                    </PixelButton>
+                  ) : null}
+                </div>
+
+                {mapEditTool !== 'select' || selectedEdge ? (
+                  <PixelSurface frame="inset" padding="sm" className="mt-3">
+                    {mapEditTool === 'create' ? (
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <PixelText as="span" readable size="sm" color="textMuted">
+                          {createToolStatus} Кликните по свободному месту на карте.
+                        </PixelText>
+                        <PixelButton
+                          tone="accent"
+                          onClick={() => {
+                            void createNodeFromVisibleTool();
+                          }}
+                          disabled={!canUseVisibleCreateTool || isMapMutating}
+                          style={{ minHeight: 28, padding: '5px 8px', gap: 6 }}
+                        >
+                          <Plus size={13} /> {mapCanvasMode === 'layers' ? 'Создать в слое' : 'Создать рядом'}
+                        </PixelButton>
+                      </div>
+                    ) : null}
+                    {mapEditTool === 'connect' ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <PixelText as="span" readable size="sm" color="textMuted">
+                          {selectedConnectSourceNode
+                            ? `Источник: ${selectedConnectSourceNode.title}. Выберите целевой узел.`
+                            : 'Выберите узел-источник.'}
+                        </PixelText>
+                        {(['supports', 'requires', 'relates_to'] as GraphEdgeType[]).map((edgeType) => {
+                          const semantics = getGraphEdgeSemantics(edgeType);
+                          return (
+                            <PixelButton
+                              key={edgeType}
+                              tone={connectEdgeType === edgeType ? 'accent' : 'ghost'}
+                              onClick={() => setConnectEdgeType(edgeType)}
+                              style={{ minHeight: 26, padding: '4px 8px', gap: 5 }}
+                            >
+                              {semantics.label}
+                            </PixelButton>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    {selectedEdge && selectedEdgeSemantics ? (
+                      <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: mapEditTool === 'select' ? 0 : '8px 0 0' }}>
+                        Выбрана связь: {selectedEdgeSemantics.label}: {selectedEdgeSourceNode?.title ?? 'Источник'} {'->'}{' '}
+                        {selectedEdgeTargetNode?.title ?? 'Цель'}.
+                      </PixelText>
+                    ) : null}
+                  </PixelSurface>
+                ) : null}
+              </PixelSurface>
+
               <div className="flex flex-wrap items-center gap-2">
                 {mapMutationPendingAction === 'create-node' ? (
                   <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
@@ -1277,17 +2806,30 @@ export const NavigationView = ({
                   <GameMapCanvas
                     snapshot={snapshot}
                     focus={focus}
-                    visibleSphereId={selectedSphereId}
-                    visibleSkillId={visibleSkillId}
+                    visibleSphereId={isRouteFilterActive && mapCanvasMode === 'free' ? null : selectedSphereId}
+                    visibleSkillId={isRouteFilterActive && mapCanvasMode === 'free' ? null : visibleSkillId}
                     canvasMode={mapCanvasMode}
-                    visibleNodeIds={layerNodeIds}
+                    visibleNodeIds={canvasVisibleNodeIds}
+                    routeNodeMetadata={routeNodeMetadata}
                     onSelectNode={handleCanvasNodeSelect}
                     onFocusChange={setIsMapFocused}
                     onSelectEdge={(edgeId) => {
                       setSelectedEdgeId(edgeId);
+                      setMapEditTool('select');
+                      setConnectSourceNodeId(null);
                       setCanvasContextMenu(null);
                       setInlineNodeEditor(null);
                     }}
+                    onCreateNodeAt={async (input) =>
+                      createNodeFromCanvasPoint(
+                        { worldX: input.x, worldY: input.y },
+                        undefined,
+                        mapCanvasMode === 'layers' ? 'layer-child' : 'free-node',
+                        selectedSkill,
+                        mapCanvasMode,
+                        mapCanvasMode === 'layers' ? layerParentEntry?.node.id ?? null : null,
+                      )
+                    }
                     onCreateChildNodeAt={async (input) => {
                       const parentNode = navigationNodeIndex.get(input.parentNodeId);
                       if (!parentNode || isMapMutating) {
@@ -1349,17 +2891,19 @@ export const NavigationView = ({
                       if (created) {
                         setCanvasContextMenu(null);
                         setSelectedEdgeId(null);
+                        setMapEditTool('select');
+                        setConnectSourceNodeId(null);
                       }
                       return created;
                     }}
                     mapCommand={mapCommand}
                     previewNodePositions={layerPreviewPositions}
                     interactionMode={mapCanvasMode === 'free' ? 'free-edit' : 'layer-edit'}
-                    createMode={false}
+                    createMode={mapEditTool === 'create'}
                     snapToGrid={false}
                     selectedEdgeId={selectedEdgeId}
-                    connectSourceNodeId={null}
-                    connectEdgeType={null}
+                    connectSourceNodeId={mapEditTool === 'connect' ? connectSourceNodeId : null}
+                    connectEdgeType={mapEditTool === 'connect' ? connectEdgeType : null}
                     onCanvasContextMenu={(menu) => {
                       setCanvasContextMenu(menu);
                       setNodeCreateTitle('');
@@ -1392,7 +2936,7 @@ export const NavigationView = ({
                       }
                     }}
                     onMoveNode={mapCanvasMode === 'free' ? onMoveNode : undefined}
-                  className="h-[480px] min-w-0 max-w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] sm:h-[clamp(680px,calc(100dvh-220px),1040px)]"
+                  className={mapCanvasClassName}
                 />
               </PixelSurface>
 
@@ -1472,7 +3016,7 @@ export const NavigationView = ({
                         style={{ minHeight: 28, padding: '5px 7px', color: 'var(--pixel-danger)' }}
                         title="Удалить связь"
                       >
-                        <X size={13} />
+                        <X size={13} /> Удалить связь
                       </PixelButton>
                     </div>
                   </PixelSurface>
@@ -1573,6 +3117,25 @@ export const NavigationView = ({
                           >
                             Сводка
                           </PixelButton>
+                          <PixelButton
+                            tone="ghost"
+                            onClick={async () => {
+                              const archived = await onArchiveNode({ nodeId: contextNode.id });
+                              if (archived) {
+                                setCanvasContextMenu(null);
+                                clearMapTransientState();
+                              }
+                            }}
+                            disabled={isMapMutating || contextNode.status === 'archived'}
+                            style={{
+                              justifyContent: 'flex-start',
+                              minHeight: 30,
+                              padding: '6px 8px',
+                              color: 'var(--pixel-danger)',
+                            }}
+                          >
+                            Архивировать узел
+                          </PixelButton>
                         </>
                       ) : null}
                       {!contextEdge ? (
@@ -1638,7 +3201,8 @@ export const NavigationView = ({
 
         </div>
 
-        <div className="min-w-0 max-w-full self-start xl:sticky xl:top-3 xl:justify-self-end xl:w-[340px] 2xl:w-[360px]">
+        {!isInspectorCollapsed ? (
+        <div id="navigation-inspector-rail" className={inspectorRailClassName}>
           <PixelStack gap="md">
             <PixelSurface frame="panel" padding="md">
               {isFocusLoading && !focus?.node ? (
@@ -1678,7 +3242,10 @@ export const NavigationView = ({
                     aside={
                       <PixelButton
                         tone="ghost"
-                        onClick={() => setIsEditorExpanded(true)}
+                        onClick={() => {
+                          setInspectorMode('overview');
+                          setIsEditorExpanded(true);
+                        }}
                         disabled={isEditorBusy}
                         style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                       >
@@ -1708,9 +3275,38 @@ export const NavigationView = ({
                         <PixelStatCard label="Тип" value={typeLabel(editorDraft.type)} tone="ghost" compact />
                         <PixelStatCard label="Статус" value={statusLabel(editorDraft.status)} tone="ghost" compact />
                       </div>
+                      <PixelSurface frame="ghost" padding="xs">
+                        <PixelText as="p" size="xs" color="textMuted" uppercase>
+                          Проверка
+                        </PixelText>
+                        <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 4 }}>
+                          {getCheckMetadataPreview(editorDraft.checkMetadata)}
+                        </PixelText>
+                      </PixelSurface>
                     </div>
                   </PixelSurface>
 
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label="Режим инспектора">
+                    {([
+                      { id: 'overview', label: 'Overview' },
+                      { id: 'route', label: 'Route' },
+                      { id: 'assessment', label: 'Check' },
+                      { id: 'graph', label: 'Graph' },
+                    ] as Array<{ id: InspectorMode; label: string }>).map((item) => (
+                      <PixelButton
+                        key={item.id}
+                        type="button"
+                        tone={inspectorMode === item.id ? 'accent' : 'ghost'}
+                        onClick={() => setInspectorMode(item.id)}
+                        aria-pressed={inspectorMode === item.id}
+                        style={{ justifyContent: 'center', minHeight: 30, padding: '6px 8px' }}
+                      >
+                        {item.label}
+                      </PixelButton>
+                    ))}
+                  </div>
+
+                  {inspectorMode === 'overview' ? (
                   <div className="grid grid-cols-2 gap-2">
                     <PixelButton
                       tone="ghost"
@@ -1760,33 +3356,43 @@ export const NavigationView = ({
                       <Archive size={14} /> Архив
                     </PixelButton>
                   </div>
+                  ) : null}
 
-                  <PixelMeter
-                    value={completionValue}
-                    max={100}
-                    label="Прогресс узла"
-                    tone={focus.session?.status === 'active' ? 'success' : 'accent'}
-                    showValue
-                  />
+                  {inspectorMode === 'overview' ? (
+                    <>
+                      <PixelMeter
+                        value={completionValue}
+                        max={100}
+                        label="Прогресс узла"
+                        tone={focus.session?.status === 'active' ? 'success' : 'accent'}
+                        showValue
+                      />
 
-                  <div className="grid gap-2 grid-cols-3">
-                    <PixelStatCard label="Открыто" value={focus.progress.openActions} tone="inset" compact />
-                    <PixelStatCard
-                      label="Риск"
-                      value={riskLabel(focus.reviewState?.current_risk ?? 'none')}
-                      tone="inset"
-                      compact
-                    />
-                    <PixelStatCard
-                      label="Связи"
-                      value={incomingGraphEdges.length + outgoingGraphEdges.length}
-                      tone="inset"
-                      compact
-                    />
-                  </div>
+                      {renderMasteryPanel(focus, 'overview')}
 
+                      <div className="grid gap-2 grid-cols-2">
+                        <PixelStatCard label="Открыто" value={focus.progress.openActions} tone="inset" compact />
+                        <PixelStatCard
+                          label="Риск"
+                          value={riskLabel(focus.reviewState?.current_risk ?? 'none')}
+                          tone="inset"
+                          compact
+                        />
+                      </div>
+                    </>
+                  ) : null}
+
+                  {inspectorMode === 'route' ? renderMasteryPanel(focus, 'route') : null}
+                  {inspectorMode === 'assessment' ? renderMasteryPanel(focus, 'assessment') : null}
+
+                  {inspectorMode === 'graph' ? (
                   <PixelSurface frame="inset" padding="sm">
                     <PixelStack gap="xs">
+                      <div className="grid gap-2 grid-cols-3">
+                        <PixelStatCard label="Связи" value={incomingGraphEdges.length + outgoingGraphEdges.length} tone="inset" compact />
+                        <PixelStatCard label="Исход." value={outgoingGraphEdges.length} tone="inset" compact />
+                        <PixelStatCard label="Вход." value={incomingGraphEdges.length} tone="inset" compact />
+                      </div>
                       <div className="flex items-center justify-between gap-2">
                         <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
                           Граф
@@ -1821,6 +3427,7 @@ export const NavigationView = ({
                       ) : null}
                     </PixelStack>
                   </PixelSurface>
+                  ) : null}
 
                   {showInlineEditor && isEditorExpanded && editorDraft ? (
                     <div className="grid gap-3">
@@ -1893,6 +3500,8 @@ export const NavigationView = ({
                           </PixelSurface>
                         ) : null}
                       </div>
+
+                      {renderCheckMetadataEditor(editorDraft)}
 
                       <PixelSurface frame="inset" padding="sm">
                         <PixelText as="p" size="xs" color="textDim" uppercase>
@@ -2010,6 +3619,9 @@ export const NavigationView = ({
               ) : null}
             </PixelSurface>
 
+            {!focus?.node || inspectorMode === 'route' ? renderRouteAuthoringPanel() : null}
+
+            {!focus?.node || inspectorMode === 'graph' ? (
             <PixelSurface frame="panel" padding="sm" className="min-w-0">
               <PixelPanelHeader
                 eyebrow={
@@ -2042,8 +3654,10 @@ export const NavigationView = ({
                 </PixelText>
               )}
             </PixelSurface>
+            ) : null}
           </PixelStack>
         </div>
+        ) : null}
       </section>
 
       {modalEditorDraft && focus?.node ? (
@@ -2165,6 +3779,8 @@ export const NavigationView = ({
                   </PixelSurface>
                 ) : null}
               </div>
+
+              {renderCheckMetadataEditor(modalEditorDraft)}
 
               <PixelSurface frame="inset" padding="sm">
                 <PixelText as="p" size="xs" color="textDim" uppercase>
@@ -2301,6 +3917,8 @@ export const NavigationView = ({
                 tone={modalSummaryFocus.session?.status === 'active' ? 'success' : 'accent'}
                 showValue
               />
+
+              {renderMasteryPanel(modalSummaryFocus, 'overview', true)}
 
               <div className="grid gap-2 sm:grid-cols-3">
                 <PixelStatCard label="Открыто" value={modalSummaryFocus.progress.openActions} tone="inset" compact />

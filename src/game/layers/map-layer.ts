@@ -15,9 +15,9 @@ const statePalette = {
 
 const NODE_BOX = {
   minWidth: 150,
-  maxWidth: 320,
+  maxWidth: 340,
   height: 42,
-  maxHeight: 82,
+  maxHeight: 96,
   radius: 8,
 };
 
@@ -137,6 +137,23 @@ const drawArrowHead = (
   graphic.fill({ color, alpha });
 };
 
+const formatRouteNodeLabel = (node: GameNode, overviewMode: boolean) => {
+  if (!node.isRouteNode || overviewMode) {
+    return overviewMode && (node.descendantCount ?? 0) > 0
+      ? `${node.title}\n${node.descendantCount} узл.`
+      : node.title;
+  }
+
+  const index = node.routeSequenceIndex != null ? `#${node.routeSequenceIndex}` : 'route';
+  const status = node.isRouteComplete ? 'готово' : node.isCurrentRouteTarget ? 'цель' : 'очередь';
+  const stage = node.routeStage ? ` · ${node.routeStage}` : '';
+  const required = node.routeRequiredMasteryLevel ? ` -> ${node.routeRequiredMasteryLevel}` : '';
+  const mastery =
+    node.routeCurrentMasteryRank != null ? `${node.routeCurrentMasteryRank}/6${required}` : required.trim();
+
+  return `${index} · ${status}${stage}\n${node.title}${mastery ? `\n${mastery.trim()}` : ''}`;
+};
+
 export const resolveNodeBox = (node: GameNode, overviewMode = false) => {
   const box = overviewMode ? OVERVIEW_NODE_BOX : NODE_BOX;
   const charWidth = overviewMode ? 8.2 : 6.2;
@@ -144,9 +161,13 @@ export const resolveNodeBox = (node: GameNode, overviewMode = false) => {
   const lineHeight = overviewMode ? 18 : 14;
   const width = Math.min(
     box.maxWidth,
-    Math.max(box.minWidth, 74 + node.title.length * charWidth),
+    Math.max(box.minWidth, 74 + node.title.length * charWidth, node.isRouteNode ? 220 : 0),
   );
-  const estimatedLines = Math.ceil(node.title.length / lineLength) + (overviewMode && (node.descendantCount ?? 0) > 0 ? 1 : 0);
+  const routeLineCount = node.isRouteNode && !overviewMode ? 2 : 0;
+  const estimatedLines =
+    Math.ceil(node.title.length / lineLength) +
+    routeLineCount +
+    (overviewMode && (node.descendantCount ?? 0) > 0 ? 1 : 0);
   const height = Math.min(box.maxHeight, Math.max(box.height, 28 + estimatedLines * lineHeight));
 
   return { width, height };
@@ -164,6 +185,21 @@ export const getNodeGateAnchor = (
   return {
     x: node.position.x + (gate === 'output' ? offset : -offset),
     y: node.position.y,
+  };
+};
+
+export const getRouteSegmentAnchors = (
+  fromNode: GameNode,
+  toNode: GameNode,
+  overviewMode = false,
+): { from: GamePoint; to: GamePoint } => {
+  const goesRight = toNode.position.x >= fromNode.position.x;
+  const fromGate = goesRight ? 'output' : 'input';
+  const toGate = goesRight ? 'input' : 'output';
+
+  return {
+    from: getNodeGateAnchor(fromNode, fromGate, overviewMode),
+    to: getNodeGateAnchor(toNode, toGate, overviewMode),
   };
 };
 
@@ -313,7 +349,8 @@ export class MapLayer extends Container {
     this.pulseTime += deltaTime * 0.025;
 
     this.pulses.forEach((pulse, nodeId) => {
-      pulse.visible = nodeId === this.highlightedNodeId;
+      const node = this.currentModel?.nodes.find((item) => item.id === nodeId);
+      pulse.visible = nodeId === this.highlightedNodeId || node?.isCurrentRouteTarget === true;
       if (!pulse.visible) {
         return;
       }
@@ -495,6 +532,32 @@ export class MapLayer extends Container {
       hit.stroke({ width: 14, color, alpha: 0.001 });
     });
 
+    const routeNodes = [...nodeById.values()]
+      .filter((node) => node.isRouteNode)
+      .sort((left, right) => (left.routeSequenceIndex ?? 9999) - (right.routeSequenceIndex ?? 9999));
+    routeNodes.slice(0, -1).forEach((fromNode, index) => {
+      const toNode = routeNodes[index + 1];
+      const { from, to } = getRouteSegmentAnchors(fromNode, toNode, this.overviewMode);
+      const route = createQuadraticRoute(from, to, fromNode.id <= toNode.id ? 1 : -1, 0.12);
+      const isCurrentSegment = Boolean(fromNode.isCurrentRouteTarget || toNode.isCurrentRouteTarget);
+      const color = isCurrentSegment ? 0x38bdf8 : 0xfacc15;
+
+      this.edgeGraphics.setStrokeStyle({
+        width: isCurrentSegment ? 4 : 2.6,
+        color,
+        alpha: isCurrentSegment ? 0.68 : 0.38,
+      });
+      drawPolyline(this.edgeGraphics, route);
+      drawArrowHead(
+        this.edgeGraphics,
+        route[route.length - 2] ?? from,
+        route[route.length - 1] ?? to,
+        color,
+        isCurrentSegment ? 0.86 : 0.55,
+        isCurrentSegment ? 12 : 9,
+      );
+    });
+
     [...this.edgeHits.keys()].forEach((edgeId) => {
       if (activeEdgeIds.has(edgeId)) {
         return;
@@ -578,10 +641,13 @@ export class MapLayer extends Container {
     const radius = this.overviewMode ? OVERVIEW_NODE_BOX.radius : NODE_BOX.radius;
     const isHighlighted = node.id === this.highlightedNodeId;
     const isConnectSource = node.id === this.connectSourceNodeId;
+    const routeColor = node.isRouteComplete ? 0x6ee7b7 : node.isCurrentRouteTarget ? 0x38bdf8 : 0xfacc15;
     const borderColor = isHighlighted
       ? biome?.accent ?? palette.stroke
       : isConnectSource
         ? 0xfbbf24
+        : node.isRouteNode
+          ? routeColor
         : palette.stroke;
 
     pulse.clear();
@@ -592,7 +658,10 @@ export class MapLayer extends Container {
       box.height + 20,
       radius + 6,
     );
-    pulse.fill({ color: biome?.accent ?? 0x60a5fa, alpha: 0.18 });
+    pulse.fill({
+      color: node.isRouteNode ? routeColor : biome?.accent ?? 0x60a5fa,
+      alpha: isHighlighted ? 0.18 : node.isRouteNode ? 0.1 : 0.04,
+    });
     pulse.position.set(node.position.x, node.position.y);
 
     shell.clear();
@@ -621,9 +690,21 @@ export class MapLayer extends Container {
     );
     shell.stroke({
       color: borderColor,
-      width: isHighlighted ? 3.5 : isConnectSource ? 3 : 2,
+      width: isHighlighted || node.isCurrentRouteTarget ? 3.5 : isConnectSource || node.isRouteNode ? 3 : 2,
       alpha: 0.96,
     });
+    if (node.isRouteNode) {
+      const stripeColor = node.isCurrentRouteTarget ? 0x38bdf8 : routeColor;
+      shell.roundRect(-box.width / 2 + 8, -box.height / 2 + 6, 5, box.height - 12, 3);
+      shell.fill({ color: stripeColor, alpha: node.isRouteComplete ? 0.58 : 0.9 });
+      shell.roundRect(box.width / 2 - 42, -box.height / 2 + 6, 34, 16, 4);
+      shell.fill({ color: 0x020617, alpha: 0.78 });
+      shell.stroke({ color: stripeColor, width: 1.5, alpha: 0.88 });
+      if (node.isCurrentRouteTarget) {
+        shell.roundRect(-box.width / 2 - 6, -box.height / 2 - 6, box.width + 12, box.height + 12, radius + 6);
+        shell.stroke({ color: 0x38bdf8, width: 1.5, alpha: 0.48 });
+      }
+    }
     const gateAlphaMultiplier = this.currentZoom < MIN_GATE_VISIBLE_ZOOM && !this.overviewMode ? 0.16 : 1;
     this.drawNodeGate(shell, box, 'input', {
       fill: 0x0b1220,
@@ -639,20 +720,17 @@ export class MapLayer extends Container {
     });
     shell.position.set(node.position.x, node.position.y);
 
-    label.text =
-      this.overviewMode && (node.descendantCount ?? 0) > 0
-        ? `${node.title}\n${node.descendantCount} узл.`
-        : node.title;
     label.style = {
       fontFamily: 'Trebuchet MS',
-      fontSize: this.overviewMode ? 16 : node.title.length > 46 ? 9 : 10,
+      fontSize: this.overviewMode ? 16 : node.isRouteNode ? 9.5 : node.title.length > 46 ? 9 : 10,
       fontWeight: '700',
       fill: palette.text,
       align: 'center',
       wordWrap: true,
-      wordWrapWidth: box.width - 20,
-      lineHeight: this.overviewMode ? 19 : undefined,
+      wordWrapWidth: box.width - (node.isRouteNode ? 42 : 20),
+      lineHeight: this.overviewMode ? 19 : node.isRouteNode ? 13 : undefined,
     };
+    label.text = formatRouteNodeLabel(node, this.overviewMode);
     label.anchor.set(0.5);
     label.position.set(node.position.x, node.position.y);
     label.alpha = node.state === 'locked' ? 0.72 : 1;

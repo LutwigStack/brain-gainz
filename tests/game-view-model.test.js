@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createGameViewModel } from '../src/game/create-game-view-model.ts';
+import { applyRouteOverlayToModel } from '../src/game/route-overlay-model.ts';
 
 test('game view model maps navigation snapshot into renderable nodes, persisted edges, biomes, and hero focus', () => {
   const snapshot = {
@@ -81,6 +82,60 @@ test('game view model maps navigation snapshot into renderable nodes, persisted 
   assert.equal(model.nodes[0].position.x, 120);
   assert.equal(model.nodes[0].position.y, -60);
   assert.equal(model.nodes[1].biomeId, model.biomes[0].id);
+
+  const routeModel = applyRouteOverlayToModel(model, [
+    {
+      nodeId: 1001,
+      isComplete: true,
+      requiredMasteryLevel: 'confirmed',
+      currentMasteryRank: 5,
+    },
+  ]);
+  assert.equal(routeModel.nodes[1].isRouteNode, true);
+  assert.equal(routeModel.nodes[1].isRouteComplete, true);
+  assert.equal(routeModel.nodes[1].routeRequiredMasteryLevel, 'confirmed');
+  assert.equal(routeModel.nodes[1].routeCurrentMasteryRank, 5);
+});
+
+test('route overlay annotates route order, stage, and current target for map rendering', () => {
+  const model = {
+    biomes: [],
+    nodes: [
+      {
+        id: 1,
+        title: 'Later',
+        subtitle: '',
+        state: 'available',
+        position: { x: 0, y: 0 },
+        biomeId: 1,
+      },
+      {
+        id: 2,
+        title: 'Current',
+        subtitle: '',
+        state: 'available',
+        position: { x: 100, y: 0 },
+        biomeId: 1,
+      },
+    ],
+    edges: [],
+    hub: { position: { x: 0, y: 0 }, label: 'Core' },
+    legend: [],
+    hero: { nodeId: null, energy: 0 },
+    highlightedNodeId: null,
+    bounds: { minX: 0, minY: 0, maxX: 100, maxY: 0, width: 100, height: 1, center: { x: 50, y: 0 } },
+  };
+
+  const routeModel = applyRouteOverlayToModel(model, [
+    { nodeId: 1, routeNodeId: 11, routeOrder: 20, routeStage: 'Final', currentMasteryRank: 2 },
+    { nodeId: 2, routeNodeId: 10, routeOrder: 10, routeStage: 'Base', isCurrentTarget: true, currentMasteryRank: 1 },
+  ]);
+
+  assert.equal(routeModel.nodes[0].routeSequenceIndex, 2);
+  assert.equal(routeModel.nodes[0].routeStage, 'Final');
+  assert.equal(routeModel.nodes[1].routeSequenceIndex, 1);
+  assert.equal(routeModel.nodes[1].routeNodeId, 10);
+  assert.equal(routeModel.nodes[1].isCurrentRouteTarget, true);
 });
 
 test('game view model keeps the hero at the minimum visible energy when progress is 0 percent', () => {

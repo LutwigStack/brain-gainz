@@ -8,6 +8,7 @@ import { BrainGainzScene } from '../brain-gainz-scene';
 import { createGameViewModel } from '../create-game-view-model';
 import { createQuadraticRoute, getPointToPolylineDistance } from '../edge-geometry';
 import { getNodeGateAnchor, resolveNodeBox } from '../layers/map-layer';
+import { applyRouteOverlayToModel, type RouteNodeCanvasMetadata } from '../route-overlay-model';
 import type { CanvasInteractionMode, GameBounds, GamePoint, GameSceneModel } from '../types';
 import { getViewportWorldBounds, screenToWorld, worldToScreen, type ViewportCamera } from '../viewport';
 
@@ -30,6 +31,7 @@ interface GameMapCanvasProps {
   visibleSkillId?: number | null;
   canvasMode?: 'free' | 'layers';
   visibleNodeIds?: number[] | null;
+  routeNodeMetadata?: RouteNodeCanvasMetadata[] | null;
   mapCommand?: { id: number; type: 'focus-node' | 'fit-graph' | 'center-layer' | 'reset-camera' } | null;
   onCreateEdge?: (input: {
     sourceNodeId: number;
@@ -206,6 +208,7 @@ export const GameMapCanvas = ({
   visibleSkillId = null,
   canvasMode = 'free',
   visibleNodeIds = null,
+  routeNodeMetadata = null,
   mapCommand = null,
   onCanvasContextMenu,
   onCanvasDoubleClick,
@@ -289,13 +292,26 @@ export const GameMapCanvas = ({
   const model = useMemo(
     () =>
       filterModelToVisibleNodes(
-        applyPreviewToModel(createGameViewModel(snapshot, focus, { visibleSphereId, visibleSkillId }), previewNodePositions),
+        applyRouteOverlayToModel(
+          applyPreviewToModel(createGameViewModel(snapshot, focus, { visibleSphereId, visibleSkillId }), previewNodePositions),
+          routeNodeMetadata,
+        ),
         visibleNodeIds,
       ),
-    [focus, previewNodePositions, snapshot, visibleNodeIds, visibleSphereId, visibleSkillId],
+    [focus, previewNodePositions, routeNodeMetadata, snapshot, visibleNodeIds, visibleSphereId, visibleSkillId],
   );
-  const viewportModeKey = `${visibleSphereId ?? 'all'}:${visibleSkillId ?? 'all'}:${canvasMode}:${visibleNodeIds?.join(',') ?? 'all'}`;
-  const shouldRenderOverview = false;
+  const hasVisibleNodeFilter = Boolean(visibleNodeIds && visibleNodeIds.length > 0);
+  const shouldRenderOverview = Boolean(
+    model.isLargeGraph &&
+      canvasMode === 'free' &&
+      !hasVisibleNodeFilter &&
+      !createMode &&
+      connectSourceNodeId == null,
+  );
+  const shouldRenderOverviewRef = useRef(shouldRenderOverview);
+  const viewportModeKey = `${visibleSphereId ?? 'all'}:${visibleSkillId ?? 'all'}:${canvasMode}:${shouldRenderOverview ? 'overview' : 'detail'}:${visibleNodeIds?.join(',') ?? 'all'}:${routeNodeMetadata?.map((item) => `${item.nodeId}:${item.isComplete ? 1 : 0}:${item.isCurrentTarget ? 1 : 0}`).join(',') ?? 'route-none'}`;
+  const getNodeRenderPosition = (node: GameSceneModel['nodes'][number]) =>
+    (shouldRenderOverview ? node.overviewPosition : null) ?? node.position;
   const onSelectNodeEvent = useEffectEvent((nodeId: number, input?: { screenX: number; screenY: number }) => {
     const node = findNodeById(snapshot, nodeId);
     if (node) {
@@ -335,6 +351,10 @@ export const GameMapCanvas = ({
   useEffect(() => {
     connectEdgeTypeRef.current = connectEdgeType;
   }, [connectEdgeType]);
+
+  useEffect(() => {
+    shouldRenderOverviewRef.current = shouldRenderOverview;
+  }, [shouldRenderOverview]);
 
   useEffect(() => {
     let cancelled = false;
@@ -381,7 +401,7 @@ export const GameMapCanvas = ({
             selectedEdgeId: selectedEdgeIdRef.current,
             connectSourceNodeId: connectSourceNodeIdRef.current,
             connectEdgeType: connectEdgeTypeRef.current,
-            overviewMode: false,
+            overviewMode: shouldRenderOverviewRef.current,
         },
         {
           preserveViewport: false,
@@ -553,8 +573,8 @@ export const GameMapCanvas = ({
         }
 
         const semantics = getGraphEdgeSemantics(edge.type);
-        const sourceAnchor = getNodeGateAnchor(source, 'output', shouldRenderOverview);
-        const targetAnchor = getNodeGateAnchor(target, 'input', shouldRenderOverview);
+        const sourceAnchor = getNodeGateAnchor({ ...source, position: getNodeRenderPosition(source) }, 'output', shouldRenderOverview);
+        const targetAnchor = getNodeGateAnchor({ ...target, position: getNodeRenderPosition(target) }, 'input', shouldRenderOverview);
         const route = createQuadraticRoute(
           sourceAnchor,
           targetAnchor,
@@ -573,8 +593,9 @@ export const GameMapCanvas = ({
     const nodeHit = model.nodes
       .map((node) => {
         const box = resolveNodeBox(node, shouldRenderOverview);
-        const dx = Math.abs(worldPoint.x - node.position.x);
-        const dy = Math.abs(worldPoint.y - node.position.y);
+        const position = getNodeRenderPosition(node);
+        const dx = Math.abs(worldPoint.x - position.x);
+        const dy = Math.abs(worldPoint.y - position.y);
         const hit =
           dx <= box.width / 2 + nodeHitPadding &&
           dy <= box.height / 2 + nodeHitPadding;
@@ -726,7 +747,7 @@ export const GameMapCanvas = ({
               Нужен первый узел
             </PixelText>
             <PixelText as="p" readable size="sm" color="textMuted" style={{ marginTop: 10 }}>
-              Создайте стартовый набор на вкладке «Сейчас» или откройте меню правой кнопкой мыши на карте.
+              Используйте «Создать узел» в панели карты или стартовый набор на вкладке «Сейчас».
             </PixelText>
           </PixelSurface>
         </div>
@@ -814,7 +835,13 @@ export const GameMapCanvas = ({
                 {model.nodes.map((node) => {
                   const point = minimap.toMini(node.position.x, node.position.y);
                   const fill =
-                    node.state === 'active'
+                    node.isRouteNode
+                      ? node.isCurrentRouteTarget
+                        ? '#38bdf8'
+                        : node.isRouteComplete
+                          ? '#6ee7b7'
+                          : '#facc15'
+                      : node.state === 'active'
                       ? '#60a5fa'
                       : node.state === 'available'
                         ? '#5eead4'

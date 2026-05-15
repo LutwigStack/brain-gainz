@@ -9,6 +9,7 @@ import type { CanvasInteractionMode, GamePoint, GameSceneModel } from './types';
 import {
   centerCameraOnPoint,
   DEFAULT_ZOOM,
+  fitCameraToBounds,
   panCameraByScreenDelta,
   screenToWorld,
   zoomCameraAtScreenPoint,
@@ -116,8 +117,11 @@ export class BrainGainzScene {
     this.backdrop.fill({ color: 0x08101d, alpha: 1 });
 
     if (!options?.preserveViewport || !this.currentCamera) {
-      const initialBounds = callbacks.overviewMode && model.overviewBounds ? model.overviewBounds : model.bounds;
-      this.currentCamera = centerCameraOnPoint(initialBounds.center, { width, height }, this.currentCamera?.zoom ?? DEFAULT_ZOOM);
+      const initialBounds = this.getVisibleBounds();
+      const shouldFitInitialView = callbacks.overviewMode || model.isLargeGraph || model.nodes.length > 8;
+      this.currentCamera = shouldFitInitialView
+        ? fitCameraToBounds(initialBounds, { width, height }, callbacks.overviewMode ? 64 : 96)
+        : centerCameraOnPoint(initialBounds.center, { width, height }, this.currentCamera?.zoom ?? DEFAULT_ZOOM);
     }
 
     this.mapLayer.render(model, {
@@ -152,7 +156,12 @@ export class BrainGainzScene {
       return null;
     }
 
-    return this.centerOnPoint(this.currentModel.bounds.center, this.currentCamera?.zoom ?? DEFAULT_ZOOM);
+    this.currentCamera = fitCameraToBounds(this.getVisibleBounds(), {
+      width: this.app.renderer.width,
+      height: this.app.renderer.height,
+    });
+    this.applyViewport();
+    return this.currentCamera;
   }
 
   fitToOverview() {
@@ -160,10 +169,12 @@ export class BrainGainzScene {
       return null;
     }
 
-    return this.centerOnPoint(
-      (this.currentModel.overviewBounds ?? this.currentModel.bounds).center,
-      this.currentCamera?.zoom ?? DEFAULT_ZOOM,
-    );
+    this.currentCamera = fitCameraToBounds(this.currentModel.overviewBounds ?? this.currentModel.bounds, {
+      width: this.app.renderer.width,
+      height: this.app.renderer.height,
+    });
+    this.applyViewport();
+    return this.currentCamera;
   }
 
   resetCamera() {
@@ -186,6 +197,20 @@ export class BrainGainzScene {
     );
     this.applyViewport();
     return this.currentCamera;
+  }
+
+  private getVisibleBounds() {
+    return this.currentCallbacks?.overviewMode && this.currentModel?.overviewBounds
+      ? this.currentModel.overviewBounds
+      : this.currentModel?.bounds ?? {
+          minX: -240,
+          minY: -180,
+          maxX: 240,
+          maxY: 180,
+          width: 480,
+          height: 360,
+          center: { x: 0, y: 0 },
+        };
   }
 
   ensurePointVisible(point: GamePoint, margin = 120) {
@@ -722,10 +747,15 @@ export class BrainGainzScene {
 
     const targetGate: NodeGate = interaction.gate === 'output' ? 'input' : 'output';
     const hitRadius = CONNECT_GATE_HIT_RADIUS / Math.max(this.currentCamera?.zoom ?? 1, 0.2);
+    const overviewMode = this.currentCallbacks?.overviewMode ?? false;
     const nearest = this.currentModel.nodes
-      .filter((node) => node.id !== interaction.nodeId)
+      .filter((node) => node.id !== interaction.nodeId && (!overviewMode || node.isOverviewVisible === true))
       .map((node) => {
-        const anchor = getNodeGateAnchor(node, targetGate, this.currentCallbacks?.overviewMode ?? false);
+        const renderNode = {
+          ...node,
+          position: (overviewMode ? node.overviewPosition : null) ?? node.position,
+        };
+        const anchor = getNodeGateAnchor(renderNode, targetGate, overviewMode);
         return {
           nodeId: node.id,
           gate: targetGate,

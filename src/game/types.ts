@@ -20,6 +20,15 @@ export interface GameNode {
   descendantCount?: number;
   isOverviewVisible?: boolean;
   isOnSelectedPath?: boolean;
+  isRouteNode?: boolean;
+  isRouteComplete?: boolean;
+  isCurrentRouteTarget?: boolean;
+  routeNodeId?: number;
+  routeSequenceIndex?: number;
+  routeOrder?: number | null;
+  routeStage?: string | null;
+  routeRequiredMasteryLevel?: string | null;
+  routeCurrentMasteryRank?: number;
 }
 
 export interface GameEdge {
