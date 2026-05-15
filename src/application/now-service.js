@@ -2240,7 +2240,18 @@ const buildWindRoseSnapshot = async (database, campaignId) => {
           skills.primary_stat_id,
           COUNT(DISTINCT nodes.id) AS node_count,
           COUNT(DISTINCT CASE WHEN nodes.status = 'done' THEN nodes.id END) AS done_node_count,
-          (
+          COALESCE(
+            (
+              SELECT nodes_inner.id
+              FROM node_actions actions
+              JOIN nodes nodes_inner ON nodes_inner.id = actions.node_id
+              WHERE nodes_inner.skill_id = skills.id
+                AND nodes_inner.is_archived = 0
+                AND actions.status IN ('todo', 'ready', 'doing')
+              ORDER BY actions.sort_order ASC, actions.id ASC
+              LIMIT 1
+            ),
+            (
             SELECT nodes_inner.id
             FROM nodes nodes_inner
             WHERE nodes_inner.skill_id = skills.id
@@ -2250,7 +2261,31 @@ const buildWindRoseSnapshot = async (database, campaignId) => {
               nodes_inner.updated_at DESC,
               nodes_inner.id ASC
             LIMIT 1
+            )
           ) AS focus_node_id,
+          COALESCE(
+            (
+              SELECT nodes_inner.title
+              FROM node_actions actions
+              JOIN nodes nodes_inner ON nodes_inner.id = actions.node_id
+              WHERE nodes_inner.skill_id = skills.id
+                AND nodes_inner.is_archived = 0
+                AND actions.status IN ('todo', 'ready', 'doing')
+              ORDER BY actions.sort_order ASC, actions.id ASC
+              LIMIT 1
+            ),
+            (
+            SELECT nodes_inner.title
+            FROM nodes nodes_inner
+            WHERE nodes_inner.skill_id = skills.id
+              AND nodes_inner.is_archived = 0
+            ORDER BY
+              CASE WHEN nodes_inner.status IN ('active', 'paused') THEN 0 ELSE 1 END ASC,
+              nodes_inner.updated_at DESC,
+              nodes_inner.id ASC
+            LIMIT 1
+            )
+          ) AS focus_node_title,
           (
             SELECT actions.id
             FROM node_actions actions
@@ -2260,7 +2295,17 @@ const buildWindRoseSnapshot = async (database, campaignId) => {
               AND actions.status IN ('todo', 'ready', 'doing')
             ORDER BY actions.sort_order ASC, actions.id ASC
             LIMIT 1
-          ) AS next_action_id
+          ) AS next_action_id,
+          (
+            SELECT actions.title
+            FROM node_actions actions
+            JOIN nodes nodes_inner ON nodes_inner.id = actions.node_id
+            WHERE nodes_inner.skill_id = skills.id
+              AND nodes_inner.is_archived = 0
+              AND actions.status IN ('todo', 'ready', 'doing')
+            ORDER BY actions.sort_order ASC, actions.id ASC
+            LIMIT 1
+          ) AS next_action_title
         FROM skills
         JOIN directions ON directions.id = skills.direction_id
         JOIN spheres ON spheres.id = directions.sphere_id

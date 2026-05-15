@@ -132,6 +132,50 @@ test('startTodaySessionFromPrimaryRecommendation uses the explicit campaign id',
   assert.equal(sessions[0].campaign_id, developer.id);
 });
 
+test('wind rose branches expose map target labels for branch navigation', async (t) => {
+  const { database, hierarchyStore, nowService } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const developer = (await database.select("SELECT * FROM campaigns WHERE type = 'developer_main' LIMIT 1"))[0];
+  await nowService.createStarterWorkspace(developer.id);
+
+  const [nextAction] = await database.select(
+    `
+      SELECT actions.*, nodes.skill_id, nodes.id AS action_node_id, nodes.title AS action_node_title
+      FROM node_actions actions
+      JOIN nodes ON nodes.id = actions.node_id
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE spheres.campaign_id = ?
+        AND actions.status IN ('todo', 'ready', 'doing')
+      ORDER BY actions.sort_order ASC, actions.id ASC
+      LIMIT 1
+    `,
+    [developer.id],
+  );
+  const decoyNode = await hierarchyStore.createNode({
+    skill_id: nextAction.skill_id,
+    type: 'task',
+    status: 'active',
+    title: 'Fresh branch node without next action',
+    slug: 'fresh-branch-node-without-next-action',
+  });
+
+  const windRose = await nowService.getWindRoseSnapshot(developer.id);
+  const branch = windRose.stats.flatMap((stat) => stat.branches).find((item) => item.next_action_id != null);
+
+  assert.ok(branch);
+  assert.equal(branch.id, nextAction.skill_id);
+  assert.equal(branch.focus_node_id, nextAction.action_node_id);
+  assert.notEqual(branch.focus_node_id, decoyNode.id);
+  assert.equal(branch.next_action_id, nextAction.id);
+  assert.equal(typeof branch.focus_node_title, 'string');
+  assert.equal(typeof branch.next_action_title, 'string');
+  assert.equal(branch.focus_node_title, nextAction.action_node_title);
+  assert.equal(branch.next_action_title.length > 0, true);
+});
+
 test('node completion grants XP once and done-to-active deactivates the grant', async (t) => {
   const { database, nowService } = await setupCampaignService();
   t.after(() => database.close());

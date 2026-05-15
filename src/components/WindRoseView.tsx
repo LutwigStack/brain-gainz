@@ -1,4 +1,4 @@
-import { GitBranch, Map, RefreshCw, Sparkles, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, CircleDot, GitBranch, LockKeyhole, Map, RefreshCw, Sparkles, TriangleAlert } from 'lucide-react';
 
 import {
   PixelButton,
@@ -16,7 +16,9 @@ interface WindRoseBranch {
   node_count: number;
   done_node_count: number;
   focus_node_id?: number | null;
+  focus_node_title?: string | null;
   next_action_id?: number | null;
+  next_action_title?: string | null;
 }
 
 interface WindRoseStat {
@@ -52,6 +54,53 @@ const polarPoint = (index: number, total: number, radius: number) => {
   };
 };
 
+type BranchStateKey = 'active' | 'next' | 'blocked' | 'completed';
+
+const clampPercent = (value: number) => Math.min(100, Math.max(0, Math.round(value)));
+
+const branchProgress = (branch: WindRoseBranch) =>
+  branch.node_count <= 0 ? 0 : clampPercent((branch.done_node_count / branch.node_count) * 100);
+
+const branchState = (
+  branch: WindRoseBranch,
+): { key: BranchStateKey; label: string; tone: 'accent' | 'success' | 'danger' | 'info' } => {
+  if (branch.node_count > 0 && branch.done_node_count >= branch.node_count) {
+    return { key: 'completed', label: 'completed', tone: 'success' };
+  }
+
+  if (branch.next_action_id != null) {
+    return { key: 'active', label: 'active', tone: 'accent' };
+  }
+
+  if (branch.focus_node_id != null) {
+    return { key: 'next', label: 'next', tone: 'info' };
+  }
+
+  return { key: 'blocked', label: 'blocked', tone: 'danger' };
+};
+
+const BranchStateIcon = ({ state }: { state: BranchStateKey }) => {
+  if (state === 'completed') {
+    return <CheckCircle2 size={14} />;
+  }
+
+  if (state === 'blocked') {
+    return <LockKeyhole size={14} />;
+  }
+
+  return <CircleDot size={14} />;
+};
+
+const branchTarget = (branch: WindRoseBranch) =>
+  branch.next_action_title ?? branch.focus_node_title ?? (branch.node_count > 0 ? 'карта ветки' : 'пустая ветка');
+
+const pickPrimaryBranch = (branches: WindRoseBranch[]) =>
+  branches.find((branch) => branchState(branch).key === 'active') ??
+  branches.find((branch) => branchState(branch).key === 'next') ??
+  branches.find((branch) => branchState(branch).key !== 'completed') ??
+  branches[0] ??
+  null;
+
 export const WindRoseView = ({
   snapshot,
   isLoading,
@@ -63,6 +112,8 @@ export const WindRoseView = ({
 }: WindRoseViewProps) => {
   const stats = snapshot?.stats ?? [];
   const selectedStat = stats.find((stat) => stat.id === selectedStatId) ?? stats[0] ?? null;
+  const selectedBranches = selectedStat?.branches ?? [];
+  const primaryBranch = pickPrimaryBranch(selectedBranches);
   const maxLevel = Math.max(5, ...stats.map((stat) => Number(stat.level ?? 1)));
   const polygonPoints = stats
     .map((stat, index: number) => {
@@ -74,7 +125,7 @@ export const WindRoseView = ({
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <PixelSurface frame="panel" padding="xl">
+      <PixelSurface frame="panel" padding="xl" className="min-w-0" style={{ boxSizing: 'border-box' }}>
         <PixelStack gap="lg">
           <PixelPanelHeader
             eyebrow="Роза ветров"
@@ -171,11 +222,17 @@ export const WindRoseView = ({
                     className="grid min-w-0 gap-2 border bg-[rgba(15,23,42,0.72)] p-3 text-left"
                     style={{
                       borderColor: selectedStat?.id === stat.id ? stat.color : 'var(--pixel-border)',
+                      boxShadow:
+                        selectedStat?.id === stat.id
+                          ? `inset 4px 0 0 ${stat.color ?? 'var(--pixel-accent)'}`
+                          : undefined,
                     }}
                   >
                     <div className="flex min-w-0 items-center justify-between gap-3">
                       <span className="truncate text-sm font-bold text-[var(--pixel-text)]">{stat.title}</span>
-                      <span className="text-xs uppercase text-[var(--pixel-text-muted)]">lvl {stat.level}</span>
+                      <span className="text-xs uppercase text-[var(--pixel-text-muted)]">
+                        lvl {stat.level} · {stat.branches?.length ?? 0} ветк.
+                      </span>
                     </div>
                     <PixelMeter value={stat.progressToNext ?? 0} />
                   </button>
@@ -186,33 +243,75 @@ export const WindRoseView = ({
         </PixelStack>
       </PixelSurface>
 
-      <PixelSurface frame="panel" padding="md">
+      <PixelSurface
+        frame="panel"
+        padding="md"
+        className="min-w-0"
+        style={{ borderColor: selectedStat?.color ?? undefined, boxSizing: 'border-box' }}
+      >
         <PixelPanelHeader
-          eyebrow="Стат"
+          eyebrow={
+            selectedStat ? (
+              <span className="inline-flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-2.5 w-2.5"
+                  style={{ background: selectedStat.color ?? 'var(--pixel-accent)' }}
+                />
+                Стат
+              </span>
+            ) : (
+              'Стат'
+            )
+          }
           title={selectedStat?.title ?? 'Выбор'}
-          description={selectedStat ? `${selectedStat.xp} XP · ${selectedStat.branches?.length ?? 0} ветк.` : 'Нажмите луч.'}
+          description={selectedStat ? `${selectedStat.xp} XP · ${selectedBranches.length} ветк.` : 'Нажмите луч.'}
         />
 
         {selectedStat ? (
           <div className="mt-3 grid gap-2">
-            {(selectedStat.branches ?? []).map((branch) => (
-              <PixelButton
-                key={branch.id}
-                tone="ghost"
-                onClick={() => onOpenBranch(branch)}
-                style={{ justifyContent: 'space-between' }}
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <GitBranch size={14} />
-                  <span className="truncate">{branch.name}</span>
-                </span>
-                <span className="text-xs text-[var(--pixel-text-muted)]">
-                  {branch.done_node_count}/{branch.node_count}
-                </span>
-              </PixelButton>
-            ))}
+            {selectedBranches.map((branch) => {
+              const state = branchState(branch);
+              const progress = branchProgress(branch);
+              const target = branchTarget(branch);
 
-            {(selectedStat.branches ?? []).length === 0 ? (
+              return (
+                <button
+                  key={branch.id}
+                  type="button"
+                  onClick={() => onOpenBranch(branch)}
+                  aria-label={`Открыть ветку ${branch.name}: ${target}`}
+                  className="grid min-w-0 gap-2 border bg-[rgba(15,23,42,0.68)] p-3 text-left"
+                  style={{
+                    borderColor: selectedStat.color ?? 'var(--pixel-line-soft)',
+                    boxShadow: `inset 4px 0 0 ${selectedStat.color ?? 'var(--pixel-accent)'}`,
+                  }}
+                >
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <GitBranch size={14} className="shrink-0 text-[var(--pixel-accent)]" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold text-[var(--pixel-text)]">{branch.name}</span>
+                        <span className="block truncate text-xs text-[var(--pixel-text-muted)]">К карте: {target}</span>
+                      </span>
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[10px] uppercase text-[var(--pixel-text-muted)]">
+                      <BranchStateIcon state={state.key} />
+                      {state.label}
+                    </span>
+                  </div>
+                  <div className="grid gap-1">
+                    <div className="flex items-center justify-between gap-2 text-[10px] uppercase text-[var(--pixel-text-muted)]">
+                      <span>{branch.done_node_count}/{branch.node_count} узл.</span>
+                      <span>{progress}%</span>
+                    </div>
+                    <PixelMeter value={progress} tone={state.tone} showValue={false} />
+                  </div>
+                </button>
+              );
+            })}
+
+            {selectedBranches.length === 0 ? (
               <PixelText as="p" readable size="sm" color="textMuted">
                 Веток пока нет.
               </PixelText>
@@ -228,9 +327,19 @@ export const WindRoseView = ({
           </PixelSurface>
         ) : null}
 
-        {selectedStat?.branches?.[0] ? (
-          <PixelButton tone="accent" onClick={() => onOpenBranch(selectedStat.branches[0])} fullWidth style={{ marginTop: 12 }}>
-            <Map size={16} /> Открыть ветку
+        {primaryBranch ? (
+          <PixelButton
+            tone="accent"
+            onClick={() => onOpenBranch(primaryBranch)}
+            fullWidth
+            aria-label={`Открыть ветку ${primaryBranch.name}: ${branchTarget(primaryBranch)}`}
+            style={{ marginTop: 12, justifyContent: 'space-between' }}
+          >
+            <span className="inline-flex min-w-0 items-center gap-2">
+              <Map size={16} className="shrink-0" />
+              <span className="truncate">Открыть: {primaryBranch.name}</span>
+            </span>
+            <span className="truncate text-[10px] text-[var(--pixel-text-muted)]">{branchTarget(primaryBranch)}</span>
           </PixelButton>
         ) : null}
       </PixelSurface>
