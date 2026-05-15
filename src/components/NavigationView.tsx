@@ -285,6 +285,7 @@ interface NavigationViewProps {
     checklistResults?: Record<string, boolean> | null;
     usesAutomaticStrictCheck?: boolean;
   }) => Promise<void> | void;
+  inspectorModeRequest?: { mode: InspectorMode; requestId: number } | null;
   currentSpecialization: CareerSpecialization | null;
   currentRoute: TodaySnapshot['route'] | null;
   routeFilterRequestId?: number | null;
@@ -362,6 +363,7 @@ export const NavigationView = ({
   onUndoMapMutation,
   onMarkSelfMastery,
   onSubmitAssessment,
+  inspectorModeRequest = null,
   currentSpecialization,
   currentRoute,
   routeFilterRequestId = null,
@@ -418,6 +420,17 @@ export const NavigationView = ({
   const hasInitializedTreeExpansion = useRef(false);
   const handledRouteFilterRequestId = useRef<number | null>(null);
   const handledVisibleMapFitKey = useRef<string | null>(null);
+  const requestedInspectorMode = inspectorModeRequest?.mode ?? null;
+  const requestedInspectorRequestId = inspectorModeRequest?.requestId ?? null;
+
+  useEffect(() => {
+    if (!requestedInspectorMode) {
+      return;
+    }
+
+    setInspectorMode(requestedInspectorMode);
+    setIsInspectorCollapsed(false);
+  }, [requestedInspectorMode, requestedInspectorRequestId]);
 
   const clearMapTransientUi = () => {
     setCanvasContextMenu(null);

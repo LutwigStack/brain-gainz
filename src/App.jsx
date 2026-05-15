@@ -1,13 +1,18 @@
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import {
+  BarChart3,
   Brain,
+  BriefcaseBusiness,
+  CalendarCheck,
   Compass,
   Download,
+  Flag,
   Globe2,
-  Map,
-  Radar,
   Settings,
+  ShieldCheck,
   Sparkles,
+  TreePine,
+  UserRound,
   X,
 } from 'lucide-react';
 
@@ -70,6 +75,7 @@ export default function App() {
   const runtime = getRuntimeProfile();
   const [activeTab, setActiveTab] = useState('now');
   const normalizedActiveTab = activeTab === 'now' || activeTab === 'map' || activeTab === 'wind' ? activeTab : 'now';
+  const [mapInspectorRequest, setMapInspectorRequest] = useState(null);
   const [campaigns, setCampaigns] = useState(null);
   const [campaignsLoading, setCampaignsLoading] = useState(false);
   const [campaignMutationPending, setCampaignMutationPending] = useState(false);
@@ -662,6 +668,7 @@ export default function App() {
       return;
     }
     const selection = { nodeId, actionId: null, skillId: null };
+    requestMapInspectorMode('overview');
     setNavigationBranchFilterId(null);
     setNavigationSelection(selection);
     requestMapRouteFilter();
@@ -673,6 +680,7 @@ export default function App() {
   };
 
   const handleOpenTodayRouteMap = async () => {
+    requestMapInspectorMode('overview');
     setNavigationBranchFilterId(null);
     requestMapRouteFilter();
     if (normalizedActiveTab === 'map') {
@@ -1605,121 +1613,306 @@ export default function App() {
     </PixelSurface>
   );
 
+  const requestMapInspectorMode = (mode) => {
+    setMapInspectorRequest((current) => ({
+      mode,
+      requestId: (current?.requestId ?? 0) + 1,
+    }));
+  };
+
+  const todayContext = nowSnapshot?.today ?? null;
+  const contextSpecialization = todayContext?.currentSpecialization ?? null;
+  const contextRace = todayContext?.race ?? null;
+  const campaignKindLabel = !selectedCampaign
+    ? 'Кампания не выбрана'
+    : selectedCampaign.type === 'developer_main'
+      ? 'Системный шаблон'
+      : 'Личная кампания';
+  const campaignModeLabel =
+    selectedCampaign?.mode === 'career' || contextSpecialization
+      ? 'Career mode'
+      : selectedCampaign
+        ? 'Free mode'
+        : 'Setup';
+  const campaignStatusLabel =
+    selectedCampaign?.career_status === 'victory'
+      ? 'Маршрут закрыт'
+      : selectedCampaign
+        ? 'Активна'
+        : 'Выберите мир';
+  const specializationLabel = contextSpecialization?.name ?? (selectedCampaign ? 'Свободный режим' : 'Нет кампании');
+  const specializationMeta = contextSpecialization?.domain
+    ? `${contextSpecialization.domain} / ${contextSpecialization.length}`
+    : contextSpecialization?.length ?? (selectedCampaign ? 'Текущий режим' : 'Ожидает выбора');
+  const raceLabel =
+    contextRace?.title ?? (selectedCampaign?.mode === 'career' ? 'Персона не назначена' : selectedCampaign ? 'Архитектор' : 'Нет персоны');
+  const raceEmblem = contextRace?.emblem ?? (selectedCampaign?.mode === 'career' ? '♜' : '◆');
+  const raceColor = contextRace?.color ?? selectedCampaign?.color ?? 'var(--pixel-accent)';
+  const activeScreenLabel = !selectedCampaign
+    ? 'Кампании'
+    : normalizedActiveTab === 'map'
+      ? mapInspectorRequest?.mode === 'assessment'
+        ? 'Проверки'
+        : 'Карта / дерево'
+      : normalizedActiveTab === 'wind'
+        ? 'Роза / статистика'
+        : 'Сегодня';
+  const navItems = [
+    {
+      key: 'campaigns',
+      label: 'Кампании',
+      description: 'Меню миров',
+      icon: Globe2,
+      active: !selectedCampaign,
+      disabled: false,
+      onClick: handleBackToCampaigns,
+    },
+    {
+      key: 'today',
+      label: 'Сегодня',
+      description: 'Дневной ход',
+      icon: CalendarCheck,
+      active: Boolean(selectedCampaign && normalizedActiveTab === 'now'),
+      disabled: !selectedCampaign,
+      onClick: () => setActiveTab('now'),
+    },
+    {
+      key: 'map',
+      label: 'Карта / дерево',
+      description: 'Узлы и маршрут',
+      icon: TreePine,
+      active: Boolean(selectedCampaign && normalizedActiveTab === 'map' && mapInspectorRequest?.mode !== 'assessment'),
+      disabled: !selectedCampaign,
+      onClick: () => {
+        requestMapInspectorMode('overview');
+        setActiveTab('map');
+      },
+    },
+    {
+      key: 'assessment',
+      label: 'Проверки',
+      description: 'Assessment в инспекторе карты',
+      icon: ShieldCheck,
+      active: Boolean(selectedCampaign && normalizedActiveTab === 'map' && mapInspectorRequest?.mode === 'assessment'),
+      disabled: !selectedCampaign,
+      onClick: () => {
+        requestMapInspectorMode('assessment');
+        setActiveTab('map');
+      },
+    },
+    {
+      key: 'wind',
+      label: 'Роза / статистика',
+      description: 'Статы кампании',
+      icon: BarChart3,
+      active: Boolean(selectedCampaign && normalizedActiveTab === 'wind'),
+      disabled: !selectedCampaign,
+      onClick: () => setActiveTab('wind'),
+    },
+  ];
+
+  const renderShellNav = (variant) => (
+    <nav
+      className={`app-shell-nav app-shell-nav--${variant}`}
+      aria-label={variant === 'desktop' ? 'Основная навигация BrainGainz' : 'Мобильная навигация BrainGainz'}
+    >
+      {navItems.map((item) => {
+        const Icon = item.icon;
+        return (
+          <PixelButton
+            key={item.key}
+            tone={item.active ? 'accent' : 'ghost'}
+            onClick={item.onClick}
+            disabled={item.disabled}
+            aria-pressed={item.active}
+            aria-current={item.active ? 'page' : undefined}
+            className={`app-nav-button ${item.active ? 'app-nav-button--active' : ''}`}
+          >
+            <Icon size={16} />
+            <span className="app-nav-button__copy">
+              <span className="app-nav-button__label">{item.label}</span>
+              {variant === 'desktop' ? <span className="app-nav-button__description">{item.description}</span> : null}
+            </span>
+          </PixelButton>
+        );
+      })}
+
+      <PixelButton
+        tone={showSettings ? 'accent' : 'ghost'}
+        onClick={() => setShowSettings(!showSettings)}
+        aria-pressed={showSettings}
+        className={`app-nav-button ${showSettings ? 'app-nav-button--active' : ''}`}
+      >
+        <Settings size={16} />
+        <span className="app-nav-button__copy">
+          <span className="app-nav-button__label">Настройки</span>
+          {variant === 'desktop' ? <span className="app-nav-button__description">Профиль и экспорт</span> : null}
+        </span>
+      </PixelButton>
+    </nav>
+  );
+
   return (
     <div
-      className="pixel-shell-grid flex min-h-[100dvh] flex-col text-[var(--pixel-text)]"
+      className="pixel-shell-grid min-h-[100dvh] text-[var(--pixel-text)]"
       style={{
         paddingBottom: runtime.usesSafeAreaInsets ? 'env(safe-area-inset-bottom)' : undefined,
       }}
     >
-      <header
-        inert={showSettings ? true : undefined}
-        aria-hidden={showSettings ? true : undefined}
-        className="app-shell-header sticky top-0 z-50 px-3 pb-2 pt-2 sm:px-4"
-        style={{
-          paddingTop: runtime.usesSafeAreaInsets ? 'max(0.5rem, env(safe-area-inset-top))' : undefined,
-        }}
-      >
-        <div className="flex w-full flex-col gap-2">
-          <PixelSurface frame="panel" padding="xs" className="app-topbar">
-            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-              <div className="app-top-main flex min-w-0 flex-wrap items-center gap-2">
-                <div className="app-brand-block flex items-center gap-2">
-                  <PixelSurface frame="accent" padding="xs" fullWidth={false} className="app-brand-mark">
-                    <Brain size={20} className="text-[var(--pixel-accent-glow)]" />
-                  </PixelSurface>
-                  <div className="min-w-0">
-                    <PixelText as="h1" readable size="lg" style={{ margin: 0, lineHeight: 1.1, fontWeight: 800 }}>
-                      BrainGainz
-                    </PixelText>
-                    <PixelText as="p" readable size="xs" color="textDim" className="app-runtime-copy" style={{ marginTop: 2 }}>
-                      {runtime.isLocalFirst ? 'Локальная база' : 'Браузерное хранилище'}
+      <div className="app-cockpit-shell">
+        <aside
+          inert={showSettings ? true : undefined}
+          aria-hidden={showSettings ? true : undefined}
+          className="app-left-nav"
+        >
+          <div className="app-left-nav__inner">
+            <div className="app-left-nav__brand">
+              <PixelSurface frame="accent" padding="xs" fullWidth={false} className="app-brand-mark">
+                <Brain size={20} className="text-[var(--pixel-accent-glow)]" />
+              </PixelSurface>
+              <div className="min-w-0">
+                <PixelText as="h1" readable size="lg" style={{ margin: 0, lineHeight: 1.1, fontWeight: 800 }}>
+                  BrainGainz
+                </PixelText>
+                <PixelText as="p" readable size="xs" color="textDim" className="app-runtime-copy" style={{ marginTop: 2 }}>
+                  {runtime.isLocalFirst ? 'Локальная база' : 'Браузерное хранилище'}
+                </PixelText>
+              </div>
+            </div>
+
+            <div className="app-left-nav__screen">
+              <PixelText as="p" size="xs" color="textDim" uppercase>
+                Экран
+              </PixelText>
+              <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 4, fontWeight: 800 }}>
+                {activeScreenLabel}
+              </PixelText>
+            </div>
+
+            {renderShellNav('desktop')}
+
+            <div className="app-left-nav__footer" title={runtime.dataBoundaryLabel}>
+              <PixelText as="p" size="xs" color="textDim" uppercase>
+                Runtime
+              </PixelText>
+              <PixelText as="p" readable size="xs" color={runtime.isLocalFirst ? 'success' : 'info'} style={{ marginTop: 4 }}>
+                {runtime.shellLabel} / {runtime.storageLabel}
+              </PixelText>
+            </div>
+          </div>
+        </aside>
+
+        <div className="app-shell-main">
+          <header
+            inert={showSettings ? true : undefined}
+            aria-hidden={showSettings ? true : undefined}
+            className="app-shell-header sticky top-0 z-50 px-3 pb-2 pt-2 sm:px-4"
+            style={{
+              paddingTop: runtime.usesSafeAreaInsets ? 'max(0.5rem, env(safe-area-inset-top))' : undefined,
+            }}
+          >
+            <div className="flex w-full flex-col gap-2">
+              <PixelSurface frame="panel" padding="xs" className="app-topbar">
+                <div className="app-topbar__layout">
+                  <div className="app-mobile-brand">
+                    <PixelSurface frame="accent" padding="xs" fullWidth={false} className="app-brand-mark">
+                      <Brain size={18} className="text-[var(--pixel-accent-glow)]" />
+                    </PixelSurface>
+                    <div className="min-w-0">
+                      <PixelText as="h1" readable size="lg" style={{ margin: 0, lineHeight: 1.1, fontWeight: 800 }}>
+                        BrainGainz
+                      </PixelText>
+                      <PixelText as="p" readable size="xs" color="textDim" className="app-runtime-copy" style={{ marginTop: 2 }}>
+                        {activeScreenLabel}
+                      </PixelText>
+                    </div>
+                  </div>
+
+                  <div className="app-context-grid" aria-label="Контекст кампании">
+                    <div className="app-context-card app-context-card--campaign">
+                      <div className="app-context-card__icon" style={{ borderColor: selectedCampaign?.color ?? undefined }}>
+                        <Flag size={15} />
+                      </div>
+                      <div className="min-w-0">
+                        <PixelText as="p" size="xs" color="textDim" uppercase>
+                          Кампания
+                        </PixelText>
+                        <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
+                          {selectedCampaign?.name ?? 'Campaign Menu'}
+                        </PixelText>
+                        <PixelText as="p" readable size="xs" color="textMuted" className="truncate" style={{ marginTop: 2 }}>
+                          {campaignKindLabel}
+                        </PixelText>
+                      </div>
+                    </div>
+
+                    <div className="app-context-card">
+                      <div className="app-context-card__icon">
+                        <Compass size={15} />
+                      </div>
+                      <div className="min-w-0">
+                        <PixelText as="p" size="xs" color="textDim" uppercase>
+                          Специализация
+                        </PixelText>
+                        <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
+                          {specializationLabel}
+                        </PixelText>
+                        <PixelText as="p" readable size="xs" color="textMuted" className="truncate" style={{ marginTop: 2 }}>
+                          {specializationMeta}
+                        </PixelText>
+                      </div>
+                    </div>
+
+                    <div className="app-context-card">
+                      <div className="app-context-card__icon app-context-card__emblem" style={{ borderColor: raceColor, color: raceColor }}>
+                        {raceEmblem}
+                      </div>
+                      <div className="min-w-0">
+                        <PixelText as="p" size="xs" color="textDim" uppercase>
+                          Раса / персона
+                        </PixelText>
+                        <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
+                          {raceLabel}
+                        </PixelText>
+                        <PixelText as="p" readable size="xs" color="textMuted" className="truncate" style={{ marginTop: 2 }}>
+                          Игровой профиль
+                        </PixelText>
+                      </div>
+                    </div>
+
+                    <div className="app-context-card">
+                      <div className="app-context-card__icon">
+                        {selectedCampaign?.mode === 'career' || contextSpecialization ? (
+                          <BriefcaseBusiness size={15} />
+                        ) : (
+                          <UserRound size={15} />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <PixelText as="p" size="xs" color="textDim" uppercase>
+                          Режим
+                        </PixelText>
+                        <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
+                          {campaignModeLabel}
+                        </PixelText>
+                        <PixelText as="p" readable size="xs" color="textMuted" className="truncate" style={{ marginTop: 2 }}>
+                          {campaignStatusLabel}
+                        </PixelText>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="app-top-actions" title={runtime.dataBoundaryLabel}>
+                    <PixelText as="span" readable size="xs" color={runtime.isLocalFirst ? 'success' : 'info'}>
+                      {runtime.shellLabel} / {runtime.storageLabel}
                     </PixelText>
                   </div>
                 </div>
 
-                <div
-                  className="app-primary-nav hide-scrollbar ml-0 flex min-w-0 items-center gap-1 overflow-x-auto sm:ml-3"
-                  role="navigation"
-                  aria-label="Основные разделы BrainGainz"
-                >
-                  <PixelButton
-                    tone={!selectedCampaign ? 'accent' : 'ghost'}
-                    onClick={handleBackToCampaigns}
-                    aria-pressed={!selectedCampaign}
-                    aria-current={!selectedCampaign ? 'page' : undefined}
-                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                  >
-                    <Globe2 size={14} /> <span>Кампании</span>
-                  </PixelButton>
-                  {selectedCampaign ? (
-                    <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="app-campaign-chip hidden md:block">
-                      <PixelText as="span" readable size="xs" color="textMuted">
-                        {selectedCampaign.name}
-                      </PixelText>
-                    </PixelSurface>
-                  ) : null}
-                  {selectedCampaign ? (
-                    <>
-                  <PixelButton
-                    tone={normalizedActiveTab === 'now' ? 'accent' : 'ghost'}
-                    onClick={() => setActiveTab('now')}
-                    aria-pressed={normalizedActiveTab === 'now'}
-                    aria-current={normalizedActiveTab === 'now' ? 'page' : undefined}
-                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                  >
-                    <Compass size={14} /> <span>Сейчас</span>
-                  </PixelButton>
-                  <PixelButton
-                    tone={normalizedActiveTab === 'map' ? 'accent' : 'ghost'}
-                    onClick={() => setActiveTab('map')}
-                    aria-pressed={normalizedActiveTab === 'map'}
-                    aria-current={normalizedActiveTab === 'map' ? 'page' : undefined}
-                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                  >
-                    <Map size={14} /> <span>Карта</span>
-                  </PixelButton>
-                  <PixelButton
-                    tone={normalizedActiveTab === 'wind' ? 'accent' : 'ghost'}
-                    onClick={() => setActiveTab('wind')}
-                    aria-pressed={normalizedActiveTab === 'wind'}
-                    aria-current={normalizedActiveTab === 'wind' ? 'page' : undefined}
-                    style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                  >
-                    <Radar size={14} /> <span>Роза</span>
-                  </PixelButton>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="app-top-actions flex min-w-0 items-center gap-2">
-                <PixelSurface
-                  frame="ghost"
-                  padding="xs"
-                  fullWidth={false}
-                  className="hidden sm:block"
-                  title={runtime.dataBoundaryLabel}
-                >
-                  <PixelText as="span" readable size="xs" color={runtime.isLocalFirst ? 'success' : 'info'}>
-                    {runtime.shellLabel} / {runtime.storageLabel}
-                  </PixelText>
-                </PixelSurface>
-                <PixelButton
-                  tone={showSettings ? 'accent' : 'ghost'}
-                  onClick={() => setShowSettings(!showSettings)}
-                  aria-label="Настройки"
-                  className="app-settings-button"
-                  style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                >
-                  <Settings size={14} />
-                  <span className="hidden sm:inline">Настройки</span>
-                </PixelButton>
-              </div>
+                {renderShellNav('mobile')}
+              </PixelSurface>
             </div>
-          </PixelSurface>
-        </div>
-      </header>
+          </header>
 
       {showSettings && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
@@ -1844,7 +2037,7 @@ export default function App() {
       <main
         inert={showSettings ? true : undefined}
         aria-hidden={showSettings ? true : undefined}
-        className="w-full min-w-0 flex-grow px-3 pb-4 pt-1 sm:px-4 sm:pb-6 sm:pt-1"
+        className="app-shell-content w-full min-w-0 flex-grow px-3 pb-4 pt-1 sm:px-4 sm:pb-6 sm:pt-1"
       >
         <Suspense fallback={screenFallback}>
         {!selectedCampaign && (
@@ -1875,6 +2068,7 @@ export default function App() {
             onSelectRecommendation={handleSelectNowRecommendation}
             onOpenMap={async (recommendation) => {
               await handleSelectNowRecommendation(recommendation);
+              requestMapInspectorMode('overview');
               setActiveTab('map');
             }}
             onOpenRouteNode={handleOpenTodayRouteNode}
@@ -1926,6 +2120,7 @@ export default function App() {
             onUndoMapMutation={handleUndoMapMutation}
             onMarkSelfMastery={handleMarkNavigationSelfMastery}
             onSubmitAssessment={handleSubmitNavigationAssessment}
+            inspectorModeRequest={mapInspectorRequest}
             currentSpecialization={nowSnapshot?.today?.currentSpecialization ?? null}
             currentRoute={nowSnapshot?.today?.route ?? null}
             routeFilterRequestId={mapRouteFilterRequestId}
@@ -1969,6 +2164,7 @@ export default function App() {
               if (!branch.focus_node_id) {
                 setNavigationFocus(null);
               }
+              requestMapInspectorMode('overview');
               setActiveTab('map');
               await loadNavigationSnapshot(selection);
             }}
@@ -1977,6 +2173,8 @@ export default function App() {
         )}
         </Suspense>
       </main>
+        </div>
+      </div>
     </div>
   );
 }
