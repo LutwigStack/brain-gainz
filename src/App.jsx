@@ -2121,6 +2121,7 @@ export default function App() {
             onMarkSelfMastery={handleMarkNavigationSelfMastery}
             onSubmitAssessment={handleSubmitNavigationAssessment}
             inspectorModeRequest={mapInspectorRequest}
+            onInspectorModeChange={requestMapInspectorMode}
             currentSpecialization={nowSnapshot?.today?.currentSpecialization ?? null}
             currentRoute={nowSnapshot?.today?.route ?? null}
             routeFilterRequestId={mapRouteFilterRequestId}

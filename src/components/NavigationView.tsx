@@ -286,6 +286,7 @@ interface NavigationViewProps {
     usesAutomaticStrictCheck?: boolean;
   }) => Promise<void> | void;
   inspectorModeRequest?: { mode: InspectorMode; requestId: number } | null;
+  onInspectorModeChange?: (mode: InspectorMode) => void;
   currentSpecialization: CareerSpecialization | null;
   currentRoute: TodaySnapshot['route'] | null;
   routeFilterRequestId?: number | null;
@@ -364,6 +365,7 @@ export const NavigationView = ({
   onMarkSelfMastery,
   onSubmitAssessment,
   inspectorModeRequest = null,
+  onInspectorModeChange,
   currentSpecialization,
   currentRoute,
   routeFilterRequestId = null,
@@ -431,6 +433,11 @@ export const NavigationView = ({
     setInspectorMode(requestedInspectorMode);
     setIsInspectorCollapsed(false);
   }, [requestedInspectorMode, requestedInspectorRequestId]);
+
+  const handleInspectorModeChange = (mode: InspectorMode) => {
+    setInspectorMode(mode);
+    onInspectorModeChange?.(mode);
+  };
 
   const clearMapTransientUi = () => {
     setCanvasContextMenu(null);
@@ -3618,7 +3625,7 @@ export const NavigationView = ({
                         key={item.id}
                         type="button"
                         tone={inspectorMode === item.id ? 'accent' : 'ghost'}
-                        onClick={() => setInspectorMode(item.id)}
+                        onClick={() => handleInspectorModeChange(item.id)}
                         aria-pressed={inspectorMode === item.id}
                         style={{ justifyContent: 'center', minHeight: 30, padding: '6px 8px' }}
                       >
