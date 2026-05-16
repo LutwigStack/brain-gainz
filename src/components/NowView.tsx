@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ArrowRight,
   BookOpen,
   Brain,
   CheckCircle2,
@@ -18,11 +19,17 @@ import {
 } from 'lucide-react';
 
 import { PixelButton, PixelMeter, PixelStack, PixelSurface, PixelText } from './pixel';
+import {
+  buildDailyTaskCards,
+  buildMiniMapPreview,
+  clampPercent,
+  masteryRank,
+  type DailyTaskCardViewModel,
+} from './today-dashboard-model';
 import type {
   NodeFocusSnapshot,
   NowDashboardSnapshot,
   RecommendationCandidate,
-  RouteProgressItem,
 } from '../types/app-shell';
 
 const reasonLabels: Record<string, string> = {
@@ -59,15 +66,6 @@ const masterySteps = [
   { level: 'retained', label: 'Удержал', icon: Trophy },
 ] as const;
 
-const masteryRankByLevel = {
-  seen: 1,
-  understood: 2,
-  remembered: 3,
-  applied: 4,
-  confirmed: 5,
-  retained: 6,
-} as const;
-
 const emptyMetrics = {
   spheres: 0,
   directions: 0,
@@ -84,8 +82,6 @@ const candidatePath = (candidate: RecommendationCandidate) =>
 const isRecommendationCandidate = (
   candidate: RecommendationCandidate | null,
 ): candidate is RecommendationCandidate => candidate != null;
-const clampPercent = (value: number) => Math.min(100, Math.max(0, Math.round(value)));
-const masteryRank = (level?: string | null) => masteryRankByLevel[level as keyof typeof masteryRankByLevel] ?? 0;
 
 const renderReasons = (reasons: string[]) =>
   reasons.slice(0, 2).map((reason) => (
@@ -95,18 +91,6 @@ const renderReasons = (reasons: string[]) =>
       </PixelText>
     </PixelSurface>
   ));
-
-const uniqueRouteItems = (items: Array<RouteProgressItem | null | undefined>) => {
-  const byId = new Map<number, RouteProgressItem>();
-
-  for (const item of items) {
-    if (item) {
-      byId.set(item.id, item);
-    }
-  }
-
-  return [...byId.values()];
-};
 
 interface NowViewProps {
   snapshot: NowDashboardSnapshot | null;
@@ -163,12 +147,6 @@ export const NowView = ({
   const plannerWeakSpots = routePlanner?.weakSpots ?? [];
   const plannerReadyToVerify = routePlanner?.readyToVerify ?? [];
   const routeItems = routeProgress?.items ?? [];
-  const visibleRoutePreviewItems = uniqueRouteItems([
-    plannerFocusItem,
-    ...plannerNextItems,
-    ...(routeItems.filter((item) => item.is_actionable !== false && item.is_required === 1 && !item.is_complete) ?? []),
-    ...(routeItems.filter((item) => item.is_complete) ?? []),
-  ]).slice(0, 7);
   const city = today?.city ?? null;
   const opponent = today?.opponent ?? null;
   const race = today?.race ?? null;
@@ -187,9 +165,21 @@ export const NowView = ({
   const remainingNodeActions =
     focus?.actions.filter((action) => action.id !== focusedAction?.id && action.status !== 'done') ?? [];
   const extraOptionsCount = optionalItems.length > 0 ? optionalItems.length : remainingNodeActions.length;
-  const routeDailyTasks = uniqueRouteItems([plannerFocusItem, ...plannerNextItems]).slice(0, 5);
-  const activeDailyTaskCount = routeDailyTasks.length || (primaryCandidate ? 1 : 0);
-  const taskPlaceholderCount = activeDailyTaskCount > 0 ? Math.max(0, 5 - activeDailyTaskCount) : 0;
+  const dailyTaskCards = buildDailyTaskCards({
+    focusItem: plannerFocusItem,
+    nextItems: plannerNextItems,
+    routeItems,
+    primaryRecommendation: primaryCandidate,
+    queue,
+  });
+  const activeDailyTaskCount = dailyTaskCards.filter((task) => task.state === 'current' || task.state === 'next').length;
+  const miniMapPreview = buildMiniMapPreview({
+    focusItem: plannerFocusItem,
+    nextItems: plannerNextItems,
+    weakSpots: plannerWeakSpots,
+    routeItems,
+    currentStage: plannerCurrentStage,
+  });
   const progressPercent = progress?.completionPercent ?? 0;
   const mainProgressPercent = routeProgress ? routeCompletionPercent : progressPercent;
   const mainProgressLabel = routeProgress
@@ -262,6 +252,27 @@ export const NowView = ({
       default:
         onRefresh();
     }
+  };
+
+  const handleDailyTaskAction = (task: DailyTaskCardViewModel) => {
+    if (task.disabled) {
+      return;
+    }
+
+    if (task.actionId != null) {
+      const recommendation = [primaryCandidate, ...queue].find((item) => item?.actionId === task.actionId);
+      if (recommendation) {
+        onSelectRecommendation(recommendation);
+        return;
+      }
+    }
+
+    if (task.state === 'future' || task.nodeId == null) {
+      onOpenRouteMap();
+      return;
+    }
+
+    onOpenRouteNode(task.nodeId);
   };
 
   const isPrimaryActionDisabled =
@@ -354,65 +365,41 @@ export const NowView = ({
             </div>
 
             <div className="today-task-grid">
-              {routeDailyTasks.length > 0
-                ? routeDailyTasks.map((item, index) => (
+              {dailyTaskCards.length > 0
+                ? dailyTaskCards.map((task) => (
                     <button
-                      key={item.id}
+                      key={task.key}
                       type="button"
-                      onClick={() => (item.node_id ? onOpenRouteNode(item.node_id as number) : onOpenRouteMap())}
-                      className="today-task-card"
+                      onClick={() => handleDailyTaskAction(task)}
+                      disabled={task.disabled}
+                      className={`today-task-card today-task-card--${task.state}`}
                     >
-                      <span className="today-task-card__index">{index + 1}</span>
+                      <span className="today-task-card__topline">
+                        <span className="today-task-card__index">{task.order}</span>
+                        <span className="today-task-card__status">{task.status}</span>
+                      </span>
                       <span className="today-task-card__body">
                         <PixelText as="span" readable size="sm" className="today-task-card__title">
-                          {item.title}
+                          {task.title}
                         </PixelText>
-                        <PixelText as="span" size="xs" color="textMuted">
-                          {item.route_stage ?? plannerCurrentStage ?? 'Маршрут'} · {item.current_mastery_rank}/6
+                        <PixelText as="span" size="xs" color="textMuted" className="today-task-card__subtitle">
+                          {task.subtitle}
                         </PixelText>
                       </span>
-                      <span className="today-task-card__meter">
-                        <span style={{ width: `${clampPercent((item.current_mastery_rank / 6) * 100)}%` }} />
+                      <span className="today-task-card__footer">
+                        <span className="today-task-card__meter" aria-hidden="true">
+                          <span style={{ width: `${task.progressPercent}%` }} />
+                        </span>
+                        <span className="today-task-card__action">
+                          {task.state === 'locked' ? <Lock size={14} /> : <ArrowRight size={14} />}
+                          {task.actionLabel}
+                        </span>
                       </span>
                     </button>
                   ))
                 : null}
 
-              {routeDailyTasks.length === 0 && primaryCandidate ? (
-                <button type="button" onClick={() => onSelectRecommendation(primaryCandidate)} className="today-task-card">
-                  <span className="today-task-card__index">1</span>
-                  <span className="today-task-card__body">
-                    <PixelText as="span" readable size="sm" className="today-task-card__title">
-                      {primaryCandidate.actionTitle}
-                    </PixelText>
-                    <PixelText as="span" size="xs" color="textMuted">
-                      {primaryCandidate.nodeTitle}
-                    </PixelText>
-                  </span>
-                  <span className="today-task-card__meter">
-                    <span style={{ width: '35%' }} />
-                  </span>
-                </button>
-              ) : null}
-
-              {Array.from({ length: taskPlaceholderCount }).map((_, index) => (
-                <div key={`task-placeholder-${index}`} className="today-task-card today-task-card--locked">
-                  <span className="today-task-card__index">{activeDailyTaskCount + index + 1}</span>
-                  <span className="today-task-card__body">
-                    <PixelText as="span" readable size="sm" className="today-task-card__title">
-                      Доп. задание
-                    </PixelText>
-                    <PixelText as="span" size="xs" color="textMuted">
-                      откроется позже
-                    </PixelText>
-                  </span>
-                  <span className="today-task-card__lock">
-                    <Lock size={15} />
-                  </span>
-                </div>
-              ))}
-
-              {routeDailyTasks.length === 0 && !primaryCandidate ? (
+              {dailyTaskCards.length === 0 ? (
                 <PixelSurface frame="ghost" padding="md" className="today-empty-slot">
                   <PixelText as="p" readable size="sm" color="textMuted">
                     {todayState.key === 'truly_empty'
@@ -559,33 +546,65 @@ export const NowView = ({
                 </PixelText>
               </div>
 
-              <button
-                type="button"
-                onClick={onOpenRouteMap}
+              <div
                 className="today-mini-map"
-                aria-label="Открыть карту маршрута"
+                role="img"
+                aria-label="Превью текущего фронта, маршрута и слабого места"
+                data-mini-map-preview="non-destructive"
               >
-                {visibleRoutePreviewItems.length > 0 ? (
-                  visibleRoutePreviewItems.map((item, index) => (
-                    <span
-                      key={item.id}
-                      className={`today-mini-map__node ${item.is_complete ? 'today-mini-map__node--done' : ''} ${
-                        item.id === plannerFocusItem?.id ? 'today-mini-map__node--focus' : ''
-                      }`}
-                      style={{
-                        left: `${10 + (index % 4) * 25}%`,
-                        top: `${20 + Math.floor(index / 4) * 42 + (index % 2) * 8}%`,
-                      }}
-                      title={item.title}
-                    />
-                  ))
+                {miniMapPreview.nodes.length > 0 ? (
+                  <>
+                    <svg className="today-mini-map__edges" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                      {miniMapPreview.edges.map((edge) => {
+                        const from = miniMapPreview.nodes.find((node) => node.id === edge.from);
+                        const to = miniMapPreview.nodes.find((node) => node.id === edge.to);
+                        if (!from || !to) {
+                          return null;
+                        }
+                        return (
+                          <line
+                            key={edge.id}
+                            x1={from.x}
+                            y1={from.y}
+                            x2={to.x}
+                            y2={to.y}
+                            className={`today-mini-map__edge today-mini-map__edge--${edge.kind}`}
+                          />
+                        );
+                      })}
+                    </svg>
+                    {miniMapPreview.nodes.map((node) => (
+                      <span
+                        key={node.id}
+                        className={`today-mini-map__node today-mini-map__node--${node.kind}`}
+                        style={{ left: `${node.x}%`, top: `${node.y}%` }}
+                        title={node.title}
+                      />
+                    ))}
+                    <span className="today-mini-map__front-label">
+                      <Target size={13} /> {miniMapPreview.frontTitle ?? 'Фронт'}
+                    </span>
+                  </>
                 ) : (
                   <span className="today-mini-map__empty">
                     {hasNoRoute ? 'Маршрут еще не собран' : 'Нет узлов для превью'}
                   </span>
                 )}
-                <span className="today-mini-map__crosshair" aria-hidden="true" />
-              </button>
+              </div>
+
+              <div className="today-mini-map__meta">
+                <span className="today-mini-map__chip today-mini-map__chip--front">Фронт</span>
+                <span className="today-mini-map__chip today-mini-map__chip--route">
+                  {miniMapPreview.routeTitle ?? 'Маршрут'}
+                </span>
+                <span className="today-mini-map__chip today-mini-map__chip--weak">
+                  {miniMapPreview.weakTitle ? `Слабое: ${miniMapPreview.weakTitle}` : 'Слабых мест нет'}
+                </span>
+              </div>
+
+              <PixelButton tone="accent" onClick={onOpenRouteMap} fullWidth className="today-mini-map__cta">
+                <MapIcon size={14} /> Открыть карту
+              </PixelButton>
             </PixelSurface>
           </div>
 
