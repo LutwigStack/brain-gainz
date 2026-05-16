@@ -17,6 +17,7 @@ export interface MapShortcutContext {
   hasSelectedEdge: boolean;
   hasSelectedNode: boolean;
   canUndo: boolean;
+  canUseAuthorTools?: boolean;
 }
 
 export interface MapShortcutKeyInput {
@@ -38,13 +39,14 @@ export const resolveMapShortcutIntent = (
   }
 
   const hasPrimaryModifier = input.metaKey || input.ctrlKey;
+  const canUseAuthorTools = context.canUseAuthorTools !== false;
 
   if (hasPrimaryModifier && !input.altKey) {
-    if (normalizeKey(input.key) === 'z' && context.canUndo) {
+    if (normalizeKey(input.key) === 'z' && context.canUndo && canUseAuthorTools) {
       return 'undo-map-mutation';
     }
 
-    if (normalizeKey(input.key) === 'd' && context.hasSelectedNode) {
+    if (normalizeKey(input.key) === 'd' && context.hasSelectedNode && canUseAuthorTools) {
       return 'duplicate-selected-node';
     }
   }
@@ -60,6 +62,10 @@ export const resolveMapShortcutIntent = (
   }
 
   if (key === 'delete' || key === 'backspace') {
+    if (!canUseAuthorTools) {
+      return null;
+    }
+
     if (context.hasSelectedEdge) {
       return 'delete-selected-edge';
     }

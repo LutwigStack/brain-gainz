@@ -71,6 +71,7 @@ import {
   type NodeEditorDraft,
   type CheckMetadataKind,
 } from './navigation-editor-draft';
+import type { WorkspaceMode } from './mode-boundary';
 import type {
   BarrierType,
   GraphEdgeType,
@@ -302,6 +303,7 @@ interface NavigationViewProps {
   }) => Promise<void> | void;
   onReorderRouteNodes: (input: { firstRouteNodeId: number; secondRouteNodeId: number }) => Promise<void> | void;
   onRemoveRouteNode: (input: { routeNodeId: number }) => Promise<void> | void;
+  workspaceMode?: WorkspaceMode;
   editorPendingAction: 'save' | 'duplicate' | 'archive' | null;
   masteryPendingAction: 'self-mark' | 'assessment' | null;
   routeMutationPending: boolean;
@@ -374,6 +376,7 @@ export const NavigationView = ({
   onUpdateRouteNode,
   onReorderRouteNodes,
   onRemoveRouteNode,
+  workspaceMode = 'learner',
   editorPendingAction,
   masteryPendingAction,
   routeMutationPending,
@@ -383,6 +386,7 @@ export const NavigationView = ({
   isSystemCampaign,
   branchFilterSkillId = null,
 }: NavigationViewProps) => {
+  const canUseAuthorTools = workspaceMode === 'author';
   const [editorOverride, setEditorOverride] = useState<Partial<NodeEditorDraft> | null>(null);
   const [editorOverrideNodeId, setEditorOverrideNodeId] = useState<number | null>(null);
   const [isEditorExpanded, setIsEditorExpanded] = useState(false);
@@ -438,6 +442,29 @@ export const NavigationView = ({
     setInspectorMode(mode);
     onInspectorModeChange?.(mode);
   };
+
+  useEffect(() => {
+    if (!canUseAuthorTools && (inspectorMode === 'route' || inspectorMode === 'graph')) {
+      setInspectorMode('overview');
+      onInspectorModeChange?.('overview');
+    }
+  }, [canUseAuthorTools, inspectorMode, onInspectorModeChange]);
+
+  useEffect(() => {
+    if (canUseAuthorTools) {
+      return;
+    }
+
+    setIsEditorExpanded(false);
+    setCanvasContextMenu(null);
+    setInlineNodeEditor(null);
+    setFloatingMapPanel(null);
+    setSelectedEdgeId(null);
+    setPendingEdgeSelection(null);
+    setMapEditTool('select');
+    setConnectSourceNodeId(null);
+    setPendingNodeArchive(null);
+  }, [canUseAuthorTools]);
 
   const clearMapTransientUi = () => {
     setCanvasContextMenu(null);
@@ -517,9 +544,9 @@ export const NavigationView = ({
   const isEditorArchived = focus?.node?.status === 'archived' || editorDraft?.status === 'archived';
   const canDuplicateEditor =
     focus != null && editorDraft != null ? canDuplicateNodeEditorDraft(focus, editorDraft) : false;
-  const modalEditorDraft = isEditorExpanded && focus?.node && editorDraft ? editorDraft : null;
+  const modalEditorDraft = canUseAuthorTools && isEditorExpanded && focus?.node && editorDraft ? editorDraft : null;
   const modalSummaryFocus = isSummaryExpanded && focus?.node ? focus : null;
-  const showInlineEditor = isEditorExpanded && focus == null;
+  const showInlineEditor = canUseAuthorTools && isEditorExpanded && focus == null;
   const completionCriteriaPreview =
     focus != null && editorDraft != null ? getNodeEditorCompletionCriteriaPreview(focus, editorDraft) : '';
   const linksPreview =
@@ -920,6 +947,7 @@ export const NavigationView = ({
           hasSelectedEdge: resolvedSelectedEdgeId != null,
           hasSelectedNode: Boolean(focus?.node),
           canUndo: canUndoMapMutation,
+          canUseAuthorTools,
         },
       );
 
@@ -996,6 +1024,7 @@ export const NavigationView = ({
   }, [
     focus?.node,
     canUndoMapMutation,
+    canUseAuthorTools,
     isEditorArchived,
     isEditorExpanded,
     isLoading,
@@ -1440,7 +1469,7 @@ export const NavigationView = ({
       : trimmedAnswer;
     const verifiedRank = mastery?.isVerified ? currentRank : 0;
     const selfMarkedRank = mastery?.isSelfMarkedOnly ? currentRank : 0;
-    const showRouteControls = !compact && mode === 'route';
+    const showRouteControls = canUseAuthorTools && !compact && mode === 'route';
     const showAssessmentControls = !compact && mode === 'assessment';
     const hasAnswer = trimmedAnswer.length > 0;
     const requiresVerifierEvidence = !isAutoStrictCheck;
@@ -1852,6 +1881,7 @@ export const NavigationView = ({
                 style={{ minHeight: 78 }}
               />
 
+              {canUseAuthorTools ? (
               <details className="border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] px-2 py-2">
                 <summary className="cursor-pointer text-xs uppercase text-[var(--pixel-text-muted)]">
                   Технические детали
@@ -1868,6 +1898,7 @@ export const NavigationView = ({
                   />
                 </div>
               </details>
+              ) : null}
                 </>
               ) : (
                 <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
@@ -1984,7 +2015,7 @@ export const NavigationView = ({
                           {mastery.latestAttempt.feedback_summary}
                         </PixelText>
                       ) : null}
-                      {mastery.latestAttempt.evidence_payload ? (
+                      {canUseAuthorTools && mastery.latestAttempt.evidence_payload ? (
                         <details className="mt-2 border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] px-2 py-2">
                           <summary className="cursor-pointer text-xs uppercase text-[var(--pixel-text-muted)]">
                             Технические детали попытки
@@ -2684,6 +2715,7 @@ export const NavigationView = ({
             />
 
             <div className="navigation-map-body mt-3 min-w-0 space-y-3">
+              {canUseAuthorTools ? (
               <PixelSurface frame="secondary" padding="sm" className="navigation-map-controls navigation-map-structure-controls">
                 <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(220px,360px)_minmax(0,1fr)] md:items-end">
                   <PixelSelect
@@ -2733,6 +2765,7 @@ export const NavigationView = ({
                   </div>
                 </div>
               </PixelSurface>
+              ) : null}
 
               <PixelSurface frame="secondary" padding="sm" className="navigation-map-controls navigation-map-view-controls">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2863,6 +2896,7 @@ export const NavigationView = ({
                 </PixelSurface>
               ) : null}
 
+              {canUseAuthorTools ? (
               <PixelSurface frame="secondary" padding="sm" className="navigation-map-controls navigation-map-tool-controls">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
@@ -2985,8 +3019,9 @@ export const NavigationView = ({
                   </PixelSurface>
                 ) : null}
               </PixelSurface>
+              ) : null}
 
-              {(editorNotice || canUndoMapMutation) ? (
+              {canUseAuthorTools && (editorNotice || canUndoMapMutation) ? (
                 <PixelSurface frame="inset" padding="sm" className="navigation-map-archive-panel" style={{ order: 6 }}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: 0 }}>
@@ -3004,7 +3039,7 @@ export const NavigationView = ({
                 </PixelSurface>
               ) : null}
 
-              {selectedStructureArchivedNodes.length > 0 ? (
+              {canUseAuthorTools && selectedStructureArchivedNodes.length > 0 ? (
                 <PixelSurface frame="inset" padding="sm">
                   <PixelStack gap="xs">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3144,14 +3179,14 @@ export const NavigationView = ({
                     onSelectNode={handleCanvasNodeSelect}
                     onFocusChange={setIsMapFocused}
                     onUserCameraControl={() => setHasManualMapViewport(true)}
-                    onSelectEdge={(edgeId) => {
+                    onSelectEdge={canUseAuthorTools ? (edgeId) => {
                       setSelectedEdgeId(edgeId);
                       setMapEditTool('select');
                       setConnectSourceNodeId(null);
                       setCanvasContextMenu(null);
                       setInlineNodeEditor(null);
-                    }}
-                    onCreateNodeAt={async (input) =>
+                    } : undefined}
+                    onCreateNodeAt={canUseAuthorTools ? async (input) =>
                       createNodeFromCanvasPoint(
                         { worldX: input.x, worldY: input.y },
                         undefined,
@@ -3160,8 +3195,8 @@ export const NavigationView = ({
                         mapCanvasMode,
                         mapCanvasMode === 'layers' ? layerParentEntry?.node.id ?? null : null,
                       )
-                    }
-                    onCreateChildNodeAt={async (input) => {
+                    : undefined}
+                    onCreateChildNodeAt={canUseAuthorTools ? async (input) => {
                       const parentNode = navigationNodeIndex.get(input.parentNodeId);
                       if (!parentNode || isMapMutating) {
                         return false;
@@ -3212,8 +3247,8 @@ export const NavigationView = ({
                         }
                       }
                       return created;
-                    }}
-                    onCreateEdge={async (input) => {
+                    } : undefined}
+                    onCreateEdge={canUseAuthorTools ? async (input) => {
                       if (isMapMutating) {
                         return false;
                       }
@@ -3232,28 +3267,28 @@ export const NavigationView = ({
                         setPendingEdgeSelection(null);
                       }
                       return created;
-                    }}
+                    } : undefined}
                     mapCommand={mapCommand}
                     previewNodePositions={layerPreviewPositions}
-                    interactionMode={mapCanvasMode === 'free' ? 'free-edit' : 'layer-edit'}
-                    createMode={mapEditTool === 'create'}
+                    interactionMode={canUseAuthorTools ? (mapCanvasMode === 'free' ? 'free-edit' : 'layer-edit') : 'readonly'}
+                    createMode={canUseAuthorTools && mapEditTool === 'create'}
                     snapToGrid={false}
                     selectedEdgeId={selectedEdgeId}
-                    connectSourceNodeId={mapEditTool === 'connect' ? connectSourceNodeId : null}
-                    connectEdgeType={mapEditTool === 'connect' ? connectEdgeType : null}
-                    onCanvasContextMenu={(menu) => {
+                    connectSourceNodeId={canUseAuthorTools && mapEditTool === 'connect' ? connectSourceNodeId : null}
+                    connectEdgeType={canUseAuthorTools && mapEditTool === 'connect' ? connectEdgeType : null}
+                    onCanvasContextMenu={canUseAuthorTools ? (menu) => {
                       setCanvasContextMenu(menu);
                       setNodeCreateTitle('');
                       setInlineNodeEditor(null);
                       setFloatingMapPanel(null);
-                    }}
-                    onCanvasDoubleClick={(input) => {
+                    } : undefined}
+                    onCanvasDoubleClick={canUseAuthorTools ? (input) => {
                       startInlineCreate(input);
-                    }}
-                    onNodeDoubleClick={(input) => {
+                    } : undefined}
+                    onNodeDoubleClick={canUseAuthorTools ? (input) => {
                       void handleCanvasNodeSelect(input.node);
                       startInlineRename(input.node, input);
-                    }}
+                    } : undefined}
                     onCanvasPointerDown={(hit) => {
                       if (hit.button === 0 && hit.nodeId == null && hit.edgeId == null) {
                         setCanvasContextMenu(null);
@@ -3272,12 +3307,12 @@ export const NavigationView = ({
                         });
                       }
                     }}
-                    onMoveNode={mapCanvasMode === 'free' ? onMoveNode : undefined}
+                    onMoveNode={canUseAuthorTools && mapCanvasMode === 'free' ? onMoveNode : undefined}
                   className={mapCanvasClassName}
                 />
               </PixelSurface>
 
-              {inlineNodeEditor ? (
+              {canUseAuthorTools && inlineNodeEditor ? (
                 <form
                   className="fixed z-50 min-w-[240px]"
                   style={{
@@ -3330,7 +3365,7 @@ export const NavigationView = ({
                 </form>
               ) : null}
 
-              {floatingMapPanel && floatingPanelEdge && !inlineNodeEditor && !canvasContextMenu ? (
+              {canUseAuthorTools && floatingMapPanel && floatingPanelEdge && !inlineNodeEditor && !canvasContextMenu ? (
                 <div
                   className="fixed z-40"
                   style={{
@@ -3360,7 +3395,7 @@ export const NavigationView = ({
                 </div>
               ) : null}
 
-              {canvasContextMenu ? (
+              {canUseAuthorTools && canvasContextMenu ? (
                 <div
                   className="fixed z-50 min-w-[210px]"
                   style={{
@@ -3582,12 +3617,13 @@ export const NavigationView = ({
                         <PixelText
                           as="span"
                           size="xs"
-                          color={isEditorDirty ? 'accent' : 'textDim'}
+                          color={canUseAuthorTools && isEditorDirty ? 'accent' : 'textDim'}
                           uppercase
-                          className={isEditorDirty ? 'draft-status draft-status--dirty' : 'draft-status'}
+                          className={canUseAuthorTools && isEditorDirty ? 'draft-status draft-status--dirty' : 'draft-status'}
                         >
-                          {isEditorDirty ? 'есть черновик' : 'сохранено'}
+                          {canUseAuthorTools ? (isEditorDirty ? 'Draft changes' : 'Saved') : 'Learner view'}
                         </PixelText>
+                        {canUseAuthorTools ? (
                         <details className="inspector-compact-details">
                           <summary>Детали</summary>
                           <div className="inspector-compact-details__body">
@@ -3600,6 +3636,7 @@ export const NavigationView = ({
                             <span>Проверка: {getCheckMetadataPreview(editorDraft.checkMetadata)}</span>
                           </div>
                         </details>
+                        ) : null}
                       </div>
                       {(editorDraft.summary || focus.node.summary) ? (
                         <PixelText as="p" readable size="sm" color="textMuted">
@@ -3615,7 +3652,9 @@ export const NavigationView = ({
                       { id: 'route', label: 'Маршрут' },
                       { id: 'assessment', label: 'Проверка' },
                       { id: 'graph', label: 'Граф' },
-                    ] as Array<{ id: InspectorMode; label: string }>).map((item) => (
+                    ] as Array<{ id: InspectorMode; label: string }>)
+                      .filter((item) => canUseAuthorTools || item.id === 'overview' || item.id === 'assessment')
+                      .map((item) => (
                       <PixelButton
                         key={item.id}
                         type="button"
@@ -3629,7 +3668,7 @@ export const NavigationView = ({
                     ))}
                   </div>
 
-                  {inspectorMode === 'overview' ? (
+                  {inspectorMode === 'overview' && canUseAuthorTools ? (
                     <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
                       <div className="grid gap-2">
                         <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
@@ -3715,10 +3754,10 @@ export const NavigationView = ({
                     </>
                   ) : null}
 
-                  {inspectorMode === 'route' ? renderMasteryPanel(focus, 'route') : null}
+                  {canUseAuthorTools && inspectorMode === 'route' ? renderMasteryPanel(focus, 'route') : null}
                   {inspectorMode === 'assessment' ? renderMasteryPanel(focus, 'assessment') : null}
 
-                  {inspectorMode === 'graph' ? (
+                  {canUseAuthorTools && inspectorMode === 'graph' ? (
                   <PixelSurface frame="inset" padding="sm" className="inspector-graph-panel">
                     <PixelStack gap="xs">
                       <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
@@ -3979,9 +4018,9 @@ export const NavigationView = ({
               ) : null}
             </PixelSurface>
 
-            {!focus?.node || inspectorMode === 'route' ? renderRouteAuthoringPanel() : null}
+            {canUseAuthorTools && (!focus?.node || inspectorMode === 'route') ? renderRouteAuthoringPanel() : null}
 
-            {!focus?.node || inspectorMode === 'graph' ? (
+            {canUseAuthorTools && (!focus?.node || inspectorMode === 'graph') ? (
             <PixelSurface frame="secondary" padding="sm" className="min-w-0">
               <PixelPanelHeader
                 eyebrow={
@@ -4020,7 +4059,7 @@ export const NavigationView = ({
         ) : null}
       </section>
 
-      {pendingNodeArchive ? (
+      {canUseAuthorTools && pendingNodeArchive ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="absolute inset-0" onClick={cancelPendingNodeArchive} aria-hidden="true" />
           <PixelSurface

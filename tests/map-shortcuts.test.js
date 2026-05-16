@@ -67,3 +67,19 @@ test('map shortcuts do not expose editing modes', () => {
   assert.equal(resolveMapShortcutIntent({ key: 'l' }, baseContext), null);
   assert.equal(resolveMapShortcutIntent({ key: 'g' }, baseContext), null);
 });
+
+test('learner mode keeps navigation shortcuts but suppresses author mutations', () => {
+  const learnerContext = { ...baseContext, canUseAuthorTools: false };
+
+  assert.equal(resolveMapShortcutIntent({ key: 'f' }, learnerContext), 'focus-node');
+  assert.equal(resolveMapShortcutIntent({ key: '0' }, learnerContext), 'reset-camera');
+  assert.equal(resolveMapShortcutIntent({ key: 'r' }, learnerContext), 'refresh-map');
+  assert.equal(resolveMapShortcutIntent({ key: 'Escape' }, learnerContext), 'cancel-transients');
+  assert.equal(resolveMapShortcutIntent({ key: 'Delete' }, learnerContext), null);
+  assert.equal(
+    resolveMapShortcutIntent({ key: 'Delete' }, { ...learnerContext, hasSelectedEdge: false }),
+    null,
+  );
+  assert.equal(resolveMapShortcutIntent({ key: 'd', ctrlKey: true }, learnerContext), null);
+  assert.equal(resolveMapShortcutIntent({ key: 'z', ctrlKey: true }, learnerContext), null);
+});

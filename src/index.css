@@ -253,10 +253,21 @@ textarea:disabled {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  max-width: 190px;
+  flex-wrap: wrap;
+  max-width: 360px;
+  gap: 8px;
   border-left: 1px solid color-mix(in srgb, var(--pixel-line-soft) 65%, transparent);
   padding-left: 10px;
   white-space: nowrap;
+}
+
+.app-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--pixel-line-soft) 72%, transparent);
+  background: rgba(9, 14, 24, 0.42);
+  padding: 3px;
 }
 
 .app-shell-nav {

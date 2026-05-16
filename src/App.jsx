@@ -6,8 +6,10 @@ import {
   CalendarCheck,
   Compass,
   Download,
+  Eye,
   Flag,
   Globe2,
+  PencilLine,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -35,6 +37,7 @@ import { buildGraphEdgeCreatePayload } from './application/map-edge-payloads.ts'
 import { createNavigationFollowUpPayload } from './application/navigation-follow-up.ts';
 import { buildMapNodeCreatePayload } from './application/map-node-payloads.ts';
 import { getRuntimeProfile } from './platform/runtime.js';
+import { workspaceModeLabels } from './components/mode-boundary.ts';
 
 const NowView = lazy(() =>
   import('./components/NowView').then((module) => ({ default: module.NowView })),
@@ -75,6 +78,7 @@ export default function App() {
   const runtime = getRuntimeProfile();
   const [activeTab, setActiveTab] = useState('now');
   const normalizedActiveTab = activeTab === 'now' || activeTab === 'map' || activeTab === 'wind' ? activeTab : 'now';
+  const [workspaceMode, setWorkspaceMode] = useState('learner');
   const [mapInspectorRequest, setMapInspectorRequest] = useState(null);
   const [campaigns, setCampaigns] = useState(null);
   const [campaignsLoading, setCampaignsLoading] = useState(false);
@@ -333,6 +337,7 @@ export default function App() {
   };
 
   const resetCampaignWorkspaceState = () => {
+    setWorkspaceMode('learner');
     setNowSnapshot(null);
     setNowFocus(null);
     setNowSelection(null);
@@ -1720,17 +1725,12 @@ export default function App() {
     : selectedCampaign.type === 'developer_main'
       ? 'Системный шаблон'
       : 'Личная кампания';
-  const campaignModeLabel =
-    selectedCampaign?.mode === 'career' || contextSpecialization
-      ? 'Career mode'
-      : selectedCampaign
-        ? 'Free mode'
-        : 'Setup';
+  const campaignModeLabel = selectedCampaign ? workspaceModeLabels[workspaceMode].title : 'Setup';
   const campaignStatusLabel =
     selectedCampaign?.career_status === 'victory'
       ? 'Маршрут закрыт'
       : selectedCampaign
-        ? 'Активна'
+        ? workspaceModeLabels[workspaceMode].description
         : 'Выберите мир';
   const specializationLabel = contextSpecialization?.name ?? (selectedCampaign ? 'Свободный режим' : 'Нет кампании');
   const specializationMeta = contextSpecialization?.domain
@@ -1770,8 +1770,8 @@ export default function App() {
     },
     {
       key: 'map',
-      label: 'Карта / дерево',
-      description: 'Узлы и маршрут',
+      label: workspaceMode === 'author' ? 'Author map' : 'Map overview',
+      description: workspaceMode === 'author' ? 'Nodes, routes, graph' : 'Learner progress map',
       icon: TreePine,
       active: Boolean(selectedCampaign && normalizedActiveTab === 'map' && mapInspectorRequest?.mode !== 'assessment'),
       disabled: !selectedCampaign,
@@ -1782,8 +1782,8 @@ export default function App() {
     },
     {
       key: 'assessment',
-      label: 'Проверки',
-      description: 'Assessment в инспекторе карты',
+      label: workspaceMode === 'author' ? 'Check tools' : 'Attempts',
+      description: workspaceMode === 'author' ? 'Check metadata and attempts' : 'Assessment attempt flow',
       icon: ShieldCheck,
       active: Boolean(selectedCampaign && normalizedActiveTab === 'map' && mapInspectorRequest?.mode === 'assessment'),
       disabled: !selectedCampaign,
@@ -1997,6 +1997,26 @@ export default function App() {
                   </div>
 
                   <div className="app-top-actions" title={runtime.dataBoundaryLabel}>
+                    {selectedCampaign ? (
+                      <div className="app-mode-switch" role="group" aria-label="Workspace mode">
+                        <PixelButton
+                          tone={workspaceMode === 'learner' ? 'accent' : 'ghost'}
+                          onClick={() => setWorkspaceMode('learner')}
+                          aria-pressed={workspaceMode === 'learner'}
+                          style={{ minHeight: 30, padding: '5px 8px', gap: 5 }}
+                        >
+                          <Eye size={14} /> Learn
+                        </PixelButton>
+                        <PixelButton
+                          tone={workspaceMode === 'author' ? 'accent' : 'ghost'}
+                          onClick={() => setWorkspaceMode('author')}
+                          aria-pressed={workspaceMode === 'author'}
+                          style={{ minHeight: 30, padding: '5px 8px', gap: 5 }}
+                        >
+                          <PencilLine size={14} /> Author
+                        </PixelButton>
+                      </div>
+                    ) : null}
                     <PixelText as="span" readable size="xs" color={runtime.isLocalFirst ? 'success' : 'info'}>
                       {runtime.shellLabel} / {runtime.storageLabel}
                     </PixelText>
@@ -2234,6 +2254,7 @@ export default function App() {
             onUpdateRouteNode={handleUpdateNavigationRouteNode}
             onReorderRouteNodes={handleReorderNavigationRouteNodes}
             onRemoveRouteNode={handleRemoveNavigationRouteNode}
+            workspaceMode={workspaceMode}
             editorPendingAction={nodeEditorPendingAction}
             masteryPendingAction={nodeMasteryPendingAction}
             routeMutationPending={routeMutationPending}
