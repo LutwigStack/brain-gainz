@@ -90,16 +90,47 @@ export interface DashboardMetrics {
 export interface DailySessionEvent {
   id: number;
   event_type: string;
+  node_id?: number | null;
+  action_id?: number | null;
   note?: string | null;
+  occurred_at?: string | null;
+}
+
+export type DailyRunState = 'not_started' | 'active' | 'completed' | 'abandoned';
+export type DailyRunTaskOutcome = 'pending' | 'completed' | 'failed' | 'skipped' | 'deferred';
+
+export interface DailyRunTask {
+  id: number;
+  order: number;
+  source: 'route_front' | 'route_next' | 'weak_spot' | 'due_check' | 'ready_check' | 'recommendation';
+  sourceLabel: string;
+  title: string;
+  subtitle: string;
+  nodeId: number;
+  actionId: number | null;
+  outcome: DailyRunTaskOutcome;
+  outcomeNote?: string | null;
 }
 
 export interface DailySession {
   id: number;
   session_date: string;
   status: string;
+  state?: DailyRunState;
   primary_node_id?: number | null;
   primary_action_id?: number | null;
+  summary_note?: string | null;
+  started_at?: string | null;
+  ended_at?: string | null;
   events: DailySessionEvent[];
+  tasks?: DailyRunTask[];
+  summary?: {
+    lines: string[];
+    completedCount: number;
+    failedCount: number;
+    skippedCount: number;
+    deferredCount: number;
+  };
 }
 
 export type MasteryLevel = 'seen' | 'understood' | 'remembered' | 'applied' | 'confirmed' | 'retained';

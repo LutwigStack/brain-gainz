@@ -93,6 +93,7 @@ export default function App() {
   const [nowError, setNowError] = useState(null);
   const [nowNotice, setNowNotice] = useState(null);
   const [nowCreatingStarter, setNowCreatingStarter] = useState(false);
+  const [dailyRunPending, setDailyRunPending] = useState(false);
   const [nowFocus, setNowFocus] = useState(null);
   const [nowFocusLoading, setNowFocusLoading] = useState(false);
   const [nowSelection, setNowSelection] = useState(null);
@@ -706,6 +707,73 @@ export default function App() {
       return;
     }
     setActiveTab('map');
+  };
+
+  const refreshTodayAfterDailyRunMutation = async (result = null) => {
+    if (result?.dashboard) {
+      setNowSnapshot(result.dashboard);
+      const nextSelection = result.focus?.node
+        ? { nodeId: result.focus.node.id, actionId: result.focus.selectedAction?.id ?? null }
+        : chooseNowSelection(result.dashboard, nowSelection);
+      setNowSelection(nextSelection);
+      if (nextSelection) {
+        await loadNowFocus(nextSelection);
+      }
+      return;
+    }
+
+    await loadNowDashboard(nowSelection);
+  };
+
+  const runDailyRunMutation = async (label, operation) => {
+    setDailyRunPending(true);
+    setNowError(null);
+
+    try {
+      const result = await operation();
+      await refreshTodayAfterDailyRunMutation(result);
+    } catch (error) {
+      logUnexpectedActionError(label, error);
+      setNowError(userActionErrorMessage(error, 'Daily Run action failed.'));
+    } finally {
+      setDailyRunPending(false);
+    }
+  };
+
+  const handleStartDailyRun = async () => {
+    await runDailyRunMutation('Failed to start Daily Run', () => db.startTodaySessionFromPrimaryRecommendation(selectedCampaignId));
+  };
+
+  const handleCompleteDailyRunTask = async (actionId) => {
+    await runDailyRunMutation('Failed to complete Daily Run task', () =>
+      db.completeNowActionInTodaySession(actionId, selectedCampaignId),
+    );
+  };
+
+  const handleFailDailyRunTask = async (actionId) => {
+    await runDailyRunMutation('Failed to record Daily Run failure', () =>
+      db.failNowActionInTodaySession(actionId, 'Failed during Daily Run.', selectedCampaignId),
+    );
+  };
+
+  const handleSkipDailyRunTask = async (actionId) => {
+    await runDailyRunMutation('Failed to skip Daily Run task', () =>
+      db.skipNowActionInTodaySession(actionId, 'Skipped during Daily Run.', selectedCampaignId),
+    );
+  };
+
+  const handleDeferDailyRunTask = async (actionId) => {
+    await runDailyRunMutation('Failed to defer Daily Run task', () =>
+      db.deferNowActionInTodaySession(actionId, 'Deferred during Daily Run.', selectedCampaignId),
+    );
+  };
+
+  const handleFinishDailyRun = async () => {
+    await runDailyRunMutation('Failed to finish Daily Run', () => db.finishDailyRun(selectedCampaignId));
+  };
+
+  const handleAbandonDailyRun = async () => {
+    await runDailyRunMutation('Failed to abandon Daily Run', () => db.abandonDailyRun(selectedCampaignId));
   };
 
   const handleSelectNavigationNode = async (node) => {
@@ -2097,6 +2165,14 @@ export default function App() {
             onRefresh={loadNowDashboard}
             onCompleteSpecialization={handleCompleteSpecialization}
             onContinueSpecialization={handleContinueSpecialization}
+            isDailyRunPending={dailyRunPending}
+            onStartDailyRun={handleStartDailyRun}
+            onCompleteDailyRunTask={handleCompleteDailyRunTask}
+            onFailDailyRunTask={handleFailDailyRunTask}
+            onSkipDailyRunTask={handleSkipDailyRunTask}
+            onDeferDailyRunTask={handleDeferDailyRunTask}
+            onFinishDailyRun={handleFinishDailyRun}
+            onAbandonDailyRun={handleAbandonDailyRun}
           />
         )}
 

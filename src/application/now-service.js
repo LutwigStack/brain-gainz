@@ -1447,10 +1447,14 @@ const loadTodaySession = async (database, dailySessionStore, campaignId) => {
   }
 
   const events = await dailySessionStore.getEventsForSession(session.id);
+  const tasks = await buildDailyRunTasksForSession(database, session, events);
 
   return {
     ...session,
+    state: dailyRunStateForSession(session),
     events,
+    tasks,
+    summary: buildDailyRunSummaryPayload(session, tasks),
   };
 };
 
@@ -1470,6 +1474,276 @@ const loadActionRecord = async (database, actionId, campaignId = null) => {
     [actionId, campaignId, campaignId],
   );
   return rows[0] ?? null;
+};
+
+const DAILY_RUN_OUTCOME_EVENTS = new Set(['completed', 'failed', 'skipped', 'deferred', 'blocked', 'shrunk']);
+
+const dailyRunSourceLabels = {
+  route_front: 'Current front',
+  route_next: 'Route',
+  weak_spot: 'Weak spot',
+  due_check: 'Due check',
+  ready_check: 'Ready check',
+  recommendation: 'Recommended',
+};
+
+const dailyRunStateForSession = (session) => {
+  if (!session) {
+    return 'not_started';
+  }
+
+  if (session.status === 'planned') {
+    return 'not_started';
+  }
+
+  return ['active', 'completed', 'abandoned'].includes(session.status) ? session.status : 'not_started';
+};
+
+const parseDailyRunTaskNote = (note) => {
+  try {
+    const parsed = JSON.parse(note ?? '');
+    return parsed?.kind === 'daily-run-task' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const stringifyDailyRunTaskNote = (task) =>
+  JSON.stringify({
+    kind: 'daily-run-task',
+    source: task.source,
+    title: task.title,
+    subtitle: task.subtitle,
+    order: task.order,
+  });
+
+const normalizeDailyRunOutcome = (eventType) => {
+  if (eventType === 'completed') {
+    return 'completed';
+  }
+  if (eventType === 'failed' || eventType === 'blocked' || eventType === 'shrunk') {
+    return 'failed';
+  }
+  if (eventType === 'skipped') {
+    return 'skipped';
+  }
+  if (eventType === 'deferred') {
+    return 'deferred';
+  }
+  return 'pending';
+};
+
+const latestOutcomeForSelection = (events, selectedEvent) => {
+  const selectedEventId = Number(selectedEvent.id ?? 0);
+  const matching = events
+    .filter((event) => Number(event.id ?? 0) > selectedEventId && DAILY_RUN_OUTCOME_EVENTS.has(event.event_type))
+    .filter((event) => {
+      if (selectedEvent.action_id != null) {
+        return event.action_id === selectedEvent.action_id;
+      }
+      return event.node_id === selectedEvent.node_id;
+    })
+    .sort((left, right) => Number(right.id ?? 0) - Number(left.id ?? 0));
+
+  return matching[0] ?? null;
+};
+
+const buildDailyRunSummaryPayload = (session, tasks) => {
+  const completed = tasks.filter((task) => task.outcome === 'completed');
+  const failed = tasks.filter((task) => task.outcome === 'failed');
+  const skipped = tasks.filter((task) => task.outcome === 'skipped');
+  const deferred = tasks.filter((task) => task.outcome === 'deferred');
+  const noteLines = String(session.summary_note ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return {
+    lines: noteLines,
+    completedCount: completed.length,
+    failedCount: failed.length,
+    skippedCount: skipped.length,
+    deferredCount: deferred.length,
+  };
+};
+
+const buildDailyRunTasksForSession = async (database, session, events) => {
+  const selectedEvents = events.filter((event) => event.event_type === 'selected');
+
+  if (selectedEvents.length === 0 && (session.primary_node_id != null || session.primary_action_id != null)) {
+    selectedEvents.push({
+      id: 0,
+      event_type: 'selected',
+      node_id: session.primary_node_id,
+      action_id: session.primary_action_id,
+      note: null,
+    });
+  }
+
+  if (selectedEvents.length === 0) {
+    return [];
+  }
+
+  const rows = await database.select(
+    `
+      SELECT
+        selected.id AS selected_event_id,
+        selected.node_id,
+        selected.action_id,
+        selected.note,
+        actions.title AS action_title,
+        nodes.title AS node_title,
+        skills.name AS skill_name,
+        directions.name AS direction_name,
+        spheres.name AS sphere_name
+      FROM daily_session_events selected
+      LEFT JOIN node_actions actions ON actions.id = selected.action_id
+      LEFT JOIN nodes ON nodes.id = COALESCE(selected.node_id, actions.node_id)
+      LEFT JOIN skills ON skills.id = nodes.skill_id
+      LEFT JOIN directions ON directions.id = skills.direction_id
+      LEFT JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE selected.session_id = ?
+        AND selected.event_type = 'selected'
+      ORDER BY selected.id ASC
+    `,
+    [session.id],
+  );
+  const rowByEventId = new Map(rows.map((row) => [row.selected_event_id, row]));
+
+  return selectedEvents.map((event, index) => {
+    const row = rowByEventId.get(event.id) ?? {};
+    const metadata = parseDailyRunTaskNote(row.note ?? event.note);
+    const latestOutcome = latestOutcomeForSelection(events, event);
+    const source = metadata.source ?? (index === 0 ? 'route_front' : 'recommendation');
+
+    return {
+      id: event.id,
+      order: Number(metadata.order ?? index + 1),
+      source,
+      sourceLabel: dailyRunSourceLabels[source] ?? dailyRunSourceLabels.recommendation,
+      title: metadata.title ?? row.action_title ?? row.node_title ?? 'Daily Run task',
+      subtitle:
+        metadata.subtitle ??
+        [row.sphere_name, row.direction_name, row.skill_name, row.node_title].filter(Boolean).join(' / '),
+      nodeId: row.node_id ?? event.node_id,
+      actionId: row.action_id ?? event.action_id ?? null,
+      outcome: normalizeDailyRunOutcome(latestOutcome?.event_type),
+      outcomeNote: latestOutcome?.note ?? null,
+    };
+  });
+};
+
+const loadFirstOpenActionForNode = async (database, nodeId, campaignId) => {
+  const rows = await database.select(
+    `
+      SELECT
+        actions.*,
+        nodes.title AS node_title,
+        skills.name AS skill_name,
+        directions.name AS direction_name,
+        spheres.name AS sphere_name
+      FROM node_actions actions
+      JOIN nodes ON nodes.id = actions.node_id
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE actions.node_id = ?
+        AND spheres.campaign_id = ?
+        AND nodes.is_archived = 0
+        AND actions.status IN ('todo', 'ready', 'doing')
+      ORDER BY
+        CASE actions.status WHEN 'doing' THEN 0 WHEN 'ready' THEN 1 ELSE 2 END ASC,
+        actions.sort_order ASC,
+        actions.id ASC
+      LIMIT 1
+    `,
+    [nodeId, campaignId],
+  );
+
+  return rows[0] ?? null;
+};
+
+const pushUniqueDailyRunTask = (tasks, task) => {
+  if (!task?.nodeId || task.actionId == null) {
+    return;
+  }
+
+  const key = `action:${task.actionId}`;
+  if (tasks.some((item) => `action:${item.actionId}` === key)) {
+    return;
+  }
+
+  tasks.push({
+    ...task,
+    order: tasks.length + 1,
+  });
+};
+
+const routeItemToDailyRunTask = async (database, campaignId, item, source) => {
+  if (!item?.node_id) {
+    return null;
+  }
+
+  const action = await loadFirstOpenActionForNode(database, item.node_id, campaignId);
+
+  if (!action) {
+    return null;
+  }
+
+  return {
+    source,
+    title: action.title ?? item.title,
+    subtitle: [item.route_stage, item.path, item.title].filter(Boolean).join(' / '),
+    nodeId: item.node_id,
+    actionId: action.id,
+  };
+};
+
+const recommendationToDailyRunTask = (candidate, source = 'recommendation') => {
+  if (!candidate?.nodeId || candidate.actionId == null) {
+    return null;
+  }
+
+  return {
+    source,
+    title: candidate.actionTitle,
+    subtitle: [candidate.sphereName, candidate.directionName, candidate.skillName, candidate.nodeTitle].filter(Boolean).join(' / '),
+    nodeId: candidate.nodeId,
+    actionId: candidate.actionId,
+  };
+};
+
+const chooseDailyRunTasks = async (database, campaignId, dashboard, preferredActionId = null) => {
+  const tasks = [];
+  const today = dashboard.today ?? null;
+  const planner = today?.planner ?? null;
+  const route = today?.route ?? null;
+  const recommendations = [dashboard.primaryRecommendation, ...(dashboard.queue ?? [])].filter(Boolean);
+  const preferredRecommendation = recommendations.find((candidate) => candidate.actionId === preferredActionId) ?? null;
+
+  pushUniqueDailyRunTask(tasks, recommendationToDailyRunTask(preferredRecommendation, 'recommendation'));
+  pushUniqueDailyRunTask(tasks, await routeItemToDailyRunTask(database, campaignId, planner?.focusItem ?? route?.nextItem, 'route_front'));
+
+  for (const item of planner?.nextItems ?? []) {
+    pushUniqueDailyRunTask(tasks, await routeItemToDailyRunTask(database, campaignId, item, 'route_next'));
+  }
+
+  for (const item of planner?.weakSpots ?? []) {
+    pushUniqueDailyRunTask(tasks, await routeItemToDailyRunTask(database, campaignId, item, 'weak_spot'));
+  }
+
+  for (const item of planner?.readyToVerify ?? []) {
+    pushUniqueDailyRunTask(tasks, await routeItemToDailyRunTask(database, campaignId, item, 'ready_check'));
+  }
+
+  for (const candidate of recommendations) {
+    const source = candidate.currentRisk === 'high' || isPastDue(candidate.nextDueAt) || isPastDue(candidate.dueAt)
+      ? 'due_check'
+      : 'recommendation';
+    pushUniqueDailyRunTask(tasks, recommendationToDailyRunTask(candidate, source));
+  }
+
+  return tasks.slice(0, 5);
 };
 
 const loadNodeMetadata = async (database, nodeId, campaignId = null) => {
@@ -1953,6 +2227,8 @@ const ensureActiveSession = async (service, campaignId, actionId) => {
   return session;
 };
 
+const shouldFinalizeSessionAutomatically = (session) => Boolean(session?.auto_finalize);
+
 const finalizeSessionOutcome = async (service, sessionId, timestamp, summaryNote) =>
   service.dailySessionStore.updateSession(sessionId, {
     status: 'completed',
@@ -1966,6 +2242,83 @@ const refreshOutcomeResult = async (service, campaignId, nodeId, actionId = null
   focus: await service.getNodeFocus(campaignId, nodeId, actionId),
   xpWarning: buildXpWarning(xpGrantResult),
 });
+
+const buildDailyRunFinishSummaryNote = async (database, campaignId, session) => {
+  const events = await database.select('SELECT * FROM daily_session_events WHERE session_id = ? ORDER BY id ASC', [
+    session.id,
+  ]);
+  const tasks = await buildDailyRunTasksForSession(database, session, events);
+  const completed = tasks.filter((task) => task.outcome === 'completed');
+  const failed = tasks.filter((task) => task.outcome === 'failed');
+  const skipped = tasks.filter((task) => task.outcome === 'skipped');
+  const deferred = tasks.filter((task) => task.outcome === 'deferred');
+  const completedNodeIds = [...new Set(completed.map((task) => task.nodeId).filter((id) => id != null))];
+  let xp = 0;
+  let masteryEvents = 0;
+
+  if (completedNodeIds.length > 0) {
+    const placeholders = completedNodeIds.map(() => '?').join(', ');
+    const xpRows = await database.select(
+      `
+        SELECT COALESCE(SUM(xp_amount), 0) AS xp
+        FROM stat_xp_grants
+        WHERE campaign_id = ?
+          AND active = 1
+          AND node_id IN (${placeholders})
+          AND grant_reason = ?
+      `,
+      [campaignId, ...completedNodeIds, NODE_COMPLETION_GRANT_REASON],
+    );
+    const masteryRows = await database.select(
+      `
+        SELECT COUNT(*) AS count
+        FROM mastery_events
+        WHERE campaign_id = ?
+          AND active = 1
+          AND node_id IN (${placeholders})
+          AND source_type = 'legacy_node_completion'
+      `,
+      [campaignId, ...completedNodeIds],
+    );
+    xp = Number(xpRows[0]?.xp ?? 0);
+    masteryEvents = Number(masteryRows[0]?.count ?? 0);
+  }
+
+  const changedTitles = completed.slice(0, 3).map((task) => task.title).join(', ') || 'No tasks completed yet';
+  const recoveryCount = failed.length + skipped.length + deferred.length;
+
+  return [
+    `Changed: ${completed.length}/${tasks.length} tasks completed. ${changedTitles}.`,
+    `XP/mastery: ${xp} XP active from this run; ${masteryEvents} mastery event${masteryEvents === 1 ? '' : 's'} touched.`,
+    recoveryCount > 0
+      ? `Recovery: ${recoveryCount} task${recoveryCount === 1 ? '' : 's'} need follow-up (${failed.length} failed, ${skipped.length} skipped, ${deferred.length} deferred).`
+      : 'Recovery: no failed, skipped, or deferred tasks.',
+  ].join('\n');
+};
+
+const normalizeActionOutcomeArgs = (args, campaignId, actionId, note = '') => {
+  if (args.length === 1) {
+    return {
+      campaignId: null,
+      actionId: campaignId,
+      note: '',
+    };
+  }
+
+  if (args.length === 2 && !Number.isInteger(actionId)) {
+    return {
+      campaignId: null,
+      actionId: campaignId,
+      note: actionId ?? '',
+    };
+  }
+
+  return {
+    campaignId,
+    actionId,
+    note,
+  };
+};
 
 const navigationContainsNode = (navigation, nodeId) =>
   navigation.spheres.some((sphere) =>
@@ -4455,28 +4808,29 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
     await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const dashboard = await this.getDashboard(resolvedCampaignId);
-    const candidates = [dashboard.primaryRecommendation, ...dashboard.queue].filter(Boolean);
-    const targetRecommendation = candidates.find((candidate) => candidate.actionId === actionId) ?? dashboard.primaryRecommendation;
-
-    if (!targetRecommendation) {
-      return null;
-    }
 
     if (dashboard.todaySession?.status === 'active') {
       return dashboard.todaySession;
     }
 
+    const tasks = await chooseDailyRunTasks(database, resolvedCampaignId, dashboard, actionId);
+    const firstTask = tasks[0] ?? null;
+
+    if (!firstTask) {
+      return null;
+    }
+
     const timestamp = currentTimestamp();
 
-    if (targetRecommendation.actionStatus !== 'done') {
-      await hierarchyStore.updateNodeAction(targetRecommendation.actionId, {
+    if (firstTask.actionId != null) {
+      await hierarchyStore.updateNodeAction(firstTask.actionId, {
         status: 'doing',
         completed_at: null,
         updated_at: timestamp,
       });
     }
 
-    await hierarchyStore.updateNode(targetRecommendation.nodeId, {
+    await hierarchyStore.updateNode(firstTask.nodeId, {
       last_touched_at: timestamp,
       updated_at: timestamp,
     });
@@ -4485,8 +4839,8 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaign_id: resolvedCampaignId,
       session_date: todayDate(),
       status: 'active',
-      primary_node_id: targetRecommendation.nodeId,
-      primary_action_id: targetRecommendation.actionId,
+      primary_node_id: firstTask.nodeId,
+      primary_action_id: firstTask.actionId,
       started_at: timestamp,
       summary_note: 'Запущено с первой рекомендации экрана «Сейчас».',
     });
@@ -4494,10 +4848,21 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     await dailySessionStore.addSessionEvent({
       session_id: session.id,
       event_type: 'selected',
-      node_id: targetRecommendation.nodeId,
-      action_id: targetRecommendation.actionId,
+      node_id: firstTask.nodeId,
+      action_id: firstTask.actionId,
       note: 'Выбрано из первой рекомендации экрана «Сейчас».',
     });
+
+    for (const task of tasks.slice(1)) {
+      await dailySessionStore.addSessionEvent({
+        session_id: session.id,
+        event_type: 'selected',
+        node_id: task.nodeId,
+        action_id: task.actionId,
+        note: stringifyDailyRunTaskNote(task),
+        occurred_at: timestamp,
+      });
+    }
 
     return loadTodaySession(database, dailySessionStore, resolvedCampaignId);
   },
@@ -4563,7 +4928,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       xpGrantResult = await syncNodeCompletionXpGrant(database, action.node_id, 'done', timestamp);
     }
 
-    if (session.status === 'active') {
+    if (shouldFinalizeSessionAutomatically(session)) {
       await finalizeSessionOutcome(
         this,
         session.id,
@@ -4578,11 +4943,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
   },
 
   async deferActionInTodaySession(campaignId, actionId, note = '') {
-    if (arguments.length <= 2) {
-      note = actionId ?? '';
-      actionId = campaignId;
-      campaignId = null;
-    }
+    ({ campaignId, actionId, note } = normalizeActionOutcomeArgs(arguments, campaignId, actionId, note));
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
     await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const action = await loadActionRecord(database, actionId, resolvedCampaignId);
@@ -4624,11 +4985,133 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       source_event_id: event.id,
     });
 
-    if (session.status === 'active') {
+    if (shouldFinalizeSessionAutomatically(session)) {
       await finalizeSessionOutcome(this, session.id, timestamp, 'Текущий шаг отложен до следующего прохода.');
     }
 
     return refreshOutcomeResult(this, resolvedCampaignId, action.node_id, action.id);
+  },
+
+  async skipActionInTodaySession(campaignId, actionId, note = '') {
+    ({ campaignId, actionId, note } = normalizeActionOutcomeArgs(arguments, campaignId, actionId, note));
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
+    const action = await loadActionRecord(database, actionId, resolvedCampaignId);
+
+    if (!action) {
+      return null;
+    }
+
+    const session = await ensureActiveSession(this, resolvedCampaignId, actionId);
+    const timestamp = currentTimestamp();
+
+    await hierarchyStore.updateNodeAction(actionId, {
+      status: 'ready',
+      completed_at: null,
+      updated_at: timestamp,
+    });
+
+    await hierarchyStore.updateNode(action.node_id, {
+      status: 'active',
+      last_touched_at: timestamp,
+      updated_at: timestamp,
+    });
+    await syncNodeCompletionXpGrant(database, action.node_id, 'active', timestamp);
+
+    await dailySessionStore.addSessionEvent({
+      session_id: session.id,
+      event_type: 'skipped',
+      node_id: action.node_id,
+      action_id: action.id,
+      note: note?.trim() || 'Skipped for this Daily Run.',
+      occurred_at: timestamp,
+    });
+
+    return refreshOutcomeResult(this, resolvedCampaignId, action.node_id, action.id);
+  },
+
+  async failActionInTodaySession(campaignId, actionId, note = '') {
+    ({ campaignId, actionId, note } = normalizeActionOutcomeArgs(arguments, campaignId, actionId, note));
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
+    const action = await loadActionRecord(database, actionId, resolvedCampaignId);
+
+    if (!action) {
+      return null;
+    }
+
+    const session = await ensureActiveSession(this, resolvedCampaignId, actionId);
+    const timestamp = currentTimestamp();
+    const event = await dailySessionStore.addSessionEvent({
+      session_id: session.id,
+      event_type: 'failed',
+      node_id: action.node_id,
+      action_id: action.id,
+      note: note?.trim() || 'Failed in this Daily Run; keep it available for recovery.',
+      occurred_at: timestamp,
+    });
+
+    await hierarchyStore.updateNodeAction(actionId, {
+      status: 'ready',
+      completed_at: null,
+      updated_at: timestamp,
+    });
+    await hierarchyStore.updateNode(action.node_id, {
+      status: 'active',
+      last_touched_at: timestamp,
+      updated_at: timestamp,
+    });
+    await syncNodeCompletionXpGrant(database, action.node_id, 'active', timestamp);
+    await nodeNoteStore.createErrorNote({
+      node_id: action.node_id,
+      action_id: action.id,
+      note_kind: 'error',
+      note: event.note,
+      source_event_id: event.id,
+    });
+
+    return refreshOutcomeResult(this, resolvedCampaignId, action.node_id, action.id);
+  },
+
+  async finishDailyRun(campaignId = null) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
+    const session = await loadTodaySession(database, dailySessionStore, resolvedCampaignId);
+
+    if (!session || session.status !== 'active') {
+      return session;
+    }
+
+    const timestamp = currentTimestamp();
+    const summaryNote = await buildDailyRunFinishSummaryNote(database, resolvedCampaignId, session);
+    await dailySessionStore.updateSession(session.id, {
+      status: 'completed',
+      ended_at: timestamp,
+      summary_note: summaryNote,
+      updated_at: timestamp,
+    });
+
+    return loadTodaySession(database, dailySessionStore, resolvedCampaignId);
+  },
+
+  async abandonDailyRun(campaignId = null) {
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
+    const session = await loadTodaySession(database, dailySessionStore, resolvedCampaignId);
+
+    if (!session || session.status !== 'active') {
+      return session;
+    }
+
+    const timestamp = currentTimestamp();
+    await dailySessionStore.updateSession(session.id, {
+      status: 'abandoned',
+      ended_at: timestamp,
+      summary_note: 'Daily Run abandoned. Open tasks remain available for a later run.',
+      updated_at: timestamp,
+    });
+
+    return loadTodaySession(database, dailySessionStore, resolvedCampaignId);
   },
 
   async blockActionInTodaySession(campaignId, actionId, { barrierType = null, note = '' } = {}) {
@@ -4682,7 +5165,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       source_event_id: event.id,
     });
 
-    if (session.status === 'active') {
+    if (shouldFinalizeSessionAutomatically(session)) {
       await finalizeSessionOutcome(this, session.id, timestamp, eventNote || 'Текущий шаг уперся в барьер.');
     }
 
@@ -4756,7 +5239,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       source_event_id: event.id,
     });
 
-    if (session.status === 'active') {
+    if (shouldFinalizeSessionAutomatically(session)) {
       await finalizeSessionOutcome(this, session.id, timestamp, `Текущий шаг упрощен до меньшего: ${smallerStepTitle}.`);
     }
 

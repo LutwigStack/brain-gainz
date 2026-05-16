@@ -72,7 +72,7 @@ test('blocked actions are excluded from the queue until dependencies clear', asy
   assert.equal(visibleTitles.some((title) => blockedNodePattern.test(title ?? '')), false);
 });
 
-test('starting a session stamps a daily session header and selected event', async (t) => {
+test('starting a session stamps a daily run header and selected tasks', async (t) => {
   const { database, nowService } = await setupNowService();
   t.after(() => database.close());
 
@@ -81,8 +81,8 @@ test('starting a session stamps a daily session header and selected event', asyn
   const snapshot = await nowService.getDashboard();
 
   assert.equal(session.status, 'active');
-  assert.equal(session.events.length, 1);
-  assert.equal(session.events[0].event_type, 'selected');
+  assert.equal(session.events.every((event) => event.event_type === 'selected'), true);
+  assert.equal(session.tasks.length >= 1, true);
   assert.equal(snapshot.todaySession.status, 'active');
 });
 
@@ -104,7 +104,7 @@ test('node focus returns selected action, dependencies, and progress for the cho
   assert.equal(focus.progress.completedActions, 0);
 });
 
-test('completing the selected action closes the session and the node when no open actions remain', async (t) => {
+test('completing the selected action records outcome while the run stays open until finish', async (t) => {
   const { database, nowService } = await setupNowService();
   t.after(() => database.close());
 
@@ -114,11 +114,76 @@ test('completing the selected action closes the session and the node when no ope
 
   assert.equal(result.focus.selectedAction.status, 'done');
   assert.equal(result.focus.node.status, 'done');
-  assert.equal(result.focus.session.status, 'completed');
+  assert.equal(result.focus.session.status, 'active');
   assert.deepEqual(
-    result.focus.session.events.map((event) => event.event_type),
+    result.focus.session.events.filter((event) => event.action_id === snapshot.primaryRecommendation.actionId).map((event) => event.event_type),
     ['selected', 'completed'],
   );
+
+  const finished = await nowService.finishDailyRun();
+  assert.equal(finished.status, 'completed');
+  assert.match(finished.summary_note, /Changed:/);
+});
+
+test('skipping after completion reopens the action and deactivates completion XP', async (t) => {
+  const { database, nowService } = await setupNowService();
+  t.after(() => database.close());
+
+  const developer = (await database.select("SELECT * FROM campaigns WHERE type = 'developer_main' LIMIT 1"))[0];
+  const snapshot = await nowService.createStarterWorkspace(developer.id);
+  const actionId = snapshot.primaryRecommendation.actionId;
+  const nodeId = snapshot.primaryRecommendation.nodeId;
+
+  await nowService.startTodaySessionFromRecommendation(developer.id, actionId);
+  await nowService.completeActionInTodaySession(developer.id, actionId);
+  const result = await nowService.skipActionInTodaySession(developer.id, actionId, 'Undo the completion for this run.');
+
+  assert.equal(result.focus.selectedAction.status, 'ready');
+  assert.equal(result.focus.node.status, 'active');
+  assert.deepEqual(
+    result.focus.session.events.filter((event) => event.action_id === actionId).map((event) => event.event_type),
+    ['selected', 'completed', 'skipped'],
+  );
+
+  const grants = await database.select('SELECT * FROM stat_xp_grants WHERE campaign_id = ? AND node_id = ?', [
+    developer.id,
+    nodeId,
+  ]);
+  assert.equal(grants.length, 1);
+  assert.equal(grants[0].active, 0);
+});
+
+test('skip, fail, and defer daily run outcomes accept campaign and action ids without a note', async (t) => {
+  const { database, nowService } = await setupNowService();
+  t.after(() => database.close());
+
+  const developer = (await database.select("SELECT * FROM campaigns WHERE type = 'developer_main' LIMIT 1"))[0];
+  const snapshot = await nowService.createStarterWorkspace(developer.id);
+  const skippedActionId = snapshot.primaryRecommendation.actionId;
+  const failedActionId = snapshot.queue[0].actionId;
+  const deferredActionId = failedActionId;
+
+  const skipped = await nowService.skipActionInTodaySession(developer.id, skippedActionId);
+  const failed = await nowService.failActionInTodaySession(developer.id, failedActionId);
+  const deferred = await nowService.deferActionInTodaySession(developer.id, deferredActionId);
+
+  assert.equal(skipped.focus.selectedAction.status, 'ready');
+  assert.equal(failed.focus.selectedAction.status, 'ready');
+  assert.equal(deferred.focus.selectedAction.status, 'ready');
+
+  const events = await database.select(
+    `
+      SELECT event_type, action_id, note
+      FROM daily_session_events
+      WHERE action_id IN (?, ?, ?)
+      ORDER BY id ASC
+    `,
+    [skippedActionId, failedActionId, deferredActionId],
+  );
+  assert.equal(events.some((event) => event.action_id === skippedActionId && event.event_type === 'skipped'), true);
+  assert.equal(events.some((event) => event.action_id === failedActionId && event.event_type === 'failed'), true);
+  assert.equal(events.some((event) => event.action_id === deferredActionId && event.event_type === 'deferred'), true);
+  assert.equal(events.some((event) => event.note == null), false);
 });
 
 test('deferring an action records a deferred event and keeps the action available', async (t) => {
@@ -129,12 +194,12 @@ test('deferring an action records a deferred event and keeps the action availabl
   const result = await nowService.deferActionInTodaySession(snapshot.primaryRecommendation.actionId, 'Need a cleaner time window.');
 
   assert.equal(result.focus.selectedAction.status, 'ready');
-  assert.equal(result.focus.session.status, 'completed');
+  assert.equal(result.focus.session.status, 'active');
   assert.deepEqual(
-    result.focus.session.events.map((event) => event.event_type),
+    result.focus.session.events.filter((event) => event.action_id === snapshot.primaryRecommendation.actionId).map((event) => event.event_type),
     ['selected', 'deferred'],
   );
-  assert.match(result.focus.session.events[1].note, /cleaner time window/i);
+  assert.match(result.focus.session.events.find((event) => event.event_type === 'deferred').note, /cleaner time window/i);
 });
 
 test('blocking an action records a blocked event with barrier context and pauses the node', async (t) => {
@@ -149,10 +214,10 @@ test('blocking an action records a blocked event with barrier context and pauses
 
   assert.equal(result.focus.node.status, 'paused');
   assert.deepEqual(
-    result.focus.session.events.map((event) => event.event_type),
+    result.focus.session.events.filter((event) => event.action_id === snapshot.primaryRecommendation.actionId).map((event) => event.event_type),
     ['selected', 'blocked'],
   );
-  assert.match(result.focus.session.events[1].note, /too complex/i);
+  assert.match(result.focus.session.events.find((event) => event.event_type === 'blocked').note, /too complex/i);
   assert.equal(result.focus.barrierNotes.length, 1);
   assert.equal(result.focus.barrierNotes[0].barrier_type, 'too complex');
 });
@@ -170,10 +235,10 @@ test('shrinking an action creates a new smaller step and records a shrunk event'
   assert.equal(result.focus.selectedAction.title, 'Write the smallest Now CTA copy pass');
   assert.equal(result.focus.actions.some((action) => action.status === 'cancelled'), true);
   assert.deepEqual(
-    result.focus.session.events.map((event) => event.event_type),
+    result.focus.session.events.filter((event) => event.action_id === snapshot.primaryRecommendation.actionId || event.action_id === result.focus.selectedAction.id).map((event) => event.event_type),
     ['selected', 'shrunk'],
   );
-  assert.match(result.focus.session.events[1].note, /smaller step|меньший шаг/i);
+  assert.match(result.focus.session.events.find((event) => event.event_type === 'shrunk').note, /smaller step|меньший шаг/i);
   assert.equal(result.focus.errorNotes.some((note) => note.note_kind === 'shrink'), true);
 });
 

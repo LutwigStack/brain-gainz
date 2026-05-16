@@ -79,6 +79,8 @@ type StoresRegistry = {
     getJournalSnapshot: (campaignId?: number | null) => Promise<JournalSnapshot>;
     createJournalFollowUpStep: (campaignId: number | null, payload: JournalFollowUpPayload) => Promise<unknown>;
     completeActionInTodaySession: (campaignId: number | null, actionId: number) => Promise<unknown>;
+    failActionInTodaySession: (campaignId: number | null, actionId: number, note?: string) => Promise<unknown>;
+    skipActionInTodaySession: (campaignId: number | null, actionId: number, note?: string) => Promise<unknown>;
     deferActionInTodaySession: (campaignId: number | null, actionId: number, note?: string) => Promise<unknown>;
     blockActionInTodaySession: (campaignId: number | null, actionId: number, payload?: { barrierType?: string | null; note?: string }) => Promise<unknown>;
     shrinkActionInTodaySession: (campaignId: number | null, actionId: number, payload?: { title?: string; note?: string }) => Promise<unknown>;
@@ -96,6 +98,8 @@ type StoresRegistry = {
     removeSpecializationRouteNode: (campaignId: number | null, routeNodeId: number) => Promise<unknown>;
     submitAssessmentAttempt: (campaignId: number | null, input: unknown) => Promise<unknown>;
     markSelfMastery: (campaignId: number | null, nodeId: number, masteryLevel?: string) => Promise<unknown>;
+    finishDailyRun: (campaignId?: number | null) => Promise<unknown>;
+    abandonDailyRun: (campaignId?: number | null) => Promise<unknown>;
   };
   campaignStore: {
     listCampaigns: () => Promise<unknown>;
@@ -475,6 +479,16 @@ export const completeNowActionInTodaySession = async (actionId: number, campaign
   return nowService.completeActionInTodaySession(requireCampaignId(campaignId), actionId);
 };
 
+export const failNowActionInTodaySession = async (actionId: number, note = '', campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.failActionInTodaySession(requireCampaignId(campaignId), actionId, note);
+};
+
+export const skipNowActionInTodaySession = async (actionId: number, note = '', campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.skipActionInTodaySession(requireCampaignId(campaignId), actionId, note);
+};
+
 export const deferNowActionInTodaySession = async (actionId: number, note = '', campaignId: number | null = null) => {
   const { nowService } = await getStores();
   return nowService.deferActionInTodaySession(requireCampaignId(campaignId), actionId, note);
@@ -496,6 +510,16 @@ export const shrinkNowActionInTodaySession = async (
 ) => {
   const { nowService } = await getStores();
   return nowService.shrinkActionInTodaySession(requireCampaignId(campaignId), actionId, payload);
+};
+
+export const finishDailyRun = async (campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.finishDailyRun(requireCampaignId(campaignId));
+};
+
+export const abandonDailyRun = async (campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.abandonDailyRun(requireCampaignId(campaignId));
 };
 
 export const __resetDbForTests = () => {

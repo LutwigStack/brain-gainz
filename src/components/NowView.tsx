@@ -118,6 +118,14 @@ interface NowViewProps {
   onRefresh: () => void;
   onCompleteSpecialization: () => void;
   onContinueSpecialization: () => void;
+  isDailyRunPending?: boolean;
+  onStartDailyRun: () => void;
+  onCompleteDailyRunTask: (actionId: number) => void;
+  onFailDailyRunTask: (actionId: number) => void;
+  onSkipDailyRunTask: (actionId: number) => void;
+  onDeferDailyRunTask: (actionId: number) => void;
+  onFinishDailyRun: () => void;
+  onAbandonDailyRun: () => void;
 }
 
 export const NowView = ({
@@ -136,6 +144,14 @@ export const NowView = ({
   onRefresh,
   onCompleteSpecialization,
   onContinueSpecialization,
+  isDailyRunPending = false,
+  onStartDailyRun,
+  onCompleteDailyRunTask,
+  onFailDailyRunTask,
+  onSkipDailyRunTask,
+  onDeferDailyRunTask,
+  onFinishDailyRun,
+  onAbandonDailyRun,
 }: NowViewProps) => {
   const metrics = snapshot?.metrics ?? emptyMetrics;
   const primaryRecommendation = snapshot?.primaryRecommendation ?? null;
@@ -145,6 +161,13 @@ export const NowView = ({
   const focusedNode = focus?.node ?? null;
   const progress = focus?.progress ?? null;
   const recentEvents = todaySession?.events.slice(-3).reverse() ?? [];
+  const dailyRunTasks = todaySession?.tasks ?? [];
+  const dailyRunState =
+    todaySession?.state ?? (todaySession?.status === 'planned' ? 'not_started' : todaySession?.status ?? 'not_started');
+  const isDailyRunActive = dailyRunState === 'active';
+  const isDailyRunFinished = dailyRunState === 'completed' || dailyRunState === 'abandoned';
+  const pendingRunTaskCount = dailyRunTasks.filter((task) => task.outcome === 'pending').length;
+  const canFinishDailyRun = isDailyRunActive && dailyRunTasks.length > 0 && pendingRunTaskCount === 0;
   const today = snapshot?.today ?? null;
   const currentSpecialization = today?.currentSpecialization ?? null;
   const isVictory = today?.careerStatus === 'victory';
@@ -279,6 +302,32 @@ export const NowView = ({
     onOpenRouteNode(task.nodeId);
   };
 
+  const handleRunTaskOutcome = (
+    task: NonNullable<NonNullable<NowDashboardSnapshot['todaySession']>['tasks']>[number],
+    outcome: 'completed' | 'failed' | 'skipped' | 'deferred',
+  ) => {
+    if (isDailyRunPending || task.actionId == null || task.outcome !== 'pending') {
+      return;
+    }
+
+    if (outcome === 'completed') {
+      onCompleteDailyRunTask(task.actionId);
+      return;
+    }
+
+    if (outcome === 'failed') {
+      onFailDailyRunTask(task.actionId);
+      return;
+    }
+
+    if (outcome === 'skipped') {
+      onSkipDailyRunTask(task.actionId);
+      return;
+    }
+
+    onDeferDailyRunTask(task.actionId);
+  };
+
   const isPrimaryActionDisabled =
     isLoading ||
     (todayState.primaryCta.action === 'create_starter' && isCreatingStarter) ||
@@ -367,6 +416,98 @@ export const NowView = ({
                 {activeDailyTaskCount} активных
               </PixelText>
             </div>
+
+            <PixelSurface frame={isDailyRunActive ? 'selected' : isDailyRunFinished ? 'secondary' : 'ghost'} padding="md" className="today-run-panel">
+              {!todaySession || dailyRunState === 'not_started' ? (
+                <div className="today-run-start">
+                  <div className="min-w-0">
+                    <PixelText as="p" readable size="sm" className="today-secondary-title">
+                      Start a 3-5 task run from route, weak spots, due checks, and the current front.
+                    </PixelText>
+                    <PixelText as="p" readable size="xs" color="textMuted">
+                      Tasks are saved, so refresh keeps the active run.
+                    </PixelText>
+                  </div>
+                  <PixelButton tone="accent" onClick={onStartDailyRun} disabled={isDailyRunPending || dailyTaskCards.length === 0}>
+                    <Activity size={14} /> Start Run
+                  </PixelButton>
+                </div>
+              ) : null}
+
+              {isDailyRunActive ? (
+                <div className="today-run-active">
+                  <div className="today-run-task-list">
+                    {dailyRunTasks.map((task) => (
+                      <div key={task.id} className={`today-run-task today-run-task--${task.outcome}`}>
+                        <div className="today-run-task__main">
+                          <span className="today-task-card__asset" aria-hidden="true">
+                            <Target size={14} />
+                            <span>{task.order}</span>
+                          </span>
+                          <span className="min-w-0">
+                            <PixelText as="span" readable size="sm" className="today-run-task__title">
+                              {task.title}
+                            </PixelText>
+                            <PixelText as="span" size="xs" color="textMuted" className="today-run-task__subtitle">
+                              {task.sourceLabel} / {task.subtitle}
+                            </PixelText>
+                          </span>
+                        </div>
+                        {task.outcome === 'pending' ? (
+                          <div className="today-run-task__actions">
+                            <PixelButton tone="accent" onClick={() => handleRunTaskOutcome(task, 'completed')} disabled={isDailyRunPending}>
+                              <CheckCircle2 size={13} /> Complete
+                            </PixelButton>
+                            <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'failed')} disabled={isDailyRunPending}>
+                              <AlertTriangle size={13} /> Fail
+                            </PixelButton>
+                            <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'skipped')} disabled={isDailyRunPending}>
+                              <ArrowRight size={13} /> Skip
+                            </PixelButton>
+                            <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'deferred')} disabled={isDailyRunPending}>
+                              <RefreshCw size={13} /> Defer
+                            </PixelButton>
+                          </div>
+                        ) : (
+                          <span className={`today-run-task__outcome today-run-task__outcome--${task.outcome}`}>
+                            {task.outcome}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="today-run-footer">
+                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                      {pendingRunTaskCount === 0 ? 'ready to finish' : `${pendingRunTaskCount} pending`}
+                    </PixelText>
+                    <div className="today-run-footer__actions">
+                      <PixelButton tone="ghost" onClick={onAbandonDailyRun} disabled={isDailyRunPending}>
+                        <AlertTriangle size={13} /> Abandon
+                      </PixelButton>
+                      <PixelButton tone="accent" onClick={onFinishDailyRun} disabled={isDailyRunPending || !canFinishDailyRun}>
+                        <Flag size={13} /> Finish
+                      </PixelButton>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {isDailyRunFinished ? (
+                <div className="today-run-summary">
+                  <PixelText as="p" size="xs" color={dailyRunState === 'completed' ? 'success' : 'warning'} uppercase>
+                    {dailyRunState === 'completed' ? 'Run completed' : 'Run abandoned'}
+                  </PixelText>
+                  {(todaySession.summary?.lines.length ? todaySession.summary.lines : [todaySession.summary_note ?? 'No summary recorded.']).map((line) => (
+                    <PixelText key={line} as="p" readable size="sm" color="textMuted">
+                      {line}
+                    </PixelText>
+                  ))}
+                  <PixelButton tone="ghost" onClick={onStartDailyRun} disabled={isDailyRunPending || dailyTaskCards.length === 0}>
+                    <Activity size={14} /> Start New Run
+                  </PixelButton>
+                </div>
+              ) : null}
+            </PixelSurface>
 
             <div className="today-task-grid">
               {dailyTaskCards.length > 0

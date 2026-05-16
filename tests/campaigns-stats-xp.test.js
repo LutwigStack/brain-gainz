@@ -295,6 +295,105 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
   );
 });
 
+test('forked CS bachelor Daily Run selects route weak due tasks and records outcomes through finish', async (t) => {
+  const { database, campaignStore, nowService } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const [template] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor' LIMIT 1");
+  const personal = await campaignStore.forkTemplateCampaign(template.id, { name: 'CS Daily Run Fixture' });
+
+  const session = await nowService.startTodaySessionFromPrimaryRecommendation(personal.id);
+  assert.equal(session.status, 'active');
+  assert.equal(session.state, 'active');
+  assert.equal(session.tasks.length >= 3 && session.tasks.length <= 5, true);
+  assert.equal(session.tasks.some((task) => task.source === 'route_front'), true);
+
+  await nowService.completeActionInTodaySession(personal.id, session.tasks[0].actionId);
+  await nowService.failActionInTodaySession(personal.id, session.tasks[1].actionId, 'Could not solve this check yet.');
+  await nowService.skipActionInTodaySession(personal.id, session.tasks[2].actionId, 'Not useful in this run.');
+
+  for (const task of session.tasks.slice(3)) {
+    await nowService.deferActionInTodaySession(personal.id, task.actionId, 'Carry forward.');
+  }
+
+  const active = await nowService.getDashboard(personal.id);
+  assert.deepEqual(
+    active.todaySession.tasks.slice(0, 3).map((task) => task.outcome),
+    ['completed', 'failed', 'skipped'],
+  );
+  assert.equal(active.todaySession.tasks.every((task) => task.outcome !== 'pending'), true);
+
+  const finished = await nowService.finishDailyRun(personal.id);
+  assert.equal(finished.status, 'completed');
+  assert.equal(finished.state, 'completed');
+  assert.match(finished.summary_note, /Changed:/);
+  assert.match(finished.summary_note, /XP\/mastery:/);
+  assert.match(finished.summary_note, /Recovery:/);
+
+  const refreshed = await nowService.getDashboard(personal.id);
+  assert.equal(refreshed.todaySession.status, 'completed');
+  assert.deepEqual(
+    refreshed.todaySession.tasks.slice(0, 3).map((task) => task.outcome),
+    ['completed', 'failed', 'skipped'],
+  );
+});
+
+test('forked CS bachelor Daily Run finish summary counts reactivated XP and mastery effects', async (t) => {
+  const { database, campaignStore, nowService } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const [template] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor' LIMIT 1");
+  const personal = await campaignStore.forkTemplateCampaign(template.id, { name: 'CS Reactivated XP Fixture' });
+
+  const firstRun = await nowService.startTodaySessionFromPrimaryRecommendation(personal.id);
+  const task = firstRun.tasks[0];
+  await nowService.completeActionInTodaySession(personal.id, task.actionId);
+  await nowService.finishDailyRun(personal.id);
+
+  const [initialGrant] = await database.select(
+    'SELECT * FROM stat_xp_grants WHERE campaign_id = ? AND node_id = ? AND grant_reason = ?',
+    [personal.id, task.nodeId, 'node_completion'],
+  );
+  assert.equal(initialGrant.active, 1);
+
+  await nowService.skipActionInTodaySession(personal.id, task.actionId, 'Reopen for a later Daily Run.');
+  await nowService.abandonDailyRun(personal.id);
+
+  const [deactivatedGrant] = await database.select(
+    'SELECT * FROM stat_xp_grants WHERE campaign_id = ? AND node_id = ? AND grant_reason = ?',
+    [personal.id, task.nodeId, 'node_completion'],
+  );
+  assert.equal(deactivatedGrant.active, 0);
+  assert.equal(deactivatedGrant.created_at, initialGrant.created_at);
+
+  const rerun = await nowService.startTodaySessionFromRecommendation(personal.id, task.actionId);
+  assert.equal(rerun.tasks.some((candidate) => candidate.actionId === task.actionId), true);
+  await nowService.completeActionInTodaySession(personal.id, task.actionId);
+
+  const finished = await nowService.finishDailyRun(personal.id);
+  const [reactivatedGrant] = await database.select(
+    'SELECT * FROM stat_xp_grants WHERE campaign_id = ? AND node_id = ? AND grant_reason = ?',
+    [personal.id, task.nodeId, 'node_completion'],
+  );
+  const [mastery] = await database.select(
+    `
+      SELECT COUNT(*) AS count
+      FROM mastery_events
+      WHERE campaign_id = ?
+        AND node_id = ?
+        AND source_type = 'legacy_node_completion'
+        AND active = 1
+    `,
+    [personal.id, task.nodeId],
+  );
+
+  assert.equal(reactivatedGrant.active, 1);
+  assert.equal(reactivatedGrant.created_at, initialGrant.created_at);
+  assert.equal(Number(mastery.count), 1);
+  assert.match(finished.summary_note, new RegExp(`XP/mastery: ${reactivatedGrant.xp_amount} XP active`));
+  assert.match(finished.summary_note, /1 mastery event touched/);
+});
+
 test('template campaigns reject learner progress writes', async (t) => {
   const { database, nowService } = await setupCampaignService();
   t.after(() => database.close());

@@ -356,7 +356,7 @@ const REQUIRED_TABLE_SQL_FRAGMENTS = {
     "check (status in ('planned', 'active', 'completed', 'abandoned'))",
   ],
   daily_session_events: [
-    "check (event_type in ('selected', 'completed', 'deferred', 'blocked', 'shrunk'))",
+    "check (event_type in ('selected', 'completed', 'failed', 'skipped', 'deferred', 'blocked', 'shrunk'))",
     'check (node_id is not null or action_id is not null)',
   ],
   node_barrier_notes: [
@@ -511,7 +511,7 @@ const PR1_STATEMENTS = [
     CREATE TABLE IF NOT EXISTS daily_session_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id INTEGER NOT NULL,
-      event_type TEXT NOT NULL CHECK (event_type IN ('selected', 'completed', 'deferred', 'blocked', 'shrunk')),
+      event_type TEXT NOT NULL CHECK (event_type IN ('selected', 'completed', 'failed', 'skipped', 'deferred', 'blocked', 'shrunk')),
       node_id INTEGER,
       action_id INTEGER,
       note TEXT,
@@ -791,6 +791,61 @@ const ensureNodeDependenciesSchema = async (database) => {
   }
 };
 
+const recreateDailySessionEventsTable = async (database) => {
+  await database.execute('PRAGMA foreign_keys = OFF');
+  await database.execute('PRAGMA legacy_alter_table = ON');
+
+  try {
+    await database.execute('DROP INDEX IF EXISTS idx_daily_session_events_session_id');
+    await database.execute('DROP INDEX IF EXISTS idx_daily_session_events_node_id');
+    await database.execute('DROP INDEX IF EXISTS idx_daily_session_events_action_id');
+    await database.execute('ALTER TABLE daily_session_events RENAME TO daily_session_events_old_event_types');
+    await database.execute(`
+      CREATE TABLE daily_session_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
+        event_type TEXT NOT NULL CHECK (event_type IN ('selected', 'completed', 'failed', 'skipped', 'deferred', 'blocked', 'shrunk')),
+        node_id INTEGER,
+        action_id INTEGER,
+        note TEXT,
+        occurred_at TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES daily_sessions (id),
+        FOREIGN KEY (node_id) REFERENCES nodes (id),
+        FOREIGN KEY (action_id) REFERENCES node_actions (id),
+        CHECK (node_id IS NOT NULL OR action_id IS NOT NULL)
+      )
+    `);
+    await database.execute(`
+      INSERT INTO daily_session_events (id, session_id, event_type, node_id, action_id, note, occurred_at)
+      SELECT id, session_id, event_type, node_id, action_id, note, occurred_at
+      FROM daily_session_events_old_event_types
+    `);
+    await database.execute('DROP TABLE daily_session_events_old_event_types');
+    await database.execute('CREATE INDEX IF NOT EXISTS idx_daily_session_events_session_id ON daily_session_events (session_id)');
+    await database.execute('CREATE INDEX IF NOT EXISTS idx_daily_session_events_node_id ON daily_session_events (node_id)');
+    await database.execute('CREATE INDEX IF NOT EXISTS idx_daily_session_events_action_id ON daily_session_events (action_id)');
+  } finally {
+    await database.execute('PRAGMA legacy_alter_table = OFF');
+    await database.execute('PRAGMA foreign_keys = ON');
+  }
+};
+
+const ensureDailySessionEventTypesSchema = async (database) => {
+  const rows = await database.select(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'daily_session_events'",
+  );
+
+  if (rows.length === 0) {
+    return;
+  }
+
+  const normalizedTableSql = normalizeSql(rows[0].sql ?? '');
+
+  if (!normalizedTableSql.includes("'failed'") || !normalizedTableSql.includes("'skipped'")) {
+    await recreateDailySessionEventsTable(database);
+  }
+};
+
 const recreateDirectionsTable = async (database) => {
   await database.execute('PRAGMA foreign_keys = OFF');
   await database.execute('PRAGMA legacy_alter_table = ON');
@@ -1039,6 +1094,7 @@ export const runPr1Migrations = async (database) => {
   await ensureSkillsForeignKeyTarget(database);
   await ensureLegacySubjectMappingForeignKeyTargets(database);
   await ensureNodeDependenciesSchema(database);
+  await ensureDailySessionEventTypesSchema(database);
   await backfillNodeCoordinates(database);
   await verifyPr1Schema(database);
 };
