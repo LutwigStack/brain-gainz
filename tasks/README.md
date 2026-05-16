@@ -37,3 +37,4 @@ Everything else must be `planned`, `done`, or `parked`.
 - [10 UX Stabilization And Daily Flow](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/10-ux-stabilization-and-daily-flow/README.md)
 - [11 UX Safety And Daily Clarity](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/11-ux-safety-and-daily-clarity/README.md)
 - [12 Reference Style Game Cockpit](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/12-reference-style-game-cockpit/README.md)
+- [13 CS Bachelor Campaign And Daily Run](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/13-cs-bachelor-campaign-and-daily-run/README.md)
