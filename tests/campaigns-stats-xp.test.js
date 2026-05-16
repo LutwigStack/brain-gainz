@@ -72,6 +72,53 @@ test('CS bachelor template seed is idempotent and visible as a template campaign
   );
   assert.equal(Number(nodes[0].count), 58);
 
+  const branchCounts = await database.select(
+    `
+      SELECT skills.slug, COUNT(nodes.id) AS count
+      FROM skills
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      LEFT JOIN nodes ON nodes.skill_id = skills.id AND nodes.is_archived = 0
+      WHERE spheres.campaign_id = ?
+      GROUP BY skills.slug
+      ORDER BY skills.sort_order ASC
+    `,
+    [rows[0].id],
+  );
+  assert.deepEqual(
+    Object.fromEntries(branchCounts.map((row) => [row.slug, Number(row.count)])),
+    {
+      'programming-fundamentals': 12,
+      'discrete-math': 10,
+      'data-structures': 12,
+      algorithms: 10,
+      'debugging-and-testing': 5,
+      'math-notation-and-proof-support': 4,
+      'memory-model-intro': 5,
+    },
+  );
+
+  const checkRows = await database.select(
+    `
+      SELECT nodes.slug, nodes.check_metadata
+      FROM nodes
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE spheres.campaign_id = ?
+        AND nodes.check_metadata IS NOT NULL
+    `,
+    [rows[0].id],
+  );
+  const checkTypes = new Set(
+    checkRows.map((row) => {
+      const metadata = JSON.parse(row.check_metadata);
+      return metadata.check_method === 'llm_assisted' ? 'llm_assisted' : metadata.strict_check_type;
+    }),
+  );
+  assert.deepEqual([...checkTypes].sort(), ['checklist', 'contains', 'exact', 'llm_assisted', 'manual_strict', 'number']);
+  assert.equal(checkRows.some((row) => JSON.parse(row.check_metadata).check_method === 'llm_assisted'), true);
+
   const campaigns = await campaignStore.listCampaigns();
   const templateSummary = campaigns.active.find((campaign) => campaign.slug === 'template-cs-bachelor');
   assert.equal(templateSummary?.type, 'template');
@@ -133,6 +180,119 @@ test('CS bachelor template can fork into a personal campaign without copying pro
   ]);
   assert.equal(Number(templateMastery[0].count), 0);
   assert.equal(Number(personalMastery[0].count), 1);
+});
+
+test('forked CS bachelor slice feeds Today Map and Wind Rose with real route data', async (t) => {
+  const { database, campaignStore, nowService } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const [template] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor' LIMIT 1");
+  const personal = await campaignStore.forkTemplateCampaign(template.id, { name: 'CS Playable Slice' });
+
+  const dashboard = await nowService.getDashboard(personal.id);
+  assert.equal(dashboard.primaryRecommendation.nodeTitle, 'Programming Environment');
+  assert.equal(dashboard.primaryRecommendation.actionTitle, 'Practice Programming Environment');
+  assert.equal(dashboard.today.route.routeNodeCount, 44);
+  assert.equal(dashboard.today.planner.currentStage, 'Programming Fundamentals');
+  assert.deepEqual(
+    dashboard.today.planner.nextItems.slice(0, 3).map((item) => item.title),
+    ['Programming Environment', 'Values, Variables, And Types', 'Expressions And Operators'],
+  );
+
+  const navigation = await nowService.getNavigationSnapshot(personal.id);
+  assert.equal(navigation.spheres.length, 1);
+  assert.equal(navigation.spheres[0].directions[0].skills.length, 7);
+  assert.equal(
+    navigation.spheres[0].directions[0].skills.reduce((sum, skill) => sum + skill.nodes.length, 0),
+    58,
+  );
+  assert.equal(navigation.edges.filter((edge) => edge.edge_type === 'requires').length > 50, true);
+  assert.equal(navigation.edges.some((edge) => edge.edge_type === 'supports'), true);
+
+  const routeEdges = await database.select(
+    `
+      SELECT COUNT(*) AS count
+      FROM specialization_route_edges route_edges
+      JOIN career_specializations specializations ON specializations.id = route_edges.specialization_id
+      WHERE specializations.campaign_id = ?
+    `,
+    [personal.id],
+  );
+  assert.equal(Number(routeEdges[0].count), 43);
+
+  const windRose = await nowService.getWindRoseSnapshot(personal.id);
+  assert.equal(windRose.stats.length, 6);
+  assert.equal(windRose.stats.reduce((sum, stat) => sum + stat.branches.length, 0), 7);
+  assert.equal(windRose.unassignedBranches.length, 0);
+  assert.equal(
+    windRose.stats.flatMap((stat) => stat.branches).some((branch) => branch.name === 'Algorithms' && branch.node_count === 10),
+    true,
+  );
+
+  const [tradeoffNode] = await database.select(
+    `
+      SELECT nodes.id
+      FROM nodes
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE spheres.campaign_id = ?
+        AND nodes.slug = 'ds-12-data-structure-tradeoffs'
+      LIMIT 1
+    `,
+    [personal.id],
+  );
+  const tradeoffFocus = await nowService.getNodeFocus(personal.id, tradeoffNode.id, null);
+  assert.equal(tradeoffFocus.mastery.check.isStrictCheckable, false);
+  assert.equal(tradeoffFocus.mastery.check.prompt, 'Compare arrays, hash tables, and graphs for a concrete scenario.');
+
+  await database.execute(
+    'UPDATE nodes SET check_metadata = ? WHERE id = ?',
+    [
+      JSON.stringify({
+        check_method: 'llm_assisted',
+        strict_check_type: 'llm_assisted',
+        prompt: 'Legacy LLM shape',
+        expected_summary: 'Legacy forks should remain LLM-assisted.',
+      }),
+      tradeoffNode.id,
+    ],
+  );
+  const legacyTradeoffFocus = await nowService.getNodeFocus(personal.id, tradeoffNode.id, null);
+  assert.equal(legacyTradeoffFocus.mastery.check.isStrictCheckable, false);
+  assert.equal(legacyTradeoffFocus.mastery.check.prompt, 'Legacy LLM shape');
+
+  const supportEdges = await database.select(
+    `
+      SELECT source_nodes.slug AS source_slug, target_nodes.slug AS target_slug, dependencies.dependency_type
+      FROM node_dependencies dependencies
+      JOIN nodes source_nodes ON source_nodes.id = dependencies.blocked_node_id
+      JOIN nodes target_nodes ON target_nodes.id = dependencies.blocking_node_id
+      JOIN skills ON skills.id = source_nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE spheres.campaign_id = ?
+        AND dependencies.dependency_type = 'supports'
+      ORDER BY source_nodes.slug ASC, target_nodes.slug ASC
+    `,
+    [personal.id],
+  );
+  assert.equal(
+    supportEdges.some(
+      (edge) =>
+        edge.source_slug === 'mm-03-references-and-aliasing' &&
+        edge.target_slug === 'ds-03-linked-lists',
+    ),
+    true,
+  );
+  assert.equal(
+    supportEdges.some(
+      (edge) =>
+        edge.source_slug === 'ds-03-linked-lists' &&
+        edge.target_slug === 'mm-03-references-and-aliasing',
+    ),
+    false,
+  );
 });
 
 test('template campaigns reject learner progress writes', async (t) => {

@@ -57,9 +57,18 @@ const BRANCHES = [
 ];
 
 const assessment = (type, extra = {}) => ({
+  check_method: 'strict',
   strict_check_type: type,
   prompt: extra.prompt ?? 'Complete the check for this node.',
   expected_summary: extra.expected_summary ?? null,
+  ...extra,
+});
+
+const llmAssessment = (extra = {}) => ({
+  check_method: 'llm_assisted',
+  prompt: extra.prompt ?? 'Explain the concept and justify your answer.',
+  rubric: extra.rubric ?? extra.expected_summary ?? 'Answer should be specific, correct, and tied to the scenario.',
+  expected_summary: extra.expected_summary ?? extra.rubric ?? null,
   ...extra,
 });
 
@@ -98,7 +107,7 @@ const NODE_CHECKS = {
     ],
   }),
   'pf-12-small-program-design': {
-    check_method: 'manual_strict',
+    check_method: 'strict',
     strict_check_type: 'manual_strict',
     prompt: 'Build a small CLI-style program with input, branching, loops, and functions.',
     expected_summary: 'Reviewer confirms the program meets the checklist.',
@@ -137,10 +146,22 @@ const NODE_CHECKS = {
     prompt: 'Which removal policy does a stack use?',
     expected_answer: 'LIFO',
   }),
+  'ds-07-trees': assessment('contains', {
+    prompt: 'Explain why trees are useful for hierarchical data.',
+    required_terms: ['parent', 'child'],
+  }),
+  'ds-08-binary-search-trees': llmAssessment({
+    prompt: 'Explain why a balanced binary search tree can keep search efficient.',
+    rubric: 'Answer should mention ordering, left and right subtrees, balance, and logarithmic search intuition.',
+  }),
   'ds-09-hash-tables': assessment('number', {
     prompt: 'What is the usual average-case lookup cost exponent-free Big-O level for a hash table?',
     expected_number: 1,
     tolerance: 0,
+  }),
+  'ds-10-heaps-and-priority-queues': assessment('contains', {
+    prompt: 'Explain why a heap is a good fit for repeatedly taking the next priority item.',
+    required_terms: ['priority', 'min'],
   }),
   'ds-11-graph-representations': assessment('checklist', {
     prompt: 'Compare adjacency lists and adjacency matrices.',
@@ -149,15 +170,19 @@ const NODE_CHECKS = {
       { id: 'neighbors', label: 'Compare neighbor iteration', required: true },
     ],
   }),
-  'ds-12-data-structure-tradeoffs': {
-    check_method: 'llm_assisted',
-    strict_check_type: 'llm_assisted',
+  'ds-12-data-structure-tradeoffs': llmAssessment({
     prompt: 'Compare arrays, hash tables, and graphs for a concrete scenario.',
+    rubric: 'Answer should justify choices by operations, constraints, and representation tradeoffs.',
     expected_summary: 'Answer should justify choices by operations and constraints.',
-  },
-  'al-02-asymptotic-complexity': assessment('exact', {
-    prompt: 'What Big-O class describes scanning every item once?',
-    expected_answer: 'O(n)',
+  }),
+  'al-01-algorithmic-thinking': assessment('contains', {
+    prompt: 'Explain how an algorithm differs from a program in one language.',
+    required_terms: ['steps', 'input'],
+  }),
+  'al-02-asymptotic-complexity': assessment('number', {
+    prompt: 'If one loop scans n items once, what is the exponent-free Big-O level?',
+    expected_number: 1,
+    tolerance: 0,
   }),
   'al-03-linear-and-binary-search': assessment('number', {
     prompt: 'How many times can binary search halve 16 sorted items before one remains?',
@@ -168,6 +193,24 @@ const NODE_CHECKS = {
     prompt: 'Explain what sorting changes and what it preserves.',
     required_terms: ['order', 'same items'],
   }),
+  'al-05-divide-and-conquer': assessment('checklist', {
+    prompt: 'Trace a divide-and-conquer algorithm.',
+    items: [
+      { id: 'split', label: 'Split the problem', required: true },
+      { id: 'solve', label: 'Solve subproblems', required: true },
+      { id: 'combine', label: 'Combine results', required: true },
+    ],
+  }),
+  'al-07-greedy-intuition': llmAssessment({
+    prompt: 'Explain when a locally best choice might be enough for a global solution.',
+    rubric: 'Answer should describe local choice, constraints, and why greedy choices need a correctness argument.',
+  }),
+  'al-08-dynamic-programming-intuition': {
+    check_method: 'strict',
+    strict_check_type: 'manual_strict',
+    prompt: 'Solve a small overlapping-subproblem exercise with a table or memoized recursion.',
+    expected_summary: 'Reviewer confirms the solution identifies state, recurrence, and base cases.',
+  },
   'al-09-graph-traversal': assessment('checklist', {
     prompt: 'Trace a breadth-first traversal.',
     items: [
@@ -186,14 +229,166 @@ const NODE_CHECKS = {
       { id: 'updates', label: 'Record each update', required: true },
     ],
   }),
+  'dt-03-edge-cases': assessment('checklist', {
+    prompt: 'List edge cases for a function that processes a list of numbers.',
+    items: [
+      { id: 'empty', label: 'Empty list considered', required: true },
+      { id: 'single', label: 'Single item considered', required: true },
+      { id: 'duplicates', label: 'Duplicates or repeated values considered', required: true },
+    ],
+  }),
+  'dt-04-basic-unit-tests': {
+    check_method: 'strict',
+    strict_check_type: 'manual_strict',
+    prompt: 'Write basic unit tests for normal, boundary, and invalid input behavior.',
+    expected_summary: 'Reviewer confirms tests cover happy path and at least two edge cases.',
+  },
   'ms-01-reading-symbols': assessment('exact', {
     prompt: 'What does the symbol forall usually mean?',
     expected_answer: 'for all',
+  }),
+  'ms-03-proof-skeletons': assessment('checklist', {
+    prompt: 'Create a proof skeleton before filling in details.',
+    items: [
+      { id: 'given', label: 'State what is given', required: true },
+      { id: 'goal', label: 'State what must be proved', required: true },
+      { id: 'strategy', label: 'Pick a proof strategy', required: true },
+    ],
+  }),
+  'ms-04-recurrence-notation': assessment('number', {
+    prompt: 'For T(n) = 2T(n/2) + n, how many subproblems appear at each split?',
+    expected_number: 2,
+    tolerance: 0,
   }),
   'mm-01-values-vs-references': assessment('exact', {
     prompt: 'Name the concept used when two names point at the same mutable object.',
     expected_answer: 'aliasing',
   }),
+  'mm-02-call-stack': assessment('contains', {
+    prompt: 'Explain what a call stack frame keeps track of.',
+    required_terms: ['function', 'local'],
+  }),
+  'mm-03-references-and-aliasing': assessment('checklist', {
+    prompt: 'Trace two references that point to the same list.',
+    items: [
+      { id: 'names', label: 'Name both references', required: true },
+      { id: 'mutation', label: 'Show one mutation through both names', required: true },
+    ],
+  }),
+  'mm-04-mutation-costs': assessment('number', {
+    prompt: 'If inserting at the front of an array shifts n items, what is the exponent-free Big-O level?',
+    expected_number: 1,
+    tolerance: 0,
+  }),
+  'mm-05-memory-model-for-recursion': llmAssessment({
+    prompt: 'Explain why each recursive call needs its own stack frame.',
+    rubric: 'Answer should mention separate parameters/local variables, base case progress, and returning values.',
+  }),
+};
+
+const NODE_OUTCOMES = {
+  'pf-01-programming-environment': 'Set up an editor/run loop so tiny programs can be written, executed, and saved.',
+  'pf-02-values-variables-types': 'Track values through variable assignments and distinguish simple data types.',
+  'pf-03-expressions-and-operators': 'Evaluate expressions using operator precedence and basic type behavior.',
+  'pf-04-branching-with-conditionals': 'Use conditions to choose between branches and explain which path runs.',
+  'pf-05-loops-and-iteration': 'Repeat work with loops while keeping loop state and termination clear.',
+  'pf-06-functions-and-parameters': 'Package repeated logic into functions with inputs, outputs, and names.',
+  'pf-07-scope-and-lifetime': 'Predict which variables are visible in a block or function call.',
+  'pf-08-arrays-and-lists': 'Store ordered collections and use indexing, appending, and iteration.',
+  'pf-09-dictionaries-and-records': 'Represent keyed data and compare lookup-by-key with lookup-by-position.',
+  'pf-10-input-output-and-parsing': 'Turn user or file input into values a program can validate and process.',
+  'pf-11-debugging-basics': 'Reproduce a bug, inspect state, and narrow the failing step.',
+  'pf-12-small-program-design': 'Combine input, branches, loops, functions, and collections into a small complete program.',
+  'dm-01-sets-and-membership': 'Use sets, membership, subsets, and simple set operations in CS examples.',
+  'dm-02-propositions-and-logic': 'Translate conditions into propositions and reason about true/false statements.',
+  'dm-03-truth-tables': 'Build truth tables for compound Boolean expressions.',
+  'dm-04-quantifiers': 'Read and write statements with for-all and exists quantifiers.',
+  'dm-05-direct-proofs': 'Write a direct proof from assumptions to a stated conclusion.',
+  'dm-06-contrapositive-and-contradiction': 'Choose contrapositive or contradiction when direct proof is awkward.',
+  'dm-07-induction': 'Use a base case and inductive step to prove statements about repeated structure.',
+  'dm-08-functions-and-relations': 'Model mappings and relations with domain, codomain, and ordered pairs.',
+  'dm-09-counting-basics': 'Count simple choices, products, and combinations used in algorithm analysis.',
+  'dm-10-graph-vocabulary': 'Use vertex, edge, path, degree, directed, and weighted graph vocabulary.',
+  'ds-01-abstract-data-types': 'Describe a data structure by operations before choosing an implementation.',
+  'ds-02-arrays-and-dynamic-arrays': 'Explain indexed access, resizing, and insertion costs for dynamic arrays.',
+  'ds-03-linked-lists': 'Trace node links and compare linked lists with arrays for insertion and traversal.',
+  'ds-04-stacks': 'Apply last-in-first-out behavior to calls, undo, and traversal tasks.',
+  'ds-05-queues': 'Apply first-in-first-out behavior to scheduling and breadth-first processing.',
+  'ds-06-recursion-for-structures': 'Use recursive thinking on lists and trees with clear base cases.',
+  'ds-07-trees': 'Model hierarchical data with roots, parents, children, leaves, and height.',
+  'ds-08-binary-search-trees': 'Use ordered tree structure to support search, insert, and traversal.',
+  'ds-09-hash-tables': 'Explain hash-based lookup, collisions, and average-case constant time.',
+  'ds-10-heaps-and-priority-queues': 'Use heap order to repeatedly retrieve the next priority item.',
+  'ds-11-graph-representations': 'Choose adjacency lists or matrices based on density and operations.',
+  'ds-12-data-structure-tradeoffs': 'Pick a structure by workload, constraints, and operation costs.',
+  'al-01-algorithmic-thinking': 'State inputs, outputs, steps, and correctness intent before coding.',
+  'al-02-asymptotic-complexity': 'Estimate growth rates with Big-O and compare constant, linear, and quadratic work.',
+  'al-03-linear-and-binary-search': 'Choose linear or binary search based on ordering and expected cost.',
+  'al-04-sorting-basics': 'Explain what sorted order enables and recognize basic sorting costs.',
+  'al-05-divide-and-conquer': 'Split a problem, solve subproblems, and combine results.',
+  'al-06-recursion-and-recurrences': 'Connect recursive code to recurrence-style cost reasoning.',
+  'al-07-greedy-intuition': 'Recognize greedy choices and the need for a correctness argument.',
+  'al-08-dynamic-programming-intuition': 'Identify overlapping subproblems and reusable state.',
+  'al-09-graph-traversal': 'Trace breadth-first and depth-first exploration with visited state.',
+  'al-10-shortest-path-intuition': 'Explain shortest path goals and why edge weights change the algorithm choice.',
+  'dt-01-reading-error-messages': 'Use error messages as clues instead of treating them as noise.',
+  'dt-02-tracing-state-by-hand': 'Manually trace variable values through branches and loops.',
+  'dt-03-edge-cases': 'Find empty, boundary, duplicate, and invalid-input cases before testing.',
+  'dt-04-basic-unit-tests': 'Write tests that protect expected behavior and edge behavior.',
+  'dt-05-debugging-a-small-program': 'Diagnose and fix a small broken program with a repeatable process.',
+  'ms-01-reading-symbols': 'Read common mathematical symbols used in set, logic, and proof statements.',
+  'ms-02-translating-statements': 'Translate between plain English and compact mathematical notation.',
+  'ms-03-proof-skeletons': 'Outline a proof before filling in algebraic or logical details.',
+  'ms-04-recurrence-notation': 'Read simple recurrence notation used for recursive algorithms.',
+  'mm-01-values-vs-references': 'Predict when a value is copied and when a reference points to shared data.',
+  'mm-02-call-stack': 'Use stack-frame intuition to reason about function calls and returns.',
+  'mm-03-references-and-aliasing': 'Recognize aliasing and explain surprising mutation through shared references.',
+  'mm-04-mutation-costs': 'Connect mutation and shifting behavior to operation costs.',
+  'mm-05-memory-model-for-recursion': 'Explain recursive calls using stack frames and separate local state.',
+};
+
+const NODE_POSITIONS = {
+  'debugging-and-testing': { x: -1040, y: -260, dx: 220 },
+  'programming-fundamentals': { x: -1200, y: 0, dx: 220 },
+  'discrete-math': { x: -980, y: 300, dx: 220 },
+  'math-notation-and-proof-support': { x: -760, y: 560, dx: 220 },
+  'data-structures': { x: -760, y: 860, dx: 220 },
+  'memory-model-intro': { x: -540, y: 1120, dx: 220 },
+  algorithms: { x: -540, y: 1420, dx: 220 },
+};
+
+const SUPPORT_EDGES = [
+  ['mm-03-references-and-aliasing', 'ds-03-linked-lists'],
+  ['mm-02-call-stack', 'ds-06-recursion-for-structures'],
+  ['ms-04-recurrence-notation', 'al-06-recursion-and-recurrences'],
+  ['dt-04-basic-unit-tests', 'pf-12-small-program-design'],
+  ['ms-03-proof-skeletons', 'dm-05-direct-proofs'],
+];
+
+const nodeSummary = (node) => NODE_OUTCOMES[node.id] ?? `Practice ${node.title} in the CS bachelor foundation path.`;
+const nodeCompletionCriteria = (node) =>
+  node.check
+    ? 'Complete the concept practice and pass the assessment check for this node.'
+    : 'Complete the concept practice and connect it to at least one prerequisite or follow-up example.';
+const nodeActionTitle = (node) => {
+  if (node.check?.strict_check_type === 'manual_strict') {
+    return `Build evidence for ${node.title}`;
+  }
+  if (node.check?.check_method === 'llm_assisted') {
+    return `Explain ${node.title}`;
+  }
+  return `Practice ${node.title}`;
+};
+const nodeActionDetails = (node) =>
+  node.check
+    ? `Work the short learner task, then use the seeded ${node.check.check_method === 'llm_assisted' ? 'LLM-assisted' : node.check.strict_check_type} check.`
+    : `Create a small example or note that shows you can use ${node.title} in the foundation route.`;
+const nodePosition = (node, branchIndex) => {
+  const config = NODE_POSITIONS[node.branchId] ?? { x: 0, y: 0, dx: 180 };
+  return {
+    x: config.x + branchIndex * config.dx,
+    y: config.y,
+  };
 };
 
 const NODES = [
@@ -255,14 +450,27 @@ const NODES = [
   ['memory-model-intro', 'mm-03-references-and-aliasing', 'References And Aliasing', ['mm-01-values-vs-references']],
   ['memory-model-intro', 'mm-04-mutation-costs', 'Mutation Costs', ['mm-03-references-and-aliasing', 'ds-02-arrays-and-dynamic-arrays']],
   ['memory-model-intro', 'mm-05-memory-model-for-recursion', 'Memory Model For Recursion', ['mm-02-call-stack', 'ds-06-recursion-for-structures']],
-].map(([branchId, id, title, prerequisites], index) => ({
-  branchId,
-  id,
-  title,
-  prerequisites,
-  order: index,
-  check: NODE_CHECKS[id] ?? null,
-}));
+].map(([branchId, id, title, prerequisites], index, rows) => {
+  const branchIndex = rows.slice(0, index).filter(([candidateBranchId]) => candidateBranchId === branchId).length;
+  const baseNode = {
+    branchId,
+    id,
+    title,
+    prerequisites,
+    order: index,
+    branchIndex,
+    check: NODE_CHECKS[id] ?? null,
+  };
+  const position = nodePosition(baseNode, branchIndex);
+  return {
+    ...baseNode,
+    ...position,
+    summary: nodeSummary(baseNode),
+    completionCriteria: nodeCompletionCriteria(baseNode),
+    actionTitle: nodeActionTitle(baseNode),
+    actionDetails: nodeActionDetails(baseNode),
+  };
+});
 
 const ROUTE_STAGES = [
   ['Programming Fundamentals', ['pf-01-programming-environment', 'pf-02-values-variables-types', 'pf-03-expressions-and-operators', 'pf-04-branching-with-conditionals', 'pf-05-loops-and-iteration', 'pf-06-functions-and-parameters', 'pf-07-scope-and-lifetime', 'pf-08-arrays-and-lists', 'pf-09-dictionaries-and-records', 'pf-10-input-output-and-parsing', 'pf-11-debugging-basics', 'pf-12-small-program-design']],
@@ -396,7 +604,7 @@ const upsertKnowledgeNode = async (database, node, timestamp) => {
         summary = excluded.summary,
         updated_at = excluded.updated_at
     `,
-    [key, node.title, `Concept node for ${node.title}.`, timestamp, timestamp],
+    [key, node.title, node.summary, timestamp, timestamp],
   );
   return selectOne(database, 'SELECT * FROM knowledge_nodes WHERE key = ? LIMIT 1', [key]);
 };
@@ -449,10 +657,10 @@ const upsertNodes = async (database, skillsByBranch, timestamp) => {
         skill.id,
         node.title,
         node.id,
-        `Learn ${node.title} in the CS bachelor foundation path.`,
-        node.check ? 'Pass the seeded check or complete the practice task in a personal fork.' : 'Complete the practice task in a personal fork.',
-        (node.order % 12) * 180,
-        Math.floor(node.order / 12) * 150,
+        node.summary,
+        node.completionCriteria,
+        node.x,
+        node.y,
         knowledgeNode.id,
         node.check ? JSON.stringify(node.check) : null,
         node.check ? 'high' : 'medium',
@@ -466,16 +674,34 @@ const upsertNodes = async (database, skillsByBranch, timestamp) => {
     ]);
     nodesBySlug.set(node.id, row);
 
-    await database.execute(
-      `
-        INSERT INTO node_actions (node_id, title, details, status, size_hint, sort_order, is_minimum_step, is_repeatable, due_at, completed_at, created_at, updated_at)
-        SELECT ?, ?, ?, 'todo', 'standard', 0, 0, 0, NULL, NULL, ?, ?
-        WHERE NOT EXISTS (
-          SELECT 1 FROM node_actions WHERE node_id = ? AND title = ?
-        )
-      `,
-      [row.id, `Study ${node.title}`, `Work through the learner-facing material for ${node.title}.`, timestamp, timestamp, row.id, `Study ${node.title}`],
+    const existingPrimaryAction = await selectOne(
+      database,
+      'SELECT * FROM node_actions WHERE node_id = ? AND sort_order = 0 ORDER BY id ASC LIMIT 1',
+      [row.id],
     );
+    if (existingPrimaryAction) {
+      await database.execute(
+        `
+          UPDATE node_actions
+          SET title = ?,
+              details = ?,
+              size_hint = 'standard',
+              is_minimum_step = 0,
+              is_repeatable = 0,
+              updated_at = ?
+          WHERE id = ?
+        `,
+        [node.actionTitle, node.actionDetails, timestamp, existingPrimaryAction.id],
+      );
+    } else {
+      await database.execute(
+        `
+          INSERT INTO node_actions (node_id, title, details, status, size_hint, sort_order, is_minimum_step, is_repeatable, due_at, completed_at, created_at, updated_at)
+          VALUES (?, ?, ?, 'todo', 'standard', 0, 0, 0, NULL, NULL, ?, ?)
+        `,
+        [row.id, node.actionTitle, node.actionDetails, timestamp, timestamp],
+      );
+    }
   }
 
   for (const node of NODES) {
@@ -493,6 +719,30 @@ const upsertNodes = async (database, skillsByBranch, timestamp) => {
         [blocked.id, blocking.id, timestamp],
       );
     }
+  }
+
+  for (const [supportSlug, supportedSlug] of SUPPORT_EDGES) {
+    const support = nodesBySlug.get(supportSlug);
+    const supported = nodesBySlug.get(supportedSlug);
+    if (!support || !supported) {
+      continue;
+    }
+    await database.execute(
+      `
+        DELETE FROM node_dependencies
+        WHERE blocked_node_id = ?
+          AND blocking_node_id = ?
+          AND dependency_type = 'supports'
+      `,
+      [supported.id, support.id],
+    );
+    await database.execute(
+      `
+        INSERT OR IGNORE INTO node_dependencies (blocked_node_id, blocking_node_id, dependency_type, created_at)
+        VALUES (?, ?, 'supports', ?)
+      `,
+      [support.id, supported.id, timestamp],
+    );
   }
 
   return nodesBySlug;
@@ -590,21 +840,20 @@ const upsertRoute = async (database, campaign, nodesBySlug, timestamp) => {
     }
   }
 
-  for (const [, slugs] of ROUTE_STAGES) {
-    for (let index = 1; index < slugs.length; index += 1) {
-      const source = routeRowsBySlug.get(slugs[index]);
-      const target = routeRowsBySlug.get(slugs[index - 1]);
-      if (!source || !target) {
-        continue;
-      }
-      await database.execute(
-        `
-          INSERT OR IGNORE INTO specialization_route_edges (specialization_id, source_route_node_id, target_route_node_id, edge_type, created_at)
-          VALUES (?, ?, ?, 'requires', ?)
-        `,
-        [specialization.id, source.id, target.id, timestamp],
-      );
+  const routeSlugs = ROUTE_STAGES.flatMap(([, slugs]) => slugs);
+  for (let index = 1; index < routeSlugs.length; index += 1) {
+    const source = routeRowsBySlug.get(routeSlugs[index]);
+    const target = routeRowsBySlug.get(routeSlugs[index - 1]);
+    if (!source || !target) {
+      continue;
     }
+    await database.execute(
+      `
+        INSERT OR IGNORE INTO specialization_route_edges (specialization_id, source_route_node_id, target_route_node_id, edge_type, created_at)
+        VALUES (?, ?, ?, 'requires', ?)
+      `,
+      [specialization.id, source.id, target.id, timestamp],
+    );
   }
 
   await database.execute(

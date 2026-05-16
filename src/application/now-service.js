@@ -500,13 +500,22 @@ const assessmentTaskFromMetadata = (metadata, taskId) => {
     return task ? assessmentTaskFromMetadata(task, taskId) : null;
   }
 
-  const directStrictType = normalized.strict_check_type ?? normalized.strictCheckType ?? null;
+  const checkMethod = normalized.check_method ?? normalized.checkMethod ?? null;
+  if (checkMethod === 'llm_assisted') {
+    return { ...normalized, checkMethod };
+  }
+
+  const rawStrictType = normalized.strict_check_type ?? normalized.strictCheckType ?? null;
+  const directStrictType = rawStrictType === 'llm_assisted' ? null : rawStrictType;
   const inferredStrictType =
     normalized.check_method === 'strict' || normalized.checkMethod === 'strict'
       ? normalized.check_type ?? normalized.checkType ?? 'strict'
       : null;
   const strictCheckType = directStrictType ?? inferredStrictType ?? null;
-  return strictCheckType ? { ...normalized, strictCheckType } : null;
+  if (strictCheckType) {
+    return { ...normalized, checkMethod: checkMethod ?? 'strict', strictCheckType };
+  }
+  return null;
 };
 
 const autoStrictCheckTypes = new Set(['exact', 'number', 'contains', 'checklist']);
@@ -1638,6 +1647,7 @@ const loadNodeMasteryFocus = async (database, node, selectedAction = null) => {
         summarizeExpectedAnswer(
           assessmentTask?.expected_summary ??
             assessmentTask?.expectedSummary ??
+            assessmentTask?.rubric ??
             assessmentTask?.expected_answer ??
             assessmentTask?.expectedAnswer ??
             assessmentTask?.expected_number ??
