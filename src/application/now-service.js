@@ -330,6 +330,7 @@ const resolveCampaignId = async (database, campaignId = null) => {
       SELECT id
       FROM campaigns
       WHERE is_archived = 0
+        AND type != 'template'
       ORDER BY last_opened_at DESC, CASE WHEN type = 'developer_main' THEN 0 ELSE 1 END ASC, id ASC
       LIMIT 1
     `,
@@ -2427,6 +2428,14 @@ const assertCampaign = async (database, campaignId) => {
   return campaign;
 };
 
+const assertPersonalProgressCampaign = async (database, campaignId) => {
+  const campaign = await assertCampaign(database, campaignId);
+  if (campaign.type === 'template') {
+    throw new Error('Template campaigns are read-only. Create a personal campaign from the template to track progress.');
+  }
+  return campaign;
+};
+
 const loadSpecialization = async (database, campaignId, specializationId) => {
   const rows = await database.select(
     'SELECT * FROM career_specializations WHERE id = ? AND campaign_id = ? LIMIT 1',
@@ -3469,16 +3478,19 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
 
   async createSpecialization(campaignId, input = {}) {
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     return runTransaction(database, async () => createSpecializationRecord(database, resolvedCampaignId, input));
   },
 
   async continueWithSpecialization(campaignId, input = {}) {
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     return runTransaction(database, async () => createSpecializationRecord(database, resolvedCampaignId, input));
   },
 
   async completeSpecialization(campaignId, specializationId = null, options = {}) {
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const specialization =
       specializationId == null
         ? await loadCurrentSpecialization(database, resolvedCampaignId)
@@ -3530,6 +3542,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
 
   async archiveSpecialization(campaignId, specializationId) {
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const specialization = await assertSpecialization(database, resolvedCampaignId, specializationId);
     const campaign = await assertCampaign(database, resolvedCampaignId);
 
@@ -3585,16 +3598,19 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
 
   async addSpecializationRouteNode(campaignId, specializationId, input = {}) {
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     return addRouteNode(database, resolvedCampaignId, specializationId, input);
   },
 
   async updateSpecializationRouteNode(campaignId, routeNodeId, input = {}) {
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     return runTransaction(database, async () => updateRouteNode(database, resolvedCampaignId, routeNodeId, input));
   },
 
   async reorderSpecializationRouteNodes(campaignId, firstRouteNodeId, secondRouteNodeId) {
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     return runTransaction(database, async () =>
       reorderRouteNodes(database, resolvedCampaignId, firstRouteNodeId, secondRouteNodeId),
     );
@@ -3602,11 +3618,13 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
 
   async removeSpecializationRouteNode(campaignId, routeNodeId) {
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     return runTransaction(database, async () => removeRouteNode(database, resolvedCampaignId, routeNodeId));
   },
 
   async submitAssessmentAttempt(campaignId, input = {}) {
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const node = await validateNodeInCampaign(database, input.node_id ?? input.nodeId, resolvedCampaignId);
     const specializationId = input.specialization_id ?? input.specializationId ?? (await loadCurrentSpecialization(database, resolvedCampaignId))?.id ?? null;
     if (specializationId != null) {
@@ -3733,6 +3751,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
 
   async markSelfMastery(campaignId, nodeId, masteryLevel = 'seen') {
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const node = await validateNodeInCampaign(database, nodeId, resolvedCampaignId);
     assertMasteryLevel(masteryLevel);
 
@@ -3795,6 +3814,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     await assertSkillInCampaign(database, payload.skill_id, resolvedCampaignId);
     const node = await hierarchyStore.createNode(payload);
 
@@ -3817,6 +3837,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const before = await loadNodeMetadata(database, nodeId, resolvedCampaignId);
     if (!before) {
       return null;
@@ -3854,6 +3875,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       payload = {};
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const before = await loadNodeMetadata(database, nodeId, resolvedCampaignId);
     if (!before) {
       return null;
@@ -3873,6 +3895,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const before = await loadNodeMetadata(database, nodeId, resolvedCampaignId);
     if (!before) {
       return null;
@@ -3893,6 +3916,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const before = await loadNodeMetadata(database, nodeId, resolvedCampaignId);
     if (!before) {
       return null;
@@ -3913,6 +3937,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const [sourceCampaignId, targetCampaignId] = await Promise.all([
       findNodeCampaignId(database, payload.blocked_node_id),
       findNodeCampaignId(database, payload.blocking_node_id),
@@ -3938,6 +3963,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const current = await loadEdgeBoundary(database, edgeId);
     if (!current) {
       return null;
@@ -3966,6 +3992,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const current = await loadEdgeBoundary(database, edgeId);
     if (!current) {
       return null;
@@ -3996,6 +4023,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const node = await loadNodeMetadata(database, nodeId, resolvedCampaignId);
 
     if (!node) {
@@ -4038,6 +4066,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
 
   async createStarterWorkspace(campaignId = null) {
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const existingStarterNodes = await database.select(
       `
         SELECT nodes.id
@@ -4153,6 +4182,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const title = String(name ?? '').trim();
     if (!title) {
       throw new Error('Название структуры обязательно.');
@@ -4222,6 +4252,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
 
   async createLinearAlgebraGraphWorkspace(campaignId = null) {
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const timestamp = currentTimestamp();
 
     const existingSphere = await database.select('SELECT * FROM spheres WHERE slug = ? AND campaign_id = ? LIMIT 1', [
@@ -4412,6 +4443,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const dashboard = await this.getDashboard(resolvedCampaignId);
     const candidates = [dashboard.primaryRecommendation, ...dashboard.queue].filter(Boolean);
     const targetRecommendation = candidates.find((candidate) => candidate.actionId === actionId) ?? dashboard.primaryRecommendation;
@@ -4466,6 +4498,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const action = await loadActionRecord(database, actionId, resolvedCampaignId);
 
     if (!action) {
@@ -4541,6 +4574,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const action = await loadActionRecord(database, actionId, resolvedCampaignId);
 
     if (!action) {
@@ -4594,6 +4628,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const action = await loadActionRecord(database, actionId, resolvedCampaignId);
 
     if (!action) {
@@ -4651,6 +4686,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       campaignId = null;
     }
     const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
     const action = await loadActionRecord(database, actionId, resolvedCampaignId);
 
     if (!action) {

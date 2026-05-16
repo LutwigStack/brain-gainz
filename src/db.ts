@@ -101,6 +101,7 @@ type StoresRegistry = {
     listCampaigns: () => Promise<unknown>;
     openCampaign: (id: number) => Promise<unknown>;
     createUserCampaign: (input: { name: string }) => Promise<unknown>;
+    forkTemplateCampaign: (templateId: number, input?: { name?: string }) => Promise<unknown>;
     archiveCampaign: (id: number) => Promise<unknown>;
     restoreCampaign: (id: number) => Promise<unknown>;
   };
@@ -216,6 +217,11 @@ export const openCampaign = async (id: number) => {
 export const createUserCampaign = async (input: { name: string }) => {
   const { campaignStore } = await getStores();
   return campaignStore.createUserCampaign(input);
+};
+
+export const forkTemplateCampaign = async (templateId: number, input: { name?: string } = {}) => {
+  const { campaignStore } = await getStores();
+  return campaignStore.forkTemplateCampaign(templateId, input);
 };
 
 export const archiveCampaign = async (id: number) => {

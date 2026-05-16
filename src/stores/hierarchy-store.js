@@ -97,6 +97,7 @@ const resolveDefaultCampaignId = async (database) => {
       SELECT id
       FROM campaigns
       WHERE is_archived = 0
+        AND type != 'template'
       ORDER BY CASE WHEN type = 'developer_main' THEN 0 ELSE 1 END ASC, id ASC
       LIMIT 1
     `,

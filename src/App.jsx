@@ -406,6 +406,24 @@ export default function App() {
     }
   };
 
+  const handleForkTemplateCampaign = async (campaign) => {
+    setCampaignMutationPending(true);
+    setCampaignError(null);
+
+    try {
+      const forked = await db.forkTemplateCampaign(campaign.id, { name: campaign.name });
+      await loadCampaigns();
+      if (forked) {
+        await handleOpenCampaign(forked);
+      }
+    } catch (error) {
+      logUnexpectedActionError('Failed to fork template campaign', error);
+      setCampaignError(userActionErrorMessage(error, 'Could not create a personal campaign from this template.'));
+    } finally {
+      setCampaignMutationPending(false);
+    }
+  };
+
   const handleArchiveCampaign = async (campaign) => {
     setCampaignMutationPending(true);
     setCampaignError(null);
@@ -2051,6 +2069,7 @@ export default function App() {
             error={campaignError}
             onNewCampaignNameChange={setNewCampaignName}
             onOpenCampaign={handleOpenCampaign}
+            onForkTemplate={handleForkTemplateCampaign}
             onCreateCampaign={handleCreateCampaign}
             onArchiveCampaign={handleArchiveCampaign}
             onRestoreCampaign={handleRestoreCampaign}
@@ -2138,7 +2157,7 @@ export default function App() {
             editorNotice={nodeEditorNotice}
             mapMutationPendingAction={mapMutationPendingAction}
             canUndoMapMutation={mapUndoCount > 0}
-            isSystemCampaign={selectedCampaign?.type === 'developer_main'}
+            isSystemCampaign={selectedCampaign?.type === 'developer_main' || selectedCampaign?.type === 'template'}
             branchFilterSkillId={navigationBranchFilterId}
             onCreateFollowUp={() =>
               handleCreateJournalFollowUp({

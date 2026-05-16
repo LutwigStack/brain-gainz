@@ -46,7 +46,11 @@ const listCampaigns = (database, archived) =>
       WHERE campaigns.is_archived = ?
       GROUP BY campaigns.id
       ORDER BY
-        CASE WHEN campaigns.type = 'developer_main' THEN 0 ELSE 1 END ASC,
+        CASE
+          WHEN campaigns.type = 'developer_main' THEN 0
+          WHEN campaigns.type = 'template' THEN 1
+          ELSE 2
+        END ASC,
         campaigns.last_opened_at DESC,
         campaigns.updated_at DESC,
         campaigns.id ASC
@@ -141,7 +145,7 @@ export const createCampaignStore = (database, hierarchyStore) => ({
       archived: archived.filter((campaign) => campaign.type !== 'developer_main'),
       lastOpened:
         active
-          .filter((campaign) => campaign.type !== 'developer_main')
+          .filter((campaign) => campaign.type === 'user')
           .filter((campaign) => campaign.last_opened_at != null)
           .sort((left, right) => String(right.last_opened_at).localeCompare(String(left.last_opened_at)))[0] ?? null,
     };
@@ -195,13 +199,425 @@ export const createCampaignStore = (database, hierarchyStore) => ({
     return this.openCampaign(campaign.id);
   },
 
+  async forkTemplateCampaign(templateId, input = {}) {
+    const template = await this.getCampaignById(templateId);
+    if (!template || template.is_archived) {
+      return null;
+    }
+    if (template.type !== 'template') {
+      throw new Error('Only template campaigns can be forked.');
+    }
+
+    const timestamp = createUtcTimestamp();
+    const title = String(input.name ?? '').trim() || template.name;
+    const slug = `${slugify(title)}-${Date.now().toString(36)}`;
+    const idMaps = {
+      stats: new Map(),
+      spheres: new Map(),
+      directions: new Map(),
+      skills: new Map(),
+      nodes: new Map(),
+      specializations: new Map(),
+      routeNodes: new Map(),
+    };
+
+    await database.execute('BEGIN');
+    try {
+      const campaign = await insertAndFetch(
+        database,
+        `
+          INSERT INTO campaigns (type, slug, name, icon, color, mode, career_status, current_specialization_id, is_archived, created_at, updated_at, last_opened_at)
+          VALUES ('user', ?, ?, ?, ?, ?, 'active', NULL, 0, ?, ?, ?)
+        `,
+        [slug, title, template.icon ?? 'spark', template.color ?? '#5ee6b5', template.mode ?? 'free', timestamp, timestamp, timestamp],
+        'campaigns',
+      );
+
+      const stats = await database.select(
+        'SELECT * FROM campaign_stats WHERE campaign_id = ? ORDER BY sort_order ASC, id ASC',
+        [template.id],
+      );
+      for (const stat of stats) {
+        const created = await insertAndFetch(
+          database,
+          `
+            INSERT INTO campaign_stats (campaign_id, key, title, color, icon, sort_order, is_archived, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [campaign.id, stat.key, stat.title, stat.color, stat.icon, stat.sort_order, stat.is_archived, timestamp, timestamp],
+          'campaign_stats',
+        );
+        idMaps.stats.set(stat.id, created.id);
+      }
+
+      const spheres = await database.select(
+        'SELECT * FROM spheres WHERE campaign_id = ? ORDER BY sort_order ASC, id ASC',
+        [template.id],
+      );
+      for (const sphere of spheres) {
+        const created = await insertAndFetch(
+          database,
+          `
+            INSERT INTO spheres (campaign_id, name, slug, description, sort_order, is_archived, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [campaign.id, sphere.name, sphere.slug, sphere.description, sphere.sort_order, sphere.is_archived, timestamp, timestamp],
+          'spheres',
+        );
+        idMaps.spheres.set(sphere.id, created.id);
+      }
+
+      const directions = await database.select(
+        `
+          SELECT directions.*
+          FROM directions
+          JOIN spheres ON spheres.id = directions.sphere_id
+          WHERE spheres.campaign_id = ?
+          ORDER BY directions.sort_order ASC, directions.id ASC
+        `,
+        [template.id],
+      );
+      for (const direction of directions) {
+        const created = await insertAndFetch(
+          database,
+          `
+            INSERT INTO directions (sphere_id, name, slug, description, sort_order, is_archived, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            idMaps.spheres.get(direction.sphere_id),
+            direction.name,
+            direction.slug,
+            direction.description,
+            direction.sort_order,
+            direction.is_archived,
+            timestamp,
+            timestamp,
+          ],
+          'directions',
+        );
+        idMaps.directions.set(direction.id, created.id);
+      }
+
+      const skills = await database.select(
+        `
+          SELECT skills.*
+          FROM skills
+          JOIN directions ON directions.id = skills.direction_id
+          JOIN spheres ON spheres.id = directions.sphere_id
+          WHERE spheres.campaign_id = ?
+          ORDER BY skills.sort_order ASC, skills.id ASC
+        `,
+        [template.id],
+      );
+      for (const skill of skills) {
+        const created = await insertAndFetch(
+          database,
+          `
+            INSERT INTO skills (direction_id, primary_stat_id, name, slug, description, sort_order, is_archived, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            idMaps.directions.get(skill.direction_id),
+            skill.primary_stat_id == null ? null : idMaps.stats.get(skill.primary_stat_id) ?? null,
+            skill.name,
+            skill.slug,
+            skill.description,
+            skill.sort_order,
+            skill.is_archived,
+            timestamp,
+            timestamp,
+          ],
+          'skills',
+        );
+        idMaps.skills.set(skill.id, created.id);
+      }
+
+      const nodes = await database.select(
+        `
+          SELECT nodes.*
+          FROM nodes
+          JOIN skills ON skills.id = nodes.skill_id
+          JOIN directions ON directions.id = skills.direction_id
+          JOIN spheres ON spheres.id = directions.sphere_id
+          WHERE spheres.campaign_id = ?
+          ORDER BY nodes.id ASC
+        `,
+        [template.id],
+      );
+      for (const node of nodes) {
+        const created = await insertAndFetch(
+          database,
+          `
+            INSERT INTO nodes (
+              skill_id,
+              type,
+              status,
+              title,
+              slug,
+              summary,
+              completion_criteria,
+              links,
+              reward,
+              x,
+              y,
+              knowledge_node_id,
+              self_marked_mastery_level,
+              check_metadata,
+              importance,
+              target_date,
+              last_touched_at,
+              is_archived,
+              created_at,
+              updated_at
+            )
+            VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, ?, ?, ?)
+          `,
+          [
+            idMaps.skills.get(node.skill_id),
+            node.type,
+            node.title,
+            node.slug,
+            node.summary,
+            node.completion_criteria,
+            node.links,
+            node.reward,
+            node.x,
+            node.y,
+            node.knowledge_node_id,
+            node.check_metadata,
+            node.importance,
+            node.target_date,
+            node.is_archived,
+            timestamp,
+            timestamp,
+          ],
+          'nodes',
+        );
+        idMaps.nodes.set(node.id, created.id);
+      }
+
+      const actions = await database.select(
+        `
+          SELECT node_actions.*
+          FROM node_actions
+          JOIN nodes ON nodes.id = node_actions.node_id
+          JOIN skills ON skills.id = nodes.skill_id
+          JOIN directions ON directions.id = skills.direction_id
+          JOIN spheres ON spheres.id = directions.sphere_id
+          WHERE spheres.campaign_id = ?
+          ORDER BY node_actions.id ASC
+        `,
+        [template.id],
+      );
+      for (const action of actions) {
+        await insertAndFetch(
+          database,
+          `
+            INSERT INTO node_actions (
+              node_id,
+              title,
+              details,
+              status,
+              size_hint,
+              sort_order,
+              is_minimum_step,
+              is_repeatable,
+              due_at,
+              completed_at,
+              created_at,
+              updated_at
+            )
+            VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, NULL, ?, ?)
+          `,
+          [
+            idMaps.nodes.get(action.node_id),
+            action.title,
+            action.details,
+            action.size_hint,
+            action.sort_order,
+            action.is_minimum_step,
+            action.is_repeatable,
+            action.due_at,
+            timestamp,
+            timestamp,
+          ],
+          'node_actions',
+        );
+      }
+
+      const dependencies = await database.select(
+        `
+          SELECT node_dependencies.*
+          FROM node_dependencies
+          JOIN nodes ON nodes.id = node_dependencies.blocked_node_id
+          JOIN skills ON skills.id = nodes.skill_id
+          JOIN directions ON directions.id = skills.direction_id
+          JOIN spheres ON spheres.id = directions.sphere_id
+          WHERE spheres.campaign_id = ?
+          ORDER BY node_dependencies.id ASC
+        `,
+        [template.id],
+      );
+      for (const dependency of dependencies) {
+        const blockedNodeId = idMaps.nodes.get(dependency.blocked_node_id);
+        const blockingNodeId = idMaps.nodes.get(dependency.blocking_node_id);
+        if (blockedNodeId == null || blockingNodeId == null) {
+          continue;
+        }
+        await database.execute(
+          `
+            INSERT OR IGNORE INTO node_dependencies (blocked_node_id, blocking_node_id, dependency_type, created_at)
+            VALUES (?, ?, ?, ?)
+          `,
+          [blockedNodeId, blockingNodeId, dependency.dependency_type, timestamp],
+        );
+      }
+
+      const specializations = await database.select(
+        'SELECT * FROM career_specializations WHERE campaign_id = ? ORDER BY id ASC',
+        [template.id],
+      );
+      for (const specialization of specializations) {
+        const created = await insertAndFetch(
+          database,
+          `
+            INSERT INTO career_specializations (
+              campaign_id,
+              name,
+              key,
+              domain,
+              length,
+              status,
+              started_at,
+              completed_at,
+              created_at,
+              updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+          `,
+          [
+            campaign.id,
+            specialization.name,
+            specialization.key,
+            specialization.domain,
+            specialization.length,
+            specialization.status === 'active' ? 'active' : 'paused',
+            specialization.status === 'active' ? timestamp : null,
+            timestamp,
+            timestamp,
+          ],
+          'career_specializations',
+        );
+        idMaps.specializations.set(specialization.id, created.id);
+      }
+
+      const routeNodes = await database.select(
+        `
+          SELECT route_nodes.*
+          FROM specialization_route_nodes route_nodes
+          JOIN career_specializations specializations ON specializations.id = route_nodes.specialization_id
+          WHERE specializations.campaign_id = ?
+          ORDER BY route_nodes.id ASC
+        `,
+        [template.id],
+      );
+      for (const routeNode of routeNodes) {
+        const created = await insertAndFetch(
+          database,
+          `
+            INSERT INTO specialization_route_nodes (
+              specialization_id,
+              node_id,
+              knowledge_node_id,
+              required_mastery_level,
+              route_label,
+              route_order,
+              route_stage,
+              is_required,
+              created_at,
+              updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            idMaps.specializations.get(routeNode.specialization_id),
+            routeNode.node_id == null ? null : idMaps.nodes.get(routeNode.node_id) ?? null,
+            routeNode.knowledge_node_id,
+            routeNode.required_mastery_level,
+            routeNode.route_label,
+            routeNode.route_order,
+            routeNode.route_stage,
+            routeNode.is_required,
+            timestamp,
+            timestamp,
+          ],
+          'specialization_route_nodes',
+        );
+        idMaps.routeNodes.set(routeNode.id, created.id);
+      }
+
+      const routeEdges = await database.select(
+        `
+          SELECT route_edges.*
+          FROM specialization_route_edges route_edges
+          JOIN career_specializations specializations ON specializations.id = route_edges.specialization_id
+          WHERE specializations.campaign_id = ?
+          ORDER BY route_edges.id ASC
+        `,
+        [template.id],
+      );
+      for (const routeEdge of routeEdges) {
+        const sourceRouteNodeId = idMaps.routeNodes.get(routeEdge.source_route_node_id);
+        const targetRouteNodeId = idMaps.routeNodes.get(routeEdge.target_route_node_id);
+        if (sourceRouteNodeId == null || targetRouteNodeId == null) {
+          continue;
+        }
+        await database.execute(
+          `
+            INSERT OR IGNORE INTO specialization_route_edges (
+              specialization_id,
+              source_route_node_id,
+              target_route_node_id,
+              edge_type,
+              created_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+          `,
+          [
+            idMaps.specializations.get(routeEdge.specialization_id),
+            sourceRouteNodeId,
+            targetRouteNodeId,
+            routeEdge.edge_type,
+            timestamp,
+          ],
+        );
+      }
+
+      const currentSpecializationId =
+        template.current_specialization_id == null
+          ? null
+          : idMaps.specializations.get(template.current_specialization_id) ?? null;
+      await database.execute(
+        'UPDATE campaigns SET current_specialization_id = ?, updated_at = ? WHERE id = ?',
+        [currentSpecializationId, timestamp, campaign.id],
+      );
+
+      await database.execute('COMMIT');
+      return this.openCampaign(campaign.id);
+    } catch (error) {
+      await database.execute('ROLLBACK');
+      throw error;
+    }
+  },
+
   async archiveCampaign(id) {
     const campaign = await this.getCampaignById(id);
     if (!campaign) {
       return null;
     }
 
-    if (campaign.type === 'developer_main') {
+    if (campaign.type === 'developer_main' || campaign.type === 'template') {
       throw new Error('developer_main нельзя архивировать.');
     }
 
@@ -216,7 +632,7 @@ export const createCampaignStore = (database, hierarchyStore) => ({
 
   async restoreCampaign(id) {
     const campaign = await this.getCampaignById(id);
-    if (!campaign || campaign.type === 'developer_main') {
+    if (!campaign || campaign.type === 'developer_main' || campaign.type === 'template') {
       return campaign;
     }
 

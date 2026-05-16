@@ -48,6 +48,220 @@ test('campaign migration is idempotent and seeds one developer main campaign', a
   assert.equal(stats.length > 0, true);
 });
 
+test('CS bachelor template seed is idempotent and visible as a template campaign', async (t) => {
+  const { database, campaignStore } = await setupCampaignService();
+  t.after(() => database.close());
+
+  await bootstrapDatabase(database);
+
+  const rows = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor'");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].type, 'template');
+  assert.equal(rows[0].name, 'Computer Science Bachelor');
+
+  const nodes = await database.select(
+    `
+      SELECT COUNT(*) AS count
+      FROM nodes
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE spheres.campaign_id = ?
+    `,
+    [rows[0].id],
+  );
+  assert.equal(Number(nodes[0].count), 58);
+
+  const campaigns = await campaignStore.listCampaigns();
+  const templateSummary = campaigns.active.find((campaign) => campaign.slug === 'template-cs-bachelor');
+  assert.equal(templateSummary?.type, 'template');
+  assert.equal(templateSummary?.node_count, 58);
+  assert.equal(campaigns.lastOpened?.slug, undefined);
+});
+
+test('CS bachelor template can fork into a personal campaign without copying progress', async (t) => {
+  const { database, campaignStore, nowService } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const [template] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor' LIMIT 1");
+  const personal = await campaignStore.forkTemplateCampaign(template.id);
+
+  assert.equal(personal.type, 'user');
+  assert.equal(personal.name, 'Computer Science Bachelor');
+  assert.notEqual(personal.id, template.id);
+
+  const countNodes = async (campaignId) =>
+    Number(
+      (
+        await database.select(
+          `
+            SELECT COUNT(*) AS count
+            FROM nodes
+            JOIN skills ON skills.id = nodes.skill_id
+            JOIN directions ON directions.id = skills.direction_id
+            JOIN spheres ON spheres.id = directions.sphere_id
+            WHERE spheres.campaign_id = ?
+          `,
+          [campaignId],
+        )
+      )[0].count,
+    );
+
+  assert.equal(await countNodes(template.id), 58);
+  assert.equal(await countNodes(personal.id), 58);
+
+  const [personalNode] = await database.select(
+    `
+      SELECT nodes.*
+      FROM nodes
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE spheres.campaign_id = ?
+      ORDER BY nodes.id ASC
+      LIMIT 1
+    `,
+    [personal.id],
+  );
+  await nowService.markSelfMastery(personal.id, personalNode.id, 'seen');
+
+  const templateMastery = await database.select('SELECT COUNT(*) AS count FROM mastery_events WHERE campaign_id = ?', [
+    template.id,
+  ]);
+  const personalMastery = await database.select('SELECT COUNT(*) AS count FROM mastery_events WHERE campaign_id = ?', [
+    personal.id,
+  ]);
+  assert.equal(Number(templateMastery[0].count), 0);
+  assert.equal(Number(personalMastery[0].count), 1);
+});
+
+test('template campaigns reject learner progress writes', async (t) => {
+  const { database, nowService } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const [template] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor' LIMIT 1");
+  const [node] = await database.select(
+    `
+      SELECT nodes.*
+      FROM nodes
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE spheres.campaign_id = ?
+      ORDER BY nodes.id ASC
+      LIMIT 1
+    `,
+    [template.id],
+  );
+
+  await assert.rejects(() => nowService.markSelfMastery(template.id, node.id, 'seen'), /Template campaigns are read-only/);
+  await assert.rejects(
+    () =>
+      nowService.submitAssessmentAttempt(template.id, {
+        node_id: node.id,
+        task_id: 'template-scope',
+        check_method: 'strict',
+        target_mastery_level: 'seen',
+        passed: false,
+        idempotency_key: 'template-scope',
+      }),
+    /Template campaigns are read-only/,
+  );
+
+  const mastery = await database.select('SELECT COUNT(*) AS count FROM mastery_events WHERE campaign_id = ?', [
+    template.id,
+  ]);
+  const attempts = await database.select('SELECT COUNT(*) AS count FROM assessment_attempts WHERE campaign_id = ?', [
+    template.id,
+  ]);
+  assert.equal(Number(mastery[0].count), 0);
+  assert.equal(Number(attempts[0].count), 0);
+});
+
+test('CS bachelor template cleanup removes session notes before session events on reseed', async (t) => {
+  const { database } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const [template] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor' LIMIT 1");
+  const [node] = await database.select(
+    `
+      SELECT nodes.*
+      FROM nodes
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE spheres.campaign_id = ?
+      ORDER BY nodes.id ASC
+      LIMIT 1
+    `,
+    [template.id],
+  );
+  const [action] = await database.select('SELECT * FROM node_actions WHERE node_id = ? ORDER BY id ASC LIMIT 1', [
+    node.id,
+  ]);
+
+  const sessionResult = await database.execute(
+    `
+      INSERT INTO daily_sessions (
+        campaign_id,
+        session_date,
+        status,
+        primary_node_id,
+        primary_action_id,
+        started_at,
+        summary_note,
+        created_at,
+        updated_at
+      )
+      VALUES (?, '2026-05-16', 'active', ?, ?, '2026-05-16T10:00:00.000Z', 'Template residue', '2026-05-16T10:00:00.000Z', '2026-05-16T10:00:00.000Z')
+    `,
+    [template.id, node.id, action.id],
+  );
+  const eventResult = await database.execute(
+    `
+      INSERT INTO daily_session_events (session_id, event_type, node_id, action_id, note, occurred_at)
+      VALUES (?, 'blocked', ?, ?, 'Template residue event', '2026-05-16T10:01:00.000Z')
+    `,
+    [sessionResult.lastInsertId, node.id, action.id],
+  );
+  await database.execute(
+    `
+      INSERT INTO node_barrier_notes (
+        node_id,
+        action_id,
+        barrier_type,
+        note,
+        source_event_id,
+        is_open,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, 'unclear next step', 'Template residue note', ?, 1, '2026-05-16T10:02:00.000Z', '2026-05-16T10:02:00.000Z')
+    `,
+    [node.id, action.id, eventResult.lastInsertId],
+  );
+
+  await bootstrapDatabase(database);
+
+  const sessions = await database.select('SELECT COUNT(*) AS count FROM daily_sessions WHERE campaign_id = ?', [
+    template.id,
+  ]);
+  const events = await database.select(
+    `
+      SELECT COUNT(*) AS count
+      FROM daily_session_events
+      WHERE session_id = ?
+    `,
+    [sessionResult.lastInsertId],
+  );
+  const notes = await database.select('SELECT COUNT(*) AS count FROM node_barrier_notes WHERE node_id = ?', [
+    node.id,
+  ]);
+  assert.equal(Number(sessions[0].count), 0);
+  assert.equal(Number(events[0].count), 0);
+  assert.equal(Number(notes[0].count), 0);
+});
+
 test('user campaigns can be created, archived, and restored while developer main is protected', async (t) => {
   const { database, campaignStore } = await setupCampaignService();
   t.after(() => database.close());

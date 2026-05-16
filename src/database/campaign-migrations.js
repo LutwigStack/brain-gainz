@@ -1,4 +1,5 @@
 import { createUtcTimestamp } from '../stores/store-helpers.js';
+import { seedCsBachelorTemplate } from './cs-bachelor-template-seed.js';
 
 export const DEVELOPER_MAIN_CAMPAIGN_SLUG = 'developer-main';
 
@@ -109,6 +110,82 @@ const ensureCampaignScopedSphereSlugs = async (database, fallbackCampaignId) => 
     );
     await database.execute('DROP TABLE spheres_old_campaign_scope');
     await database.execute('CREATE INDEX IF NOT EXISTS idx_spheres_campaign_id ON spheres (campaign_id)');
+    await database.execute('COMMIT');
+  } catch (error) {
+    await guardedRollback(database, error);
+    throw error;
+  } finally {
+    await database.execute('PRAGMA legacy_alter_table = OFF');
+    await database.execute('PRAGMA foreign_keys = ON');
+  }
+};
+
+const ensureCampaignTypeSupportsTemplates = async (database) => {
+  const rows = await database.select(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'campaigns' LIMIT 1",
+  );
+  const tableSql = normalizeSql(rows[0]?.sql);
+
+  if (tableSql.includes("'template'")) {
+    return;
+  }
+
+  await database.execute('PRAGMA foreign_keys = OFF');
+  await database.execute('PRAGMA legacy_alter_table = ON');
+  await database.execute('BEGIN');
+
+  try {
+    await database.execute('ALTER TABLE campaigns RENAME TO campaigns_old_template_type');
+    await database.execute(`
+      CREATE TABLE campaigns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL CHECK (type IN ('developer_main', 'user', 'template')),
+        slug TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        icon TEXT,
+        color TEXT,
+        mode TEXT NOT NULL DEFAULT 'free',
+        career_status TEXT NOT NULL DEFAULT 'active' CHECK (career_status IN ('active', 'victory')),
+        current_specialization_id INTEGER,
+        is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_opened_at TEXT
+      )
+    `);
+    await database.execute(`
+      INSERT INTO campaigns (
+        id,
+        type,
+        slug,
+        name,
+        icon,
+        color,
+        mode,
+        career_status,
+        current_specialization_id,
+        is_archived,
+        created_at,
+        updated_at,
+        last_opened_at
+      )
+      SELECT
+        id,
+        CASE WHEN type IN ('developer_main', 'user', 'template') THEN type ELSE 'user' END,
+        slug,
+        name,
+        icon,
+        color,
+        COALESCE(mode, 'free'),
+        COALESCE(career_status, 'active'),
+        current_specialization_id,
+        is_archived,
+        created_at,
+        updated_at,
+        last_opened_at
+      FROM campaigns_old_template_type
+    `);
+    await database.execute('DROP TABLE campaigns_old_template_type');
     await database.execute('COMMIT');
   } catch (error) {
     await guardedRollback(database, error);
@@ -421,7 +498,7 @@ export const runCampaignMigrations = async (database) => {
   await database.execute(`
     CREATE TABLE IF NOT EXISTS campaigns (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT NOT NULL CHECK (type IN ('developer_main', 'user')),
+      type TEXT NOT NULL CHECK (type IN ('developer_main', 'user', 'template')),
       slug TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
       icon TEXT,
@@ -439,6 +516,7 @@ export const runCampaignMigrations = async (database) => {
   await ensureColumn(database, 'campaigns', 'mode', "TEXT NOT NULL DEFAULT 'free'");
   await ensureColumn(database, 'campaigns', 'career_status', "TEXT NOT NULL DEFAULT 'active'");
   await ensureColumn(database, 'campaigns', 'current_specialization_id', 'INTEGER');
+  await ensureCampaignTypeSupportsTemplates(database);
 
   await database.execute(`
     CREATE TABLE IF NOT EXISTS campaign_stats (
@@ -677,6 +755,7 @@ export const runCampaignMigrations = async (database) => {
   await assignMissingPrimaryStats(database);
   await repairCampaignModeForCurrentSpecializations(database);
   await backfillLegacyMasteryEvents(database);
+  await seedCsBachelorTemplate(database);
 
   if (!(await tableExists(database, 'campaigns'))) {
     throw new Error('Campaign migration verification failed: missing campaigns table.');

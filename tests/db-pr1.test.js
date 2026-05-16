@@ -347,7 +347,17 @@ test('bootstrap recreates older node dependency schema so relates_to becomes val
 
   await bootstrapDatabase(database);
 
-  const dependencies = await database.select('SELECT * FROM node_dependencies ORDER BY id ASC');
+  const dependencies = await database.select(
+    `
+      SELECT node_dependencies.*
+      FROM node_dependencies
+      JOIN nodes blocked_nodes ON blocked_nodes.id = node_dependencies.blocked_node_id
+      JOIN nodes blocking_nodes ON blocking_nodes.id = node_dependencies.blocking_node_id
+      WHERE blocked_nodes.slug = 'node-a'
+        AND blocking_nodes.slug = 'node-b'
+      ORDER BY node_dependencies.id ASC
+    `,
+  );
   const recreatedEdge = await database.execute(
     'INSERT INTO node_dependencies (blocked_node_id, blocking_node_id, dependency_type, created_at) VALUES (?, ?, ?, ?)',
     [2, 1, 'relates_to', '2026-04-23T11:00:00.000Z'],

@@ -1,4 +1,4 @@
-import { Archive, Play, Plus, RotateCcw } from 'lucide-react';
+import { Archive, Copy, Play, Plus, RotateCcw } from 'lucide-react';
 
 import {
   PixelButton,
@@ -18,6 +18,7 @@ interface CampaignMenuProps {
   error: string | null;
   onNewCampaignNameChange: (value: string) => void;
   onOpenCampaign: (campaign: CampaignSummary) => void;
+  onForkTemplate: (campaign: CampaignSummary) => void;
   onCreateCampaign: () => void;
   onArchiveCampaign: (campaign: CampaignSummary) => void;
   onRestoreCampaign: (campaign: CampaignSummary) => void;
@@ -31,14 +32,17 @@ const CampaignCard = ({
   campaign,
   isMutating,
   onOpen,
+  onFork,
   onArchive,
 }: {
   campaign: CampaignSummary;
   isMutating: boolean;
   onOpen: () => void;
+  onFork: () => void;
   onArchive: () => void;
 }) => {
   const isSystem = campaign.type === 'developer_main';
+  const isTemplate = campaign.type === 'template';
   const nodeCount = Number(campaign.node_count ?? 0);
   const totalXp = Number(campaign.total_xp ?? 0);
   const openLabel = isSystem ? 'Открыть шаблон' : 'Открыть';
@@ -46,10 +50,10 @@ const CampaignCard = ({
   return (
     <PixelSurface
       frame="secondary"
-      padding={isSystem ? 'sm' : 'md'}
-      className={`campaign-card min-w-0 ${isSystem ? 'campaign-card--system' : 'campaign-card--user'}`}
+      padding={isSystem || isTemplate ? 'sm' : 'md'}
+      className={`campaign-card min-w-0 ${isSystem || isTemplate ? 'campaign-card--system' : 'campaign-card--user'}`}
       style={
-        isSystem
+        isSystem || isTemplate
           ? {
               background: 'rgba(148, 163, 184, 0.035)',
               borderColor: 'var(--pixel-line-soft)',
@@ -57,9 +61,9 @@ const CampaignCard = ({
           : undefined
       }
     >
-      <div className={isSystem ? 'grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]' : 'grid min-w-0 gap-3'}>
+      <div className={isSystem || isTemplate ? 'grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]' : 'grid min-w-0 gap-3'}>
         <div className="min-w-0">
-          {!isSystem ? (
+          {!isSystem && !isTemplate ? (
             <PixelText
               as="h3"
               readable
@@ -83,9 +87,14 @@ const CampaignCard = ({
             </PixelText>
           )}
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <PixelText as="span" readable size="xs" color={isSystem ? 'textDim' : 'textMuted'}>
+            <PixelText as="span" readable size="xs" color={isSystem || isTemplate ? 'textDim' : 'textMuted'}>
               {isSystem ? 'Системный шаблон' : modeLabel(campaign)}
             </PixelText>
+            {isTemplate ? (
+              <PixelText as="span" readable size="xs" color="textDim">
+                Reusable template
+              </PixelText>
+            ) : null}
             <PixelText as="span" readable size="xs" color="textDim">
               {campaignStateLabel(campaign)}
             </PixelText>
@@ -95,17 +104,28 @@ const CampaignCard = ({
           </div>
         </div>
 
-        <div className={isSystem ? 'flex min-w-0 items-center justify-end' : 'grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]'}>
+        <div className={isSystem || isTemplate ? 'flex min-w-0 flex-wrap items-center justify-end gap-2' : 'grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]'}>
+          {isTemplate ? (
+            <PixelButton
+              tone="accent"
+              onClick={onFork}
+              disabled={isMutating}
+              aria-label={`Create personal campaign from ${campaign.name}`}
+              style={{ minHeight: 32, padding: '6px 10px', gap: 6 }}
+            >
+              <Copy size={15} /> Use template
+            </PixelButton>
+          ) : null}
           <PixelButton
-            tone={isSystem ? 'ghost' : 'accent'}
+            tone={isSystem || isTemplate ? 'ghost' : 'accent'}
             onClick={onOpen}
             disabled={isMutating}
             aria-label={`${openLabel}: ${campaign.name}`}
-            style={isSystem ? { minHeight: 32, padding: '6px 10px', gap: 6 } : undefined}
+            style={isSystem || isTemplate ? { minHeight: 32, padding: '6px 10px', gap: 6 } : undefined}
           >
             <Play size={15} /> {openLabel}
           </PixelButton>
-          {!isSystem ? (
+          {!isSystem && !isTemplate ? (
             <PixelButton
               tone="danger"
               onClick={onArchive}
@@ -131,6 +151,7 @@ export const CampaignMenu = ({
   error,
   onNewCampaignNameChange,
   onOpenCampaign,
+  onForkTemplate,
   onCreateCampaign,
   onArchiveCampaign,
   onRestoreCampaign,
@@ -138,7 +159,8 @@ export const CampaignMenu = ({
   const activeCampaigns = campaigns?.active ?? [];
   const archivedCampaigns = campaigns?.archived ?? [];
   const lastOpened = campaigns?.lastOpened ?? null;
-  const userCampaigns = activeCampaigns.filter((campaign) => campaign.type !== 'developer_main');
+  const userCampaigns = activeCampaigns.filter((campaign) => campaign.type === 'user');
+  const templateCampaigns = activeCampaigns.filter((campaign) => campaign.type === 'template');
   const systemCampaigns = activeCampaigns.filter((campaign) => campaign.type === 'developer_main');
   const emptyPersonalCampaigns = !isLoading && userCampaigns.length === 0;
 
@@ -212,6 +234,7 @@ export const CampaignMenu = ({
                         campaign={campaign}
                         isMutating={isMutating || isLoading}
                         onOpen={() => onOpenCampaign(campaign)}
+                        onFork={() => undefined}
                         onArchive={() => onArchiveCampaign(campaign)}
                       />
                     ))}
@@ -238,6 +261,27 @@ export const CampaignMenu = ({
                           campaign={campaign}
                           isMutating={isMutating || isLoading}
                           onOpen={() => onOpenCampaign(campaign)}
+                          onFork={() => undefined}
+                          onArchive={() => onArchiveCampaign(campaign)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {templateCampaigns.length > 0 ? (
+                  <div className="campaign-system-section grid min-w-0 gap-2">
+                    <PixelText as="p" size="xs" color="textMuted" uppercase>
+                      Reusable templates
+                    </PixelText>
+                    <div className="grid min-w-0 gap-2">
+                      {templateCampaigns.map((campaign) => (
+                        <CampaignCard
+                          key={campaign.id}
+                          campaign={campaign}
+                          isMutating={isMutating || isLoading}
+                          onOpen={() => onOpenCampaign(campaign)}
+                          onFork={() => onForkTemplate(campaign)}
                           onArchive={() => onArchiveCampaign(campaign)}
                         />
                       ))}

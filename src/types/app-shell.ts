@@ -47,7 +47,7 @@ export interface RecommendationSelection {
 
 export interface CampaignSummary {
   id: number;
-  type: 'developer_main' | 'user';
+  type: 'developer_main' | 'user' | 'template';
   slug: string;
   name: string;
   mode?: 'career' | 'free' | null;
