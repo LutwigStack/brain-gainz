@@ -94,6 +94,14 @@ const renderReasons = (reasons: string[]) =>
     </PixelSurface>
   ));
 
+const taskIconByState = {
+  current: Target,
+  next: ArrowRight,
+  locked: Lock,
+  future: MapIcon,
+  complete: CheckCircle2,
+} as const;
+
 interface NowViewProps {
   snapshot: NowDashboardSnapshot | null;
   focus: NodeFocusSnapshot | null;
@@ -294,7 +302,7 @@ export const NowView = ({
       </div>
 
       {error ? (
-        <PixelSurface frame="accent" padding="md" className="today-alert">
+        <PixelSurface frame="destructive" padding="md" className="today-alert">
           <PixelText as="p" readable size="sm">
             {error}
           </PixelText>
@@ -302,7 +310,7 @@ export const NowView = ({
       ) : null}
 
       {notice ? (
-        <PixelSurface frame="ghost" padding="sm" className="today-alert">
+        <PixelSurface frame="secondary" padding="sm" className="today-alert">
           <PixelText as="p" readable size="sm" color="textMuted">
             {notice}
           </PixelText>
@@ -311,7 +319,7 @@ export const NowView = ({
 
       <div className="today-dashboard-grid">
         <main className="today-dashboard-main">
-          <PixelSurface frame={isVictory ? 'accent' : 'panel'} padding="xl" className="today-main-goal-card">
+          <PixelSurface frame={isVictory ? 'selected' : 'primary'} padding="xl" className="today-main-goal-card">
             <div className="today-main-goal-layout">
               <div className="today-goal-icon" aria-hidden="true">
                 <Target size={34} />
@@ -331,7 +339,7 @@ export const NowView = ({
                 <PixelText as="span" size="xs" color="textMuted" uppercase>
                   Прогресс
                 </PixelText>
-                <PixelText as="strong" readable size="xl" color={opponentIsAhead ? 'danger' : 'success'}>
+                <PixelText as="strong" readable size="xl" color={opponentIsAhead ? 'warning' : 'success'}>
                   {clampPercent(mainProgressPercent)}%
                 </PixelText>
                 <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -362,7 +370,9 @@ export const NowView = ({
 
             <div className="today-task-grid">
               {dailyTaskCards.length > 0
-                ? dailyTaskCards.map((task) => (
+                ? dailyTaskCards.map((task) => {
+                    const TaskIcon = taskIconByState[task.state];
+                    return (
                     <button
                       key={task.key}
                       type="button"
@@ -371,7 +381,10 @@ export const NowView = ({
                       className={`today-task-card today-task-card--${task.state}`}
                     >
                       <span className="today-task-card__topline">
-                        <span className="today-task-card__index">{task.order}</span>
+                        <span className="today-task-card__asset" aria-hidden="true">
+                          <TaskIcon size={15} />
+                          <span>{task.order}</span>
+                        </span>
                         <span className="today-task-card__status">{task.status}</span>
                       </span>
                       <span className="today-task-card__body">
@@ -392,7 +405,8 @@ export const NowView = ({
                         </span>
                       </span>
                     </button>
-                  ))
+                  );
+                  })
                 : null}
 
               {dailyTaskCards.length === 0 ? (
@@ -418,7 +432,7 @@ export const NowView = ({
             </div>
           </section>
 
-          <PixelSurface frame="panel" padding="md" className="today-mastery-panel">
+          <PixelSurface frame="secondary" padding="md" className="today-mastery-panel">
             <div className="today-section-heading">
               <span className="today-section-icon">
                 <ShieldCheck size={16} />
@@ -458,7 +472,7 @@ export const NowView = ({
           </PixelSurface>
 
           <div className="today-lower-grid">
-            <PixelSurface frame="panel" padding="md" className="today-weak-panel">
+            <PixelSurface frame="warning" padding="md" className="today-weak-panel">
               <div className="today-section-heading">
                 <span className="today-section-icon today-section-icon--warning">
                   <AlertTriangle size={16} />
@@ -529,7 +543,7 @@ export const NowView = ({
               </div>
             </PixelSurface>
 
-            <PixelSurface frame="panel" padding="md" className="today-mini-map-panel">
+            <PixelSurface frame="secondary" padding="md" className="today-mini-map-panel">
               <div className="today-section-heading">
                 <span className="today-section-icon">
                   <MapIcon size={16} />
@@ -605,7 +619,7 @@ export const NowView = ({
           </div>
 
           {primaryCandidate || focusedNode || optionalItems.length > 0 || remainingNodeActions.length > 0 ? (
-            <PixelSurface frame="ghost" padding="md" className="today-secondary-panel">
+            <PixelSurface frame="secondary" padding="md" className="today-secondary-panel">
               <div className="today-secondary-grid">
                 {primaryCandidate ? (
                   <div className="min-w-0">
@@ -668,7 +682,7 @@ export const NowView = ({
 
         <aside className="today-meta-rail" aria-label="Статус гонки, города и соперника">
           <PixelSurface
-            frame="panel"
+            frame="secondary"
             padding="md"
             className={`today-rail-card today-rail-card--race ${todayRail.race.hasIdentity ? '' : 'today-rail-card--empty'}`}
             style={{ borderColor: todayRail.race.color }}
@@ -708,7 +722,7 @@ export const NowView = ({
           </PixelSurface>
 
           <PixelSurface
-            frame="panel"
+            frame="secondary"
             padding="md"
             className={`today-rail-card today-rail-card--city ${todayRail.city.hasDistricts ? '' : 'today-rail-card--empty'}`}
           >
@@ -760,7 +774,7 @@ export const NowView = ({
           </PixelSurface>
 
           <PixelSurface
-            frame="panel"
+            frame="secondary"
             padding="md"
             className={`today-rail-card today-rail-card--opponent ${todayRail.opponent.hasOpponent ? '' : 'today-rail-card--empty'}`}
           >
@@ -803,7 +817,7 @@ export const NowView = ({
             </div>
           </PixelSurface>
 
-          <PixelSurface frame="ghost" padding="md" className="today-rail-card today-rail-card--route">
+          <PixelSurface frame="secondary" padding="md" className="today-rail-card today-rail-card--route">
             <PixelText as="p" size="xs" color="textMuted" uppercase>
               Статус маршрута
             </PixelText>
@@ -826,7 +840,7 @@ export const NowView = ({
           </PixelSurface>
 
           {todayState.primaryCta.action === 'open_route_node' && !hasRouteFocusNode ? (
-            <PixelSurface frame="ghost" padding="sm" className="today-rail-card">
+            <PixelSurface frame="disabled" padding="sm" className="today-rail-card">
               <PixelText as="p" size="xs" color="textMuted" uppercase>
                 <Lock size={13} /> Узел недоступен
               </PixelText>

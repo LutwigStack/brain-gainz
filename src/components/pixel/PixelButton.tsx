@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, CSSProperties, PropsWithChildren } from 'react';
-import { pixelColors, pixelSpacing, pixelTypography, type PixelFrameToken } from '../../theme/pixel';
+import { pixelColors, pixelSpacing, pixelTypography } from '../../theme/pixel';
 
-type PixelButtonTone = 'panel' | 'accent' | 'ghost';
+type PixelButtonTone = 'panel' | 'accent' | 'ghost' | 'success' | 'warning' | 'danger';
 
 export interface PixelButtonProps extends PropsWithChildren, ButtonHTMLAttributes<HTMLButtonElement> {
   tone?: PixelButtonTone;
@@ -10,10 +10,10 @@ export interface PixelButtonProps extends PropsWithChildren, ButtonHTMLAttribute
 
 const toneStyles: Record<PixelButtonTone, CSSProperties> = {
   panel: {
-    background: pixelColors.panelRaised,
+    background: '#232B39',
     color: pixelColors.text,
     borderColor: '#4e5a71',
-    boxShadow: `inset 2px 2px 0 #72819a, inset -2px -2px 0 ${pixelColors.line}, 2px 2px 0 ${pixelColors.lineSoft}`,
+    boxShadow: `inset 0 1px 0 rgba(184, 193, 204, 0.18)`,
   },
   accent: {
     background: '#5f4610',
@@ -25,7 +25,25 @@ const toneStyles: Record<PixelButtonTone, CSSProperties> = {
     background: 'transparent',
     color: pixelColors.textMuted,
     borderColor: pixelColors.lineSoft,
-    boxShadow: `inset 2px 2px 0 #4e5a71, inset -2px -2px 0 ${pixelColors.line}`,
+    boxShadow: 'none',
+  },
+  success: {
+    background: 'rgba(110, 231, 183, 0.1)',
+    color: pixelColors.success,
+    borderColor: pixelColors.success,
+    boxShadow: `inset 0 1px 0 rgba(110, 231, 183, 0.2)`,
+  },
+  warning: {
+    background: 'rgba(245, 158, 11, 0.1)',
+    color: pixelColors.warning,
+    borderColor: pixelColors.warning,
+    boxShadow: `inset 0 1px 0 rgba(245, 158, 11, 0.2)`,
+  },
+  danger: {
+    background: 'rgba(255, 122, 144, 0.08)',
+    color: pixelColors.danger,
+    borderColor: pixelColors.danger,
+    boxShadow: `inset 0 1px 0 rgba(255, 122, 144, 0.22)`,
   },
 };
 

@@ -1606,7 +1606,7 @@ export default function App() {
   };
 
   const screenFallback = (
-    <PixelSurface frame="panel" padding="xxl">
+    <PixelSurface frame="secondary" padding="xxl">
       <PixelText as="p" readable color="textMuted" size="sm">
         Загружаю экран…
       </PixelText>
@@ -1724,6 +1724,7 @@ export default function App() {
             tone={item.active ? 'accent' : 'ghost'}
             onClick={item.onClick}
             disabled={item.disabled}
+            aria-label={item.label}
             aria-pressed={item.active}
             aria-current={item.active ? 'page' : undefined}
             className={`app-nav-button ${item.active ? 'app-nav-button--active' : ''}`}
@@ -1740,6 +1741,7 @@ export default function App() {
       <PixelButton
         tone={showSettings ? 'accent' : 'ghost'}
         onClick={() => setShowSettings(!showSettings)}
+        aria-label="Настройки"
         aria-pressed={showSettings}
         className={`app-nav-button ${showSettings ? 'app-nav-button--active' : ''}`}
       >
@@ -1767,7 +1769,7 @@ export default function App() {
         >
           <div className="app-left-nav__inner">
             <div className="app-left-nav__brand">
-              <PixelSurface frame="accent" padding="xs" fullWidth={false} className="app-brand-mark">
+              <PixelSurface frame="secondary" padding="xs" fullWidth={false} className="app-brand-mark">
                 <Brain size={20} className="text-[var(--pixel-accent-glow)]" />
               </PixelSurface>
               <div className="min-w-0">
@@ -1812,10 +1814,10 @@ export default function App() {
             }}
           >
             <div className="flex w-full flex-col gap-2">
-              <PixelSurface frame="panel" padding="xs" className="app-topbar">
+              <PixelSurface frame="secondary" padding="xs" className="app-topbar">
                 <div className="app-topbar__layout">
                   <div className="app-mobile-brand">
-                    <PixelSurface frame="accent" padding="xs" fullWidth={false} className="app-brand-mark">
+                    <PixelSurface frame="secondary" padding="xs" fullWidth={false} className="app-brand-mark">
                       <Brain size={18} className="text-[var(--pixel-accent-glow)]" />
                     </PixelSurface>
                     <div className="min-w-0">
@@ -1846,7 +1848,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="app-context-card">
+                    <div className="app-context-card app-context-card--specialization">
                       <div className="app-context-card__icon">
                         <Compass size={15} />
                       </div>
@@ -1863,7 +1865,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="app-context-card">
+                    <div className="app-context-card app-context-card--race">
                       <div className="app-context-card__icon app-context-card__emblem" style={{ borderColor: raceColor, color: raceColor }}>
                         {raceEmblem}
                       </div>
@@ -1880,7 +1882,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="app-context-card">
+                    <div className="app-context-card app-context-card--mode">
                       <div className="app-context-card__icon">
                         {selectedCampaign?.mode === 'career' || contextSpecialization ? (
                           <BriefcaseBusiness size={15} />
@@ -1917,7 +1919,7 @@ export default function App() {
       {showSettings && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
           <PixelSurface
-            frame="panel"
+            frame="secondary"
             padding="xl"
             role="dialog"
             aria-modal="true"

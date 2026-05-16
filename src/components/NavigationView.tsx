@@ -2175,14 +2175,13 @@ export const NavigationView = ({
                       />
                       {isRouteEditable ? (
                         <PixelButton
-                          tone="ghost"
+                          tone="danger"
                           onClick={() => void onRemoveRouteNode({ routeNodeId: item.id })}
                           disabled={routeMutationPending}
                           style={{
                             alignSelf: 'end',
                             minHeight: 30,
                             padding: '5px 8px',
-                            color: 'var(--pixel-danger)',
                           }}
                         >
                           <X size={13} />
@@ -2644,7 +2643,7 @@ export const NavigationView = ({
   return (
     <div className="space-y-3">
       {error ? (
-        <PixelSurface frame="accent" padding="md">
+        <PixelSurface frame="destructive" padding="md">
           <PixelText as="p" readable size="sm">
             {error}
           </PixelText>
@@ -2653,7 +2652,7 @@ export const NavigationView = ({
 
       <section className={mapShellClassName}>
         <div className="navigation-map-workspace min-w-0 space-y-4">
-          <PixelSurface frame="panel" padding="md" className="navigation-map-panel">
+          <PixelSurface frame="secondary" padding="md" className="navigation-map-panel">
             <PixelPanelHeader
               eyebrow="Граф"
               title={
@@ -2685,7 +2684,7 @@ export const NavigationView = ({
             />
 
             <div className="navigation-map-body mt-3 min-w-0 space-y-3">
-              <PixelSurface frame="ghost" padding="sm" className="navigation-map-controls navigation-map-structure-controls">
+              <PixelSurface frame="secondary" padding="sm" className="navigation-map-controls navigation-map-structure-controls">
                 <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(220px,360px)_minmax(0,1fr)] md:items-end">
                   <PixelSelect
                     label="Структура"
@@ -2735,7 +2734,7 @@ export const NavigationView = ({
                 </div>
               </PixelSurface>
 
-              <PixelSurface frame="ghost" padding="sm" className="navigation-map-controls navigation-map-view-controls">
+              <PixelSurface frame="secondary" padding="sm" className="navigation-map-controls navigation-map-view-controls">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -2799,7 +2798,7 @@ export const NavigationView = ({
               </PixelSurface>
 
               {mapCanvasMode === 'layers' ? (
-                <PixelSurface frame="inset" padding="sm">
+                <PixelSurface frame="inset" padding="sm" className="navigation-map-layer-panel" style={{ order: 2 }}>
                   <div className="flex flex-wrap items-center gap-2">
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
                       Слой
@@ -2864,7 +2863,7 @@ export const NavigationView = ({
                 </PixelSurface>
               ) : null}
 
-              <PixelSurface frame="ghost" padding="sm" className="navigation-map-controls navigation-map-tool-controls">
+              <PixelSurface frame="secondary" padding="sm" className="navigation-map-controls navigation-map-tool-controls">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -2894,7 +2893,7 @@ export const NavigationView = ({
                       <GitBranch size={14} /> Соединить
                     </PixelButton>
                     <PixelButton
-                      tone="ghost"
+                      tone="danger"
                       onClick={async () => {
                         if (!selectedEdge || isMapMutating) {
                           return;
@@ -2907,12 +2906,12 @@ export const NavigationView = ({
                         }
                       }}
                       disabled={!selectedEdge || isMapMutating}
-                      style={{ minHeight: 30, padding: '6px 10px', gap: 6, color: selectedEdge ? 'var(--pixel-danger)' : undefined }}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                     >
                       <X size={14} /> Удалить связь
                     </PixelButton>
                     <PixelButton
-                      tone="ghost"
+                      tone="danger"
                       onClick={() => requestFocusedNodeArchive('map')}
                       disabled={!focus?.node || isMapMutating || isEditorArchived}
                       className="inspector-danger-button"
@@ -2920,8 +2919,6 @@ export const NavigationView = ({
                         minHeight: 30,
                         padding: '6px 10px',
                         gap: 6,
-                        color: 'var(--pixel-danger)',
-                        borderColor: 'var(--pixel-danger)',
                       }}
                     >
                       <Archive size={14} /> Архивировать узел
@@ -2990,7 +2987,7 @@ export const NavigationView = ({
               </PixelSurface>
 
               {(editorNotice || canUndoMapMutation) ? (
-                <PixelSurface frame="inset" padding="sm">
+                <PixelSurface frame="inset" padding="sm" className="navigation-map-archive-panel" style={{ order: 6 }}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: 0 }}>
                       {editorNotice ?? 'Последнее действие можно отменить.'}
@@ -3135,7 +3132,7 @@ export const NavigationView = ({
                 ) : null}
               </div>
 
-              <PixelSurface frame="inset" padding="xxs" className="navigation-map-canvas-frame min-w-0 overflow-hidden">
+              <PixelSurface frame="selected" padding="xxs" className="navigation-map-canvas-frame min-w-0 overflow-hidden">
                   <GameMapCanvas
                     snapshot={snapshot}
                     focus={focus}
@@ -3292,7 +3289,7 @@ export const NavigationView = ({
                     void commitInlineNodeEditor();
                   }}
                 >
-                  <PixelSurface frame="panel" padding="xs">
+                  <PixelSurface frame="secondary" padding="xs">
                     <input
                       autoFocus
                       value={inlineNodeEditor.value}
@@ -3341,10 +3338,10 @@ export const NavigationView = ({
                     top: Math.max(8, Math.min(floatingMapPanel.screenY - 54, window.innerHeight - 120)),
                   }}
                 >
-                  <PixelSurface frame="panel" padding="xxs" fullWidth={false}>
+                  <PixelSurface frame="destructive" padding="xxs" fullWidth={false}>
                     <div className="flex items-center gap-1">
                       <PixelButton
-                        tone="ghost"
+                        tone="danger"
                         onClick={async () => {
                           const deleted = await onDeleteEdge(floatingPanelEdge.id);
                           if (deleted) {
@@ -3353,7 +3350,7 @@ export const NavigationView = ({
                           }
                         }}
                         disabled={isMapMutating}
-                        style={{ minHeight: 28, padding: '5px 7px', color: 'var(--pixel-danger)' }}
+                        style={{ minHeight: 28, padding: '5px 7px' }}
                         title="Удалить связь"
                       >
                         <X size={13} /> Удалить связь
@@ -3392,7 +3389,7 @@ export const NavigationView = ({
                             Выбрать связь
                           </PixelButton>
                           <PixelButton
-                            tone="ghost"
+                            tone="danger"
                             onClick={async () => {
                               const deleted = await onDeleteEdge(contextEdge.id);
                               if (deleted) {
@@ -3405,7 +3402,6 @@ export const NavigationView = ({
                               justifyContent: 'flex-start',
                               minHeight: 30,
                               padding: '6px 8px',
-                              color: 'var(--pixel-danger)',
                             }}
                           >
                             Разъединить
@@ -3458,7 +3454,7 @@ export const NavigationView = ({
                             Сводка
                           </PixelButton>
                           <PixelButton
-                            tone="ghost"
+                            tone="danger"
                             onClick={() =>
                               requestNodeArchive({
                                 nodeId: contextNode.id,
@@ -3471,7 +3467,6 @@ export const NavigationView = ({
                               justifyContent: 'flex-start',
                               minHeight: 30,
                               padding: '6px 8px',
-                              color: 'var(--pixel-danger)',
                             }}
                           >
                             Архивировать узел
@@ -3544,7 +3539,7 @@ export const NavigationView = ({
         {!isInspectorCollapsed ? (
         <div id="navigation-inspector-rail" className={inspectorRailClassName}>
           <PixelStack gap="md">
-            <PixelSurface frame="panel" padding="md" className="navigation-inspector-panel">
+            <PixelSurface frame="secondary" padding="md" className="navigation-inspector-panel">
               {isFocusLoading && !focus?.node ? (
                 <PixelText as="p" readable color="textMuted" size="sm">
                   Загрузка…
@@ -3678,7 +3673,7 @@ export const NavigationView = ({
                             </PixelButton>
                           ) : null}
                           <PixelButton
-                            tone="ghost"
+                            tone="danger"
                             onClick={() => requestFocusedNodeArchive('inspector')}
                             disabled={isMapMutating || isEditorArchived}
                             className="inspector-danger-button"
@@ -3687,8 +3682,6 @@ export const NavigationView = ({
                               minHeight: 30,
                               padding: '6px 8px',
                               gap: 6,
-                              color: 'var(--pixel-danger)',
-                              borderColor: 'var(--pixel-danger)',
                             }}
                           >
                             <Archive size={14} /> Архивировать
@@ -3766,7 +3759,7 @@ export const NavigationView = ({
                               {selectedEdgeTargetNode?.title ?? 'Цель'}
                             </PixelText>
                             <PixelButton
-                              tone="ghost"
+                              tone="danger"
                               onClick={async () => {
                                 const deleted = await onDeleteEdge(selectedEdge.id);
                                 if (deleted) {
@@ -3774,7 +3767,7 @@ export const NavigationView = ({
                                 }
                               }}
                               disabled={isMapMutating}
-                              style={{ minHeight: 26, padding: '4px 8px', gap: 6, color: 'var(--pixel-danger)' }}
+                              style={{ minHeight: 26, padding: '4px 8px', gap: 6 }}
                             >
                               <X size={12} /> Убрать
                             </PixelButton>
@@ -3959,6 +3952,7 @@ export const NavigationView = ({
                       <Copy size={16} /> {editorPendingAction === 'duplicate' ? 'Дублирую…' : 'Дублировать'}
                     </PixelButton>
                     <PixelButton
+                      tone="danger"
                       onClick={() => {
                         if (editorDraft) {
                           requestNodeArchive({
@@ -3975,8 +3969,6 @@ export const NavigationView = ({
                         minHeight: 30,
                         padding: '6px 10px',
                         gap: 6,
-                        color: 'var(--pixel-danger)',
-                        borderColor: 'var(--pixel-danger)',
                       }}
                     >
                       <Archive size={16} /> {editorPendingAction === 'archive' ? 'Архивирую…' : 'Архивировать'}
@@ -3990,7 +3982,7 @@ export const NavigationView = ({
             {!focus?.node || inspectorMode === 'route' ? renderRouteAuthoringPanel() : null}
 
             {!focus?.node || inspectorMode === 'graph' ? (
-            <PixelSurface frame="panel" padding="sm" className="min-w-0">
+            <PixelSurface frame="secondary" padding="sm" className="min-w-0">
               <PixelPanelHeader
                 eyebrow={
                   <span className="flex items-center gap-2">
@@ -4032,7 +4024,7 @@ export const NavigationView = ({
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="absolute inset-0" onClick={cancelPendingNodeArchive} aria-hidden="true" />
           <PixelSurface
-            frame="panel"
+            frame="destructive"
             padding="lg"
             role="dialog"
             aria-modal="true"
@@ -4055,14 +4047,14 @@ export const NavigationView = ({
                 Узел исчезнет с карты и из инспектора. Связи и маршрутные данные останутся в базе, а восстановление будет доступно через архив структуры.
               </PixelText>
               {isSystemCampaign ? (
-                <PixelSurface frame="ghost" padding="xs">
+                <PixelSurface frame="warning" padding="xs">
                   <PixelText as="p" readable size="sm" color="textMuted">
                     Это системная кампания. Проверьте название узла перед подтверждением.
                   </PixelText>
                 </PixelSurface>
               ) : null}
               {error ? (
-                <PixelSurface frame="ghost" padding="xs">
+                <PixelSurface frame="destructive" padding="xs">
                   <PixelText as="p" readable size="sm" color="textMuted">
                     {error}
                   </PixelText>
@@ -4078,14 +4070,13 @@ export const NavigationView = ({
                   <X size={15} /> Отмена
                 </PixelButton>
                 <PixelButton
+                  tone="danger"
                   onClick={() => void confirmPendingNodeArchive()}
                   disabled={isMapMutating || isEditorBusy}
                   style={{
                     minHeight: 34,
                     padding: '7px 12px',
                     gap: 6,
-                    color: 'var(--pixel-danger)',
-                    borderColor: 'var(--pixel-danger)',
                   }}
                 >
                   <Archive size={15} /> Подтвердить архив
@@ -4100,7 +4091,7 @@ export const NavigationView = ({
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-200/10 p-4 backdrop-blur-md">
           <div className="absolute inset-0 bg-white/10" onClick={() => setIsEditorExpanded(false)} aria-hidden="true" />
           <PixelSurface
-            frame="panel"
+            frame="secondary"
             padding="md"
             role="dialog"
             aria-modal="true"
@@ -4307,6 +4298,7 @@ export const NavigationView = ({
                   <Copy size={16} /> {editorPendingAction === 'duplicate' ? 'Дублирую...' : 'Дублировать'}
                 </PixelButton>
                 <PixelButton
+                  tone="danger"
                   onClick={() =>
                     requestNodeArchive({
                       nodeId: modalEditorDraft.nodeId,
@@ -4321,8 +4313,6 @@ export const NavigationView = ({
                     minHeight: 30,
                     padding: '6px 10px',
                     gap: 6,
-                    color: 'var(--pixel-danger)',
-                    borderColor: 'var(--pixel-danger)',
                   }}
                 >
                   <Archive size={16} /> {editorPendingAction === 'archive' ? 'Архивирую...' : 'Архивировать'}

@@ -12,6 +12,7 @@ export const pixelColors = {
   accentMuted: '#A87819',
   accentGlow: '#FFF1B8',
   success: '#6EE7B7',
+  warning: '#F59E0B',
   danger: '#FF7A90',
   info: '#7DD3FC',
   text: '#F4F1DE',
@@ -53,6 +54,48 @@ export const pixelFrames = {
     borderDark: pixelColors.accentMuted,
     innerLight: '#FFD879',
     innerDark: '#5A420D',
+  },
+  primary: {
+    background: '#282113',
+    borderLight: pixelColors.accentGlow,
+    borderDark: pixelColors.accentMuted,
+    innerLight: '#FFD879',
+    innerDark: '#5A420D',
+  },
+  secondary: {
+    background: '#1B2230',
+    borderLight: '#3A465C',
+    borderDark: pixelColors.lineSoft,
+    innerLight: 'rgba(184, 193, 204, 0.14)',
+    innerDark: '#151A24',
+  },
+  selected: {
+    background: '#202A3A',
+    borderLight: pixelColors.info,
+    borderDark: pixelColors.accentMuted,
+    innerLight: pixelColors.accent,
+    innerDark: '#121720',
+  },
+  warning: {
+    background: '#2B2115',
+    borderLight: pixelColors.warning,
+    borderDark: '#7C3F10',
+    innerLight: 'rgba(245, 158, 11, 0.22)',
+    innerDark: '#15100A',
+  },
+  disabled: {
+    background: '#171D27',
+    borderLight: '#2D3748',
+    borderDark: '#222A38',
+    innerLight: 'rgba(126, 138, 153, 0.1)',
+    innerDark: '#121720',
+  },
+  destructive: {
+    background: '#2A1720',
+    borderLight: pixelColors.danger,
+    borderDark: '#7A2537',
+    innerLight: 'rgba(255, 122, 144, 0.2)',
+    innerDark: '#160B10',
   },
   ghost: {
     background: 'transparent',
@@ -111,6 +154,7 @@ export const pixelCssVariables = {
   '--pixel-accent-muted': pixelColors.accentMuted,
   '--pixel-accent-glow': pixelColors.accentGlow,
   '--pixel-success': pixelColors.success,
+  '--pixel-warning': pixelColors.warning,
   '--pixel-danger': pixelColors.danger,
   '--pixel-info': pixelColors.info,
   '--pixel-text': pixelColors.text,
@@ -145,20 +189,52 @@ export const createPixelFrameStyle = ({
   const chrome = pixelFrames[frame];
   const isGhost = frame === 'ghost';
   const isInset = frame === 'inset';
+  const isPrimary = frame === 'primary' || frame === 'accent';
+  const isSelected = frame === 'selected';
+  const isSecondary = frame === 'secondary';
+  const isStateFrame = frame === 'warning' || frame === 'destructive' || frame === 'disabled';
+
+  const boxShadow = (() => {
+    if (isGhost || frame === 'disabled') {
+      return 'none';
+    }
+
+    if (isInset) {
+      return `inset 1px 1px 0 ${chrome.borderLight}`;
+    }
+
+    if (isSecondary) {
+      return `inset 0 1px 0 ${chrome.innerLight}`;
+    }
+
+    if (isStateFrame) {
+      return `inset 3px 0 0 ${chrome.borderLight}, inset 0 1px 0 ${chrome.innerLight}`;
+    }
+
+    if (isSelected) {
+      return `inset 3px 0 0 ${chrome.innerLight}, inset 0 1px 0 ${chrome.borderLight}, 0 0 0 1px ${chrome.borderDark}`;
+    }
+
+    if (isPrimary) {
+      return [
+        `inset ${pixelRadii.sm}px ${pixelRadii.sm}px 0 ${chrome.borderLight}`,
+        `inset -${pixelRadii.sm}px -${pixelRadii.sm}px 0 ${chrome.innerDark}`,
+        `0 0 22px color-mix(in srgb, ${pixelColors.accent} 22%, transparent)`,
+      ].join(', ');
+    }
+
+    return [
+      `inset ${pixelRadii.sm}px ${pixelRadii.sm}px 0 ${chrome.borderLight}`,
+      `inset -${pixelRadii.sm}px -${pixelRadii.sm}px 0 ${chrome.innerDark}`,
+      `1px 1px 0 ${chrome.innerLight}`,
+    ].join(', ');
+  })();
 
   return {
     background: chrome.background,
     padding: pixelSpacing[padding],
-    border: isGhost ? `1px solid ${chrome.borderLight}` : `${pixelRadii.sm}px solid ${chrome.borderDark}`,
-    boxShadow: isGhost
-      ? 'none'
-      : isInset
-        ? `inset 1px 1px 0 ${chrome.borderLight}`
-        : [
-            `inset ${pixelRadii.sm}px ${pixelRadii.sm}px 0 ${chrome.borderLight}`,
-            `inset -${pixelRadii.sm}px -${pixelRadii.sm}px 0 ${chrome.innerDark}`,
-            `1px 1px 0 ${chrome.innerLight}`,
-          ].join(', '),
+    border: isPrimary ? `${pixelRadii.sm}px solid ${chrome.borderDark}` : `1px solid ${chrome.borderDark}`,
+    boxShadow,
     imageRendering: 'pixelated',
   };
 };

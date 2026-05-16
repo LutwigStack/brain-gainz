@@ -8,13 +8,14 @@ export interface PixelMeterProps extends HTMLAttributes<HTMLDivElement> {
   value: number;
   max?: number;
   label?: string;
-  tone?: 'accent' | 'success' | 'danger' | 'info';
+  tone?: 'accent' | 'success' | 'warning' | 'danger' | 'info';
   showValue?: boolean;
 }
 
 const toneMap = {
   accent: pixelColors.accent,
   success: pixelColors.success,
+  warning: pixelColors.warning,
   danger: pixelColors.danger,
   info: pixelColors.info,
 } as const;

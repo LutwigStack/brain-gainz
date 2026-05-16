@@ -45,7 +45,7 @@ const CampaignCard = ({
 
   return (
     <PixelSurface
-      frame={isSystem ? 'ghost' : 'panel'}
+      frame="secondary"
       padding={isSystem ? 'sm' : 'md'}
       className={`campaign-card min-w-0 ${isSystem ? 'campaign-card--system' : 'campaign-card--user'}`}
       style={
@@ -107,7 +107,7 @@ const CampaignCard = ({
           </PixelButton>
           {!isSystem ? (
             <PixelButton
-              tone="ghost"
+              tone="danger"
               onClick={onArchive}
               disabled={isMutating}
               aria-label={`Архивировать кампанию ${campaign.name}`}
@@ -145,7 +145,7 @@ export const CampaignMenu = ({
   return (
     <div className="campaign-menu w-full min-w-0 flex-grow pt-3">
       <div className="mx-auto grid w-full max-w-6xl gap-4">
-        <PixelSurface frame="panel" padding="xl">
+        <PixelSurface frame="secondary" padding="xl">
           <PixelStack gap="lg">
             <PixelPanelHeader
               eyebrow="Кампании"
@@ -168,7 +168,7 @@ export const CampaignMenu = ({
             />
 
             {error ? (
-              <PixelSurface frame="accent" padding="sm">
+              <PixelSurface frame="destructive" padding="sm">
                 <PixelText as="p" readable size="sm">
                   {error}
                 </PixelText>

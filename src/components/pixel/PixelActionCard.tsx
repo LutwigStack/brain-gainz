@@ -47,7 +47,7 @@ export const PixelActionCard = ({
   };
   const content = (
     <PixelSurface
-      frame={active ? 'accent' : 'panel'}
+      frame={props.disabled ? 'disabled' : active ? 'selected' : 'secondary'}
       padding="md"
       style={{
         opacity: props.disabled ? 0.55 : 1,

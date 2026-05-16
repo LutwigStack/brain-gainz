@@ -64,7 +64,7 @@ const branchProgress = (branch: WindRoseBranch) =>
 
 const branchState = (
   branch: WindRoseBranch,
-): { key: BranchStateKey; label: string; tone: 'accent' | 'success' | 'danger' | 'info' } => {
+): { key: BranchStateKey; label: string; tone: 'accent' | 'success' | 'warning' | 'danger' | 'info' } => {
   if (branch.node_count > 0 && branch.done_node_count >= branch.node_count) {
     return { key: 'completed', label: 'Готово', tone: 'success' };
   }
@@ -77,7 +77,7 @@ const branchState = (
     return { key: 'next', label: 'Следующий шаг', tone: 'info' };
   }
 
-  return { key: 'blocked', label: 'Нет шага', tone: 'danger' };
+  return { key: 'blocked', label: 'Нет шага', tone: 'warning' };
 };
 
 const BranchStateIcon = ({ state }: { state: BranchStateKey }) => {
@@ -128,7 +128,7 @@ export const WindRoseView = ({
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <PixelSurface frame="panel" padding="xl" className="min-w-0" style={{ boxSizing: 'border-box' }}>
+      <PixelSurface frame="secondary" padding="xl" className="wind-rose-panel min-w-0" style={{ boxSizing: 'border-box' }}>
         <PixelStack gap="lg">
           <PixelPanelHeader
             eyebrow="Роза ветров"
@@ -142,7 +142,7 @@ export const WindRoseView = ({
           />
 
           {error ? (
-            <PixelSurface frame="accent" padding="sm">
+            <PixelSurface frame="destructive" padding="sm">
               <PixelText as="p" readable size="sm">
                 {error}
               </PixelText>
@@ -150,7 +150,7 @@ export const WindRoseView = ({
           ) : null}
 
           {stats.length === 0 ? (
-            <PixelSurface frame="ghost" padding="xl">
+            <PixelSurface frame="disabled" padding="xl">
               <div className="grid place-items-center gap-3 py-10 text-center">
                 <Sparkles size={28} className="text-[var(--pixel-accent)]" />
                 <PixelText as="p" readable color="textMuted">
@@ -247,7 +247,7 @@ export const WindRoseView = ({
       </PixelSurface>
 
       <PixelSurface
-        frame="panel"
+        frame="secondary"
         padding="md"
         className="min-w-0"
         style={{ borderColor: selectedStat?.color ?? undefined, boxSizing: 'border-box' }}
@@ -330,7 +330,7 @@ export const WindRoseView = ({
         ) : null}
 
         {(snapshot?.unassignedBranches ?? []).length > 0 ? (
-          <PixelSurface frame="ghost" padding="sm" className="mt-3">
+          <PixelSurface frame="warning" padding="sm" className="mt-3">
             <PixelText as="p" size="xs" color="warning" uppercase>
               <TriangleAlert size={13} className="inline" /> Без стата: {snapshot.unassignedBranches.length}
             </PixelText>
