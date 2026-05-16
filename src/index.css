@@ -585,6 +585,7 @@ textarea:disabled {
 }
 
 .today-run-task__actions,
+.today-run-task__resolved,
 .today-run-footer__actions {
   display: flex;
   flex-wrap: wrap;
@@ -593,6 +594,7 @@ textarea:disabled {
 }
 
 .today-run-task__actions .pixel-button,
+.today-run-task__resolved .pixel-button,
 .today-run-footer__actions .pixel-button {
   min-height: 28px;
   padding: 5px 7px;
@@ -613,7 +615,7 @@ textarea:disabled {
 }
 
 .today-run-task__outcome--failed {
-  color: var(--pixel-danger);
+  color: var(--pixel-info);
 }
 
 .today-run-task__outcome--skipped,
@@ -748,6 +750,20 @@ textarea:disabled {
 .today-task-card--next .today-task-card__status,
 .today-task-card--next .today-task-card__action {
   color: var(--pixel-info);
+}
+
+.today-task-card--recovery .today-task-card__status,
+.today-task-card--recovery .today-task-card__action {
+  color: var(--pixel-warning);
+}
+
+.today-task-card--recovery .today-task-card__asset {
+  border-color: color-mix(in srgb, var(--pixel-warning) 70%, var(--pixel-line-soft));
+  color: var(--pixel-warning);
+}
+
+.today-task-card--recovery .today-task-card__meter > span {
+  background: var(--pixel-warning);
 }
 
 .today-task-card--complete .today-task-card__status,

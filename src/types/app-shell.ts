@@ -102,7 +102,7 @@ export type DailyRunTaskOutcome = 'pending' | 'completed' | 'failed' | 'skipped'
 export interface DailyRunTask {
   id: number;
   order: number;
-  source: 'route_front' | 'route_next' | 'weak_spot' | 'due_check' | 'ready_check' | 'recommendation';
+  source: 'route_front' | 'route_next' | 'weak_spot' | 'recovery_retry' | 'due_check' | 'ready_check' | 'recommendation';
   sourceLabel: string;
   title: string;
   subtitle: string;
@@ -183,6 +183,18 @@ export interface RouteProgressItem {
   route_stage?: string | null;
   current_mastery_level?: MasteryLevel | null;
   current_mastery_rank: number;
+  self_marked_mastery_rank?: number;
+  has_verified_mastery?: number;
+  weak_spot_reason?: string | null;
+  weak_spot_reason_label?: string | null;
+  weak_spot_sources?: string[];
+  latest_failed_assessment_at?: string | null;
+  latest_passed_assessment_at?: string | null;
+  latest_failed_run_at?: string | null;
+  latest_completed_run_at?: string | null;
+  review_current_risk?: string | null;
+  review_next_due_at?: string | null;
+  last_touched_at?: string | null;
   is_required: number;
   is_complete: boolean;
   is_actionable?: boolean;

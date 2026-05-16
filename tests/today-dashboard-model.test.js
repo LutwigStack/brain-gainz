@@ -81,6 +81,34 @@ test('daily recommendation cards keep null action candidates distinct by node id
   assert.deepEqual(cards.slice(0, 2).map((card) => card.key), ['recommendation-node-10', 'recommendation-node-11']);
 });
 
+test('daily task cards surface weak spots as recovery opportunities', () => {
+  const focus = routeItem({ id: 1, title: 'Front', current_mastery_rank: 2 });
+  const weak = routeItem({
+    id: 8,
+    title: 'Failed proof check',
+    current_mastery_rank: 1,
+    weak_spot_reason: 'failed_assessment',
+    weak_spot_reason_label: 'Assessment needs another pass',
+  });
+  const next = routeItem({ id: 2, title: 'Next', current_mastery_rank: 0 });
+
+  const cards = buildDailyTaskCards({
+    focusItem: focus,
+    nextItems: [next],
+    weakSpots: [weak],
+    routeItems: [focus, next, weak],
+    primaryRecommendation: null,
+    queue: [],
+  });
+
+  assert.deepEqual(
+    cards.slice(0, 3).map((card) => card.state),
+    ['current', 'recovery', 'next'],
+  );
+  assert.equal(cards[1].status, 'Recovery');
+  assert.equal(cards[1].actionLabel, 'Repeat');
+});
+
 test('mini map preview keeps a large route compact while preserving front and weak relation', () => {
   const items = Array.from({ length: 24 }, (_, index) =>
     routeItem({

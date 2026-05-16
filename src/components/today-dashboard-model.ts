@@ -1,6 +1,6 @@
 import type { CareerSpecialization, DailySession, RecommendationCandidate, RouteProgressItem, TodaySnapshot } from '../types/app-shell';
 
-export type DailyTaskState = 'current' | 'next' | 'locked' | 'future' | 'complete';
+export type DailyTaskState = 'current' | 'next' | 'recovery' | 'locked' | 'future' | 'complete';
 
 export interface DailyTaskCardViewModel {
   key: string;
@@ -297,6 +297,7 @@ const routeItemState = (
   item: RouteProgressItem,
   focusItem: RouteProgressItem | null,
   nextItemIds: Set<number>,
+  weakSpotIds: Set<number>,
 ): DailyTaskState => {
   if (item.is_actionable === false) {
     return 'locked';
@@ -310,6 +311,10 @@ const routeItemState = (
     return 'current';
   }
 
+  if (weakSpotIds.has(item.id)) {
+    return 'recovery';
+  }
+
   if (nextItemIds.has(item.id)) {
     return 'next';
   }
@@ -320,6 +325,7 @@ const routeItemState = (
 const dailyStatusByState: Record<DailyTaskState, string> = {
   current: 'Текущая',
   next: 'Следующая',
+  recovery: 'Recovery',
   locked: 'Закрыта',
   future: 'Позже',
   complete: 'Готово',
@@ -328,10 +334,14 @@ const dailyStatusByState: Record<DailyTaskState, string> = {
 const dailyActionByState: Record<DailyTaskState, string> = {
   current: 'Начать',
   next: 'Открыть',
+  recovery: 'Repeat',
   locked: 'Закрыто',
   future: 'Открыть карту',
   complete: 'Повторить',
 };
+
+const dailyStatusLabel = (state: DailyTaskState) => dailyStatusByState[state];
+const dailyActionLabel = (state: DailyTaskState) => dailyActionByState[state];
 
 const recommendationToTaskCard = (
   candidate: RecommendationCandidate,
@@ -342,10 +352,10 @@ const recommendationToTaskCard = (
   order,
   title: candidate.actionTitle,
   subtitle: candidate.nodeTitle,
-  status: dailyStatusByState[state],
+  status: dailyStatusLabel(state),
   state,
   progressPercent: state === 'current' ? 35 : 0,
-  actionLabel: dailyActionByState[state],
+  actionLabel: dailyActionLabel(state),
   nodeId: candidate.nodeId,
   actionId: candidate.actionId,
   disabled: false,
@@ -354,6 +364,7 @@ const recommendationToTaskCard = (
 export const buildDailyTaskCards = ({
   focusItem,
   nextItems,
+  weakSpots = [],
   routeItems,
   primaryRecommendation,
   queue,
@@ -361,14 +372,17 @@ export const buildDailyTaskCards = ({
 }: {
   focusItem: RouteProgressItem | null;
   nextItems: RouteProgressItem[];
+  weakSpots?: RouteProgressItem[];
   routeItems: RouteProgressItem[];
   primaryRecommendation: RecommendationCandidate | null;
   queue: RecommendationCandidate[];
   maxCards?: number;
 }): DailyTaskCardViewModel[] => {
   const nextItemIds = new Set(nextItems.map((item) => item.id));
+  const weakSpotIds = new Set(weakSpots.map((item) => item.id));
   const routeCandidates = uniqueRouteItems([
     focusItem,
+    ...weakSpots,
     ...nextItems,
     ...routeItems.filter((item) => item.is_actionable === false),
     ...routeItems.filter((item) => item.is_required === 1 && !item.is_complete && item.is_actionable !== false),
@@ -378,17 +392,17 @@ export const buildDailyTaskCards = ({
 
   if (routeCandidates.length > 0) {
     const cards: DailyTaskCardViewModel[] = routeCandidates.slice(0, maxCards).map((item, index) => {
-      const state = routeItemState(item, focusItem, nextItemIds);
+      const state = routeItemState(item, focusItem, nextItemIds, weakSpotIds);
       const requiredRank = Math.max(1, masteryRank(item.required_mastery_level));
       return {
         key: `route-${item.id}`,
         order: index + 1,
         title: item.title,
         subtitle: item.route_stage ?? item.path ?? 'Маршрут',
-        status: dailyStatusByState[state],
+        status: dailyStatusLabel(state),
         state,
         progressPercent: routeItemProgress(item),
-        actionLabel: dailyActionByState[state],
+        actionLabel: dailyActionLabel(state),
         nodeId: item.node_id ?? null,
         disabled: state === 'locked',
         progressLabel: `${Number(item.current_mastery_rank ?? 0)}/${requiredRank}`,

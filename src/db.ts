@@ -80,6 +80,7 @@ type StoresRegistry = {
     createJournalFollowUpStep: (campaignId: number | null, payload: JournalFollowUpPayload) => Promise<unknown>;
     completeActionInTodaySession: (campaignId: number | null, actionId: number) => Promise<unknown>;
     failActionInTodaySession: (campaignId: number | null, actionId: number, note?: string) => Promise<unknown>;
+    retryActionInTodaySession: (campaignId: number | null, actionId: number, note?: string) => Promise<unknown>;
     skipActionInTodaySession: (campaignId: number | null, actionId: number, note?: string) => Promise<unknown>;
     deferActionInTodaySession: (campaignId: number | null, actionId: number, note?: string) => Promise<unknown>;
     blockActionInTodaySession: (campaignId: number | null, actionId: number, payload?: { barrierType?: string | null; note?: string }) => Promise<unknown>;
@@ -482,6 +483,11 @@ export const completeNowActionInTodaySession = async (actionId: number, campaign
 export const failNowActionInTodaySession = async (actionId: number, note = '', campaignId: number | null = null) => {
   const { nowService } = await getStores();
   return nowService.failActionInTodaySession(requireCampaignId(campaignId), actionId, note);
+};
+
+export const retryNowActionInTodaySession = async (actionId: number, note = '', campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.retryActionInTodaySession(requireCampaignId(campaignId), actionId, note);
 };
 
 export const skipNowActionInTodaySession = async (actionId: number, note = '', campaignId: number | null = null) => {

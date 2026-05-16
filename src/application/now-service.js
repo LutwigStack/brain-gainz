@@ -1048,6 +1048,24 @@ const isPastDue = (value) => {
   return timestamp <= Date.now();
 };
 
+const addDaysTimestamp = (timestamp, days) => {
+  const parsed = Date.parse(timestamp);
+  const base = Number.isFinite(parsed) ? parsed : Date.now();
+  return new Date(base + days * 24 * 60 * 60 * 1000).toISOString();
+};
+
+const isAfterTimestamp = (left, right) => {
+  if (!left) {
+    return false;
+  }
+  if (!right) {
+    return true;
+  }
+  const leftTimestamp = Date.parse(left);
+  const rightTimestamp = Date.parse(right);
+  return Number.isFinite(leftTimestamp) && Number.isFinite(rightTimestamp) && leftTimestamp > rightTimestamp;
+};
+
 const unique = (values) => [...new Set(values.filter(Boolean))];
 
 const slugify = (value) => {
@@ -1481,7 +1499,8 @@ const DAILY_RUN_OUTCOME_EVENTS = new Set(['completed', 'failed', 'skipped', 'def
 const dailyRunSourceLabels = {
   route_front: 'Current front',
   route_next: 'Route',
-  weak_spot: 'Weak spot',
+  weak_spot: 'Recovery',
+  recovery_retry: 'Retry',
   due_check: 'Due check',
   ready_check: 'Ready check',
   recommendation: 'Recommended',
@@ -1535,14 +1554,23 @@ const normalizeDailyRunOutcome = (eventType) => {
 
 const latestOutcomeForSelection = (events, selectedEvent) => {
   const selectedEventId = Number(selectedEvent.id ?? 0);
+  const isSameSelectionTarget = (event) => {
+    if (selectedEvent.action_id != null) {
+      return event.action_id === selectedEvent.action_id;
+    }
+    return event.node_id === selectedEvent.node_id;
+  };
+  const nextSelectedAttempt = events
+    .filter((event) => Number(event.id ?? 0) > selectedEventId && event.event_type === 'selected')
+    .filter(isSameSelectionTarget)
+    .sort((left, right) => Number(left.id ?? 0) - Number(right.id ?? 0))[0] ?? null;
+  const nextSelectedAttemptId = Number(nextSelectedAttempt?.id ?? Number.POSITIVE_INFINITY);
   const matching = events
-    .filter((event) => Number(event.id ?? 0) > selectedEventId && DAILY_RUN_OUTCOME_EVENTS.has(event.event_type))
     .filter((event) => {
-      if (selectedEvent.action_id != null) {
-        return event.action_id === selectedEvent.action_id;
-      }
-      return event.node_id === selectedEvent.node_id;
+      const eventId = Number(event.id ?? 0);
+      return eventId > selectedEventId && eventId < nextSelectedAttemptId && DAILY_RUN_OUTCOME_EVENTS.has(event.event_type);
     })
+    .filter(isSameSelectionTarget)
     .sort((left, right) => Number(right.id ?? 0) - Number(left.id ?? 0));
 
   return matching[0] ?? null;
@@ -1663,6 +1691,35 @@ const loadFirstOpenActionForNode = async (database, nodeId, campaignId) => {
   return rows[0] ?? null;
 };
 
+const loadFirstActionForNode = async (database, nodeId, campaignId) => {
+  const rows = await database.select(
+    `
+      SELECT
+        actions.*,
+        nodes.title AS node_title,
+        skills.name AS skill_name,
+        directions.name AS direction_name,
+        spheres.name AS sphere_name
+      FROM node_actions actions
+      JOIN nodes ON nodes.id = actions.node_id
+      JOIN skills ON skills.id = nodes.skill_id
+      JOIN directions ON directions.id = skills.direction_id
+      JOIN spheres ON spheres.id = directions.sphere_id
+      WHERE actions.node_id = ?
+        AND spheres.campaign_id = ?
+        AND nodes.is_archived = 0
+      ORDER BY
+        CASE actions.status WHEN 'doing' THEN 0 WHEN 'ready' THEN 1 WHEN 'todo' THEN 2 ELSE 3 END ASC,
+        actions.sort_order ASC,
+        actions.id ASC
+      LIMIT 1
+    `,
+    [nodeId, campaignId],
+  );
+
+  return rows[0] ?? null;
+};
+
 const pushUniqueDailyRunTask = (tasks, task) => {
   if (!task?.nodeId || task.actionId == null) {
     return;
@@ -1684,7 +1741,11 @@ const routeItemToDailyRunTask = async (database, campaignId, item, source) => {
     return null;
   }
 
-  const action = await loadFirstOpenActionForNode(database, item.node_id, campaignId);
+  const action =
+    (await loadFirstOpenActionForNode(database, item.node_id, campaignId)) ??
+    (source === 'weak_spot' || source === 'recovery_retry'
+      ? await loadFirstActionForNode(database, item.node_id, campaignId)
+      : null);
 
   if (!action) {
     return null;
@@ -1724,12 +1785,12 @@ const chooseDailyRunTasks = async (database, campaignId, dashboard, preferredAct
   pushUniqueDailyRunTask(tasks, recommendationToDailyRunTask(preferredRecommendation, 'recommendation'));
   pushUniqueDailyRunTask(tasks, await routeItemToDailyRunTask(database, campaignId, planner?.focusItem ?? route?.nextItem, 'route_front'));
 
-  for (const item of planner?.nextItems ?? []) {
-    pushUniqueDailyRunTask(tasks, await routeItemToDailyRunTask(database, campaignId, item, 'route_next'));
-  }
-
   for (const item of planner?.weakSpots ?? []) {
     pushUniqueDailyRunTask(tasks, await routeItemToDailyRunTask(database, campaignId, item, 'weak_spot'));
+  }
+
+  for (const item of planner?.nextItems ?? []) {
+    pushUniqueDailyRunTask(tasks, await routeItemToDailyRunTask(database, campaignId, item, 'route_next'));
   }
 
   for (const item of planner?.readyToVerify ?? []) {
@@ -2252,6 +2313,11 @@ const buildDailyRunFinishSummaryNote = async (database, campaignId, session) => 
   const failed = tasks.filter((task) => task.outcome === 'failed');
   const skipped = tasks.filter((task) => task.outcome === 'skipped');
   const deferred = tasks.filter((task) => task.outcome === 'deferred');
+  const recoveryKeyForTask = (task) => (task.actionId != null ? `action:${task.actionId}` : `node:${task.nodeId}`);
+  const completedKeys = new Set(completed.map(recoveryKeyForTask));
+  const recoveryKeys = new Set([...failed, ...skipped, ...deferred].map(recoveryKeyForTask));
+  const recoveredKeys = new Set([...recoveryKeys].filter((key) => completedKeys.has(key)));
+  const openRecovery = [...recoveryKeys].filter((key) => !completedKeys.has(key)).length;
   const completedNodeIds = [...new Set(completed.map((task) => task.nodeId).filter((id) => id != null))];
   let xp = 0;
   let masteryEvents = 0;
@@ -2285,14 +2351,13 @@ const buildDailyRunFinishSummaryNote = async (database, campaignId, session) => 
   }
 
   const changedTitles = completed.slice(0, 3).map((task) => task.title).join(', ') || 'No tasks completed yet';
-  const recoveryCount = failed.length + skipped.length + deferred.length;
 
   return [
     `Changed: ${completed.length}/${tasks.length} tasks completed. ${changedTitles}.`,
     `XP/mastery: ${xp} XP active from this run; ${masteryEvents} mastery event${masteryEvents === 1 ? '' : 's'} touched.`,
-    recoveryCount > 0
-      ? `Recovery: ${recoveryCount} task${recoveryCount === 1 ? '' : 's'} need follow-up (${failed.length} failed, ${skipped.length} skipped, ${deferred.length} deferred).`
-      : 'Recovery: no failed, skipped, or deferred tasks.',
+    recoveredKeys.size > 0 || openRecovery > 0
+      ? `Recovery: ${recoveredKeys.size} reinforced in-run; ${openRecovery} still queued for another pass.`
+      : 'Recovery: no follow-up items from this run.',
   ].join('\n');
 };
 
@@ -3077,13 +3142,91 @@ const computeRouteCompletion = async (database, campaignId, specializationId) =>
             WHEN 'retained' THEN 6
             ELSE 0
           END
-        ) AS active_mastery_rank
+        ) AS active_mastery_rank,
+        nodes.last_touched_at,
+        review_states.current_risk AS review_current_risk,
+        review_states.next_due_at AS review_next_due_at,
+        (
+          SELECT MAX(
+            CASE self_events.mastery_level
+              WHEN 'seen' THEN 1
+              WHEN 'understood' THEN 2
+              WHEN 'remembered' THEN 3
+              WHEN 'applied' THEN 4
+              WHEN 'confirmed' THEN 5
+              WHEN 'retained' THEN 6
+              ELSE 0
+            END
+          )
+          FROM mastery_events self_events
+          WHERE self_events.campaign_id = ?
+            AND self_events.active = 1
+            AND self_events.source_type = 'self_marked'
+            AND (
+              (route_nodes.node_id IS NOT NULL AND self_events.node_id = route_nodes.node_id)
+              OR (
+                route_nodes.node_id IS NULL
+                AND route_nodes.knowledge_node_id IS NOT NULL
+                AND self_events.knowledge_node_id = route_nodes.knowledge_node_id
+              )
+            )
+        ) AS self_marked_mastery_rank,
+        (
+          SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END
+          FROM mastery_events verified_events
+          WHERE verified_events.campaign_id = ?
+            AND verified_events.active = 1
+            AND verified_events.source_type IN ('legacy_node_completion', 'assessment')
+            AND (
+              (route_nodes.node_id IS NOT NULL AND verified_events.node_id = route_nodes.node_id)
+              OR (
+                route_nodes.node_id IS NULL
+                AND route_nodes.knowledge_node_id IS NOT NULL
+                AND verified_events.knowledge_node_id = route_nodes.knowledge_node_id
+              )
+            )
+        ) AS has_verified_mastery,
+        (
+          SELECT MAX(failed_attempts.created_at)
+          FROM assessment_attempts failed_attempts
+          WHERE failed_attempts.campaign_id = ?
+            AND failed_attempts.passed = 0
+            AND route_nodes.node_id IS NOT NULL
+            AND failed_attempts.node_id = route_nodes.node_id
+        ) AS latest_failed_assessment_at,
+        (
+          SELECT MAX(passed_attempts.created_at)
+          FROM assessment_attempts passed_attempts
+          WHERE passed_attempts.campaign_id = ?
+            AND passed_attempts.passed = 1
+            AND route_nodes.node_id IS NOT NULL
+            AND passed_attempts.node_id = route_nodes.node_id
+        ) AS latest_passed_assessment_at,
+        (
+          SELECT MAX(failed_events.occurred_at)
+          FROM daily_session_events failed_events
+          JOIN daily_sessions failed_sessions ON failed_sessions.id = failed_events.session_id
+          WHERE failed_sessions.campaign_id = ?
+            AND failed_events.event_type = 'failed'
+            AND route_nodes.node_id IS NOT NULL
+            AND failed_events.node_id = route_nodes.node_id
+        ) AS latest_failed_run_at,
+        (
+          SELECT MAX(completed_events.occurred_at)
+          FROM daily_session_events completed_events
+          JOIN daily_sessions completed_sessions ON completed_sessions.id = completed_events.session_id
+          WHERE completed_sessions.campaign_id = ?
+            AND completed_events.event_type = 'completed'
+            AND route_nodes.node_id IS NOT NULL
+            AND completed_events.node_id = route_nodes.node_id
+        ) AS latest_completed_run_at
       FROM specialization_route_nodes route_nodes
       LEFT JOIN nodes ON nodes.id = route_nodes.node_id
       LEFT JOIN skills ON skills.id = nodes.skill_id
       LEFT JOIN directions ON directions.id = skills.direction_id
       LEFT JOIN spheres ON spheres.id = directions.sphere_id
       LEFT JOIN knowledge_nodes ON knowledge_nodes.id = route_nodes.knowledge_node_id
+      LEFT JOIN review_states ON review_states.node_id = nodes.id
       LEFT JOIN mastery_events ON mastery_events.campaign_id = ?
         AND mastery_events.active = 1
         AND mastery_events.source_type IN ('legacy_node_completion', 'assessment')
@@ -3099,7 +3242,7 @@ const computeRouteCompletion = async (database, campaignId, specializationId) =>
       GROUP BY route_nodes.id
       ORDER BY COALESCE(route_nodes.route_order, route_nodes.id) ASC, route_nodes.id ASC
     `,
-    [campaignId, specializationId],
+    [campaignId, campaignId, campaignId, campaignId, campaignId, campaignId, campaignId, specializationId],
   );
 
   const items = rows.map((row) => {
@@ -3117,6 +3260,15 @@ const computeRouteCompletion = async (database, campaignId, specializationId) =>
       route_stage: row.route_stage ?? null,
       current_mastery_level: masteryLevelFromRank(activeMasteryRank),
       current_mastery_rank: activeMasteryRank,
+      self_marked_mastery_rank: Number(row.self_marked_mastery_rank ?? 0),
+      has_verified_mastery: Number(row.has_verified_mastery ?? 0),
+      latest_failed_assessment_at: row.latest_failed_assessment_at ?? null,
+      latest_passed_assessment_at: row.latest_passed_assessment_at ?? null,
+      latest_failed_run_at: row.latest_failed_run_at ?? null,
+      latest_completed_run_at: row.latest_completed_run_at ?? null,
+      review_current_risk: row.review_current_risk ?? null,
+      review_next_due_at: row.review_next_due_at ?? null,
+      last_touched_at: row.last_touched_at ?? null,
       is_required: Number(row.is_required ?? 1),
       is_complete: activeMasteryRank >= requiredRank,
       is_actionable: !isArchivedLocalNode,
@@ -3162,6 +3314,62 @@ const buildOpponentProjection = (specialization, routeCompletion) => {
 const routeMasteryGap = (item) =>
   Math.max(0, masteryLevelRank(item.required_mastery_level) + 1 - Number(item.current_mastery_rank ?? 0));
 
+const RECOVERY_STALE_DAYS = 14;
+
+const weakSpotSignalsForRouteItem = (item) => {
+  const signals = [];
+
+  if (
+    isAfterTimestamp(item.latest_failed_assessment_at, item.latest_passed_assessment_at) &&
+    isAfterTimestamp(item.latest_failed_assessment_at, item.latest_completed_run_at)
+  ) {
+    signals.push({
+      source: 'failed_assessment',
+      label: 'Assessment needs another pass',
+      priority: 60,
+    });
+  }
+
+  if (isAfterTimestamp(item.latest_failed_run_at, item.latest_completed_run_at)) {
+    signals.push({
+      source: 'failed_attempt',
+      label: 'Daily Run retry is ready',
+      priority: 55,
+    });
+  }
+
+  if (
+    item.review_current_risk === 'high' ||
+    item.review_current_risk === 'medium' ||
+    isPastDue(item.review_next_due_at) ||
+    (item.last_touched_at != null && isOlderThanDays(item.last_touched_at, RECOVERY_STALE_DAYS))
+  ) {
+    signals.push({
+      source: 'stale',
+      label: 'Refresh to keep it available',
+      priority: 45,
+    });
+  }
+
+  if (Number(item.self_marked_mastery_rank ?? 0) > 0 && Number(item.has_verified_mastery ?? 0) !== 1) {
+    signals.push({
+      source: 'self_marked_unverified',
+      label: 'Turn self-marked progress into proof',
+      priority: 50,
+    });
+  }
+
+  if (routeMasteryGap(item) > 0) {
+    signals.push({
+      source: 'low_mastery',
+      label: 'Reinforce the route foundation',
+      priority: 20,
+    });
+  }
+
+  return signals.sort((left, right) => right.priority - left.priority);
+};
+
 const buildRoutePlannerProjection = (routeCompletion) => {
   if (!routeCompletion) {
     return null;
@@ -3182,9 +3390,27 @@ const buildRoutePlannerProjection = (routeCompletion) => {
     : focusItem
       ? routeCompletion.items.filter((item) => item.route_stage == null && item.id === focusItem.id)
       : [];
-  const weakSpots = incompleteRequired
+  const recoveryCandidates = routeCompletion.items.filter(
+    (item) => item.is_required === 1 && item.is_actionable && item.id !== focusItem?.id,
+  );
+  const weakSpots = recoveryCandidates
     .filter((item) => item.id !== focusItem?.id)
+    .map((item) => {
+      const signals = weakSpotSignalsForRouteItem(item);
+      return {
+        ...item,
+        weak_spot_sources: signals.map((signal) => signal.source),
+        weak_spot_reason: signals[0]?.source ?? 'low_mastery',
+        weak_spot_reason_label: signals[0]?.label ?? 'Reinforce the route foundation',
+        weak_spot_priority: signals[0]?.priority ?? 0,
+      };
+    })
+    .filter((item) => item.weak_spot_sources.length > 0)
     .sort((left, right) => {
+      const priorityDelta = Number(right.weak_spot_priority ?? 0) - Number(left.weak_spot_priority ?? 0);
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
       const gapDelta = routeMasteryGap(right) - routeMasteryGap(left);
       if (gapDelta !== 0) {
         return gapDelta;
@@ -4897,6 +5123,13 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       last_touched_at: timestamp,
       updated_at: timestamp,
     });
+    await reviewStateStore.save({
+      node_id: action.node_id,
+      last_reviewed_at: timestamp,
+      next_due_at: addDaysTimestamp(timestamp, 7),
+      current_risk: 'low',
+      updated_at: timestamp,
+    });
 
     await dailySessionStore.addSessionEvent({
       session_id: session.id,
@@ -5047,7 +5280,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       event_type: 'failed',
       node_id: action.node_id,
       action_id: action.id,
-      note: note?.trim() || 'Failed in this Daily Run; keep it available for recovery.',
+      note: note?.trim() || 'Marked for another pass in this Daily Run.',
       occurred_at: timestamp,
     });
 
@@ -5065,9 +5298,53 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     await nodeNoteStore.createErrorNote({
       node_id: action.node_id,
       action_id: action.id,
-      note_kind: 'error',
+      note_kind: 'follow_up',
       note: event.note,
       source_event_id: event.id,
+    });
+
+    return refreshOutcomeResult(this, resolvedCampaignId, action.node_id, action.id);
+  },
+
+  async retryActionInTodaySession(campaignId, actionId, note = '') {
+    ({ campaignId, actionId, note } = normalizeActionOutcomeArgs(arguments, campaignId, actionId, note));
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
+    const action = await loadActionRecord(database, actionId, resolvedCampaignId);
+
+    if (!action) {
+      return null;
+    }
+
+    const session = await ensureActiveSession(this, resolvedCampaignId, actionId);
+    const timestamp = currentTimestamp();
+
+    await hierarchyStore.updateNodeAction(actionId, {
+      status: 'doing',
+      completed_at: null,
+      updated_at: timestamp,
+    });
+    await hierarchyStore.updateNode(action.node_id, {
+      status: 'active',
+      last_touched_at: timestamp,
+      updated_at: timestamp,
+    });
+    await syncNodeCompletionXpGrant(database, action.node_id, 'active', timestamp);
+
+    await dailySessionStore.addSessionEvent({
+      session_id: session.id,
+      event_type: 'selected',
+      node_id: action.node_id,
+      action_id: action.id,
+      note: stringifyDailyRunTaskNote({
+        source: 'recovery_retry',
+        title: action.title,
+        subtitle: note?.trim() || 'Another pass in the same Daily Run.',
+        nodeId: action.node_id,
+        actionId: action.id,
+        order: (session.tasks?.length ?? session.events?.length ?? 0) + 1,
+      }),
+      occurred_at: timestamp,
     });
 
     return refreshOutcomeResult(this, resolvedCampaignId, action.node_id, action.id);

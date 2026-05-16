@@ -338,6 +338,151 @@ test('forked CS bachelor Daily Run selects route weak due tasks and records outc
   );
 });
 
+test('forked CS bachelor weak spots combine low mastery stale failed and self-marked recovery inputs', async (t) => {
+  const { database, campaignStore, nowService } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const [template] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor' LIMIT 1");
+  const personal = await campaignStore.forkTemplateCampaign(template.id, { name: 'CS Weak Spot Fixture' });
+
+  const initialDashboard = await nowService.getDashboard(personal.id);
+  assert.equal(initialDashboard.today.planner.weakSpots.some((item) => item.weak_spot_sources.includes('low_mastery')), true);
+
+  const routeItems = initialDashboard.today.route.items.filter((item) => item.node_id != null);
+  const failedItem = routeItems[2];
+  const staleItem = routeItems[3];
+  const selfMarkedItem = routeItems[4];
+
+  await nowService.submitAssessmentAttempt(personal.id, {
+    node_id: failedItem.node_id,
+    task_id: `node:${failedItem.node_id}:assessment`,
+    check_method: 'strict',
+    target_mastery_level: 'seen',
+    passed: false,
+    feedback_summary: 'Try the proof outline again.',
+    idempotency_key: `weak-failed:${personal.id}:${failedItem.node_id}`,
+  });
+  await database.execute(
+    `
+      INSERT INTO review_states (node_id, review_profile, next_due_at, last_reviewed_at, current_risk, updated_at)
+      VALUES (?, 'learning', '2026-01-01T00:00:00.000Z', '2025-12-20T00:00:00.000Z', 'high', '2026-01-01T00:00:00.000Z')
+    `,
+    [staleItem.node_id],
+  );
+  await nowService.markSelfMastery(personal.id, selfMarkedItem.node_id, 'seen');
+
+  const dashboard = await nowService.getDashboard(personal.id);
+  const weakSources = new Set(dashboard.today.planner.weakSpots.flatMap((item) => item.weak_spot_sources));
+  assert.equal(weakSources.has('failed_assessment'), true);
+  assert.equal(weakSources.has('stale'), true);
+  assert.equal(weakSources.has('self_marked_unverified'), true);
+  assert.equal(dashboard.today.planner.weakSpots.every((item) => /error/i.test(item.weak_spot_reason_label) === false), true);
+
+  const run = await nowService.startTodaySessionFromPrimaryRecommendation(personal.id);
+  assert.equal(run.tasks.some((task) => task.source === 'weak_spot'), true);
+
+  const failedRecoveryTask = run.tasks.find((task) => task.source === 'weak_spot' && task.nodeId === failedItem.node_id);
+  assert.ok(failedRecoveryTask);
+  await nowService.completeActionInTodaySession(personal.id, failedRecoveryTask.actionId);
+  const afterRecovery = await nowService.getDashboard(personal.id);
+  const recoveredFailedAssessment = afterRecovery.today.planner.weakSpots.find((item) => item.node_id === failedItem.node_id);
+  assert.notEqual(recoveredFailedAssessment?.weak_spot_sources.includes('failed_assessment'), true);
+});
+
+test('Daily Run retry adds a visible recovery attempt and completion removes the route weak spot', async (t) => {
+  const { database, campaignStore, nowService } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const [template] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor' LIMIT 1");
+  const personal = await campaignStore.forkTemplateCampaign(template.id, { name: 'CS Retry Recovery Fixture' });
+
+  const run = await nowService.startTodaySessionFromPrimaryRecommendation(personal.id);
+  const recoveryTask = run.tasks.find((task) => task.source === 'weak_spot') ?? run.tasks[1];
+
+  await nowService.failActionInTodaySession(personal.id, recoveryTask.actionId, 'Needs another pass.');
+  const firstRetry = await nowService.retryActionInTodaySession(personal.id, recoveryTask.actionId, 'Repeat immediately.');
+  assert.equal(
+    firstRetry.dashboard.todaySession.tasks.filter((task) => task.actionId === recoveryTask.actionId).length >= 2,
+    true,
+  );
+  assert.equal(
+    firstRetry.dashboard.todaySession.tasks.some((task) => task.source === 'recovery_retry' && task.outcome === 'pending'),
+    true,
+  );
+
+  await nowService.failActionInTodaySession(personal.id, recoveryTask.actionId, 'Still needs reinforcement.');
+  const secondRetry = await nowService.retryActionInTodaySession(personal.id, recoveryTask.actionId, 'One more pass.');
+  assert.equal(
+    secondRetry.dashboard.todaySession.tasks.filter((task) => task.actionId === recoveryTask.actionId).length >= 3,
+    true,
+  );
+  assert.equal(
+    secondRetry.dashboard.todaySession.tasks.some((task) => task.source === 'recovery_retry' && task.outcome === 'pending'),
+    true,
+  );
+
+  await nowService.completeActionInTodaySession(personal.id, recoveryTask.actionId);
+  const afterCompletion = await nowService.getDashboard(personal.id);
+  const attemptsForAction = afterCompletion.todaySession.tasks.filter((task) => task.actionId === recoveryTask.actionId);
+  assert.deepEqual(
+    attemptsForAction.map((task) => task.outcome),
+    ['failed', 'failed', 'completed'],
+  );
+
+  const finished = await nowService.finishDailyRun(personal.id);
+  assert.match(finished.summary_note, /Recovery: 1 reinforced in-run; 0 still queued/);
+  assert.doesNotMatch(finished.summary_note, /Recovery: 2 reinforced/);
+
+  const refreshed = await nowService.getDashboard(personal.id);
+  const sameWeakSpot = refreshed.today.planner.weakSpots.find((item) => item.node_id === recoveryTask.nodeId);
+  assert.equal(sameWeakSpot, undefined);
+});
+
+test('completed CS bachelor route nodes can return as stale recovery tasks', async (t) => {
+  const { database, campaignStore, nowService } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const [template] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor' LIMIT 1");
+  const personal = await campaignStore.forkTemplateCampaign(template.id, { name: 'CS Stale Complete Recovery Fixture' });
+
+  const firstRun = await nowService.startTodaySessionFromPrimaryRecommendation(personal.id);
+  const completedTask = firstRun.tasks[0];
+  await nowService.completeActionInTodaySession(personal.id, completedTask.actionId);
+  await database.execute(
+    `
+      INSERT INTO review_states (node_id, review_profile, next_due_at, last_reviewed_at, current_risk, updated_at)
+      VALUES (?, 'learning', '2026-01-01T00:00:00.000Z', '2025-12-20T00:00:00.000Z', 'high', '2026-01-01T00:00:00.000Z')
+      ON CONFLICT(node_id) DO UPDATE SET
+        next_due_at = excluded.next_due_at,
+        last_reviewed_at = excluded.last_reviewed_at,
+        current_risk = excluded.current_risk,
+        updated_at = excluded.updated_at
+    `,
+    [completedTask.nodeId],
+  );
+  await nowService.abandonDailyRun(personal.id);
+
+  const dashboard = await nowService.getDashboard(personal.id);
+  const staleCompleted = dashboard.today.planner.weakSpots.find((item) => item.node_id === completedTask.nodeId);
+  assert.equal(staleCompleted?.is_complete, true);
+  assert.equal(staleCompleted?.weak_spot_sources.includes('stale'), true);
+
+  const recoveryRun = await nowService.startTodaySessionFromPrimaryRecommendation(personal.id);
+  const staleRecoveryTask = recoveryRun.tasks.find((task) => task.source === 'weak_spot' && task.nodeId === completedTask.nodeId);
+  assert.ok(staleRecoveryTask);
+
+  await nowService.completeActionInTodaySession(personal.id, staleRecoveryTask.actionId);
+  const afterRecovery = await nowService.getDashboard(personal.id);
+  const staleAfterCompletion = afterRecovery.today.planner.weakSpots.find((item) => item.node_id === completedTask.nodeId);
+  assert.equal(staleAfterCompletion, undefined);
+
+  const [reviewState] = await database.select('SELECT * FROM review_states WHERE node_id = ? LIMIT 1', [
+    completedTask.nodeId,
+  ]);
+  assert.equal(reviewState.current_risk, 'low');
+  assert.equal(Date.parse(reviewState.next_due_at) > Date.parse(reviewState.last_reviewed_at), true);
+});
+
 test('forked CS bachelor Daily Run finish summary counts reactivated XP and mastery effects', async (t) => {
   const { database, campaignStore, nowService } = await setupCampaignService();
   t.after(() => database.close());

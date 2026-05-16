@@ -97,6 +97,7 @@ const renderReasons = (reasons: string[]) =>
 const taskIconByState = {
   current: Target,
   next: ArrowRight,
+  recovery: RefreshCw,
   locked: Lock,
   future: MapIcon,
   complete: CheckCircle2,
@@ -122,6 +123,7 @@ interface NowViewProps {
   onStartDailyRun: () => void;
   onCompleteDailyRunTask: (actionId: number) => void;
   onFailDailyRunTask: (actionId: number) => void;
+  onRetryDailyRunTask: (actionId: number) => void;
   onSkipDailyRunTask: (actionId: number) => void;
   onDeferDailyRunTask: (actionId: number) => void;
   onFinishDailyRun: () => void;
@@ -148,6 +150,7 @@ export const NowView = ({
   onStartDailyRun,
   onCompleteDailyRunTask,
   onFailDailyRunTask,
+  onRetryDailyRunTask,
   onSkipDailyRunTask,
   onDeferDailyRunTask,
   onFinishDailyRun,
@@ -196,11 +199,12 @@ export const NowView = ({
   const dailyTaskCards = buildDailyTaskCards({
     focusItem: plannerFocusItem,
     nextItems: plannerNextItems,
+    weakSpots: plannerWeakSpots,
     routeItems,
     primaryRecommendation: primaryCandidate,
     queue,
   });
-  const activeDailyTaskCount = dailyTaskCards.filter((task) => task.state === 'current' || task.state === 'next').length;
+  const activeDailyTaskCount = dailyTaskCards.filter((task) => ['current', 'next', 'recovery'].includes(task.state)).length;
   const miniMapPreview = buildMiniMapPreview({
     focusItem: plannerFocusItem,
     nextItems: plannerNextItems,
@@ -326,6 +330,32 @@ export const NowView = ({
     }
 
     onDeferDailyRunTask(task.actionId);
+  };
+
+  const handleRetryRunTask = (
+    task: NonNullable<NonNullable<NowDashboardSnapshot['todaySession']>['tasks']>[number],
+  ) => {
+    if (isDailyRunPending || task.actionId == null || !isDailyRunActive || task.outcome === 'pending') {
+      return;
+    }
+
+    onRetryDailyRunTask(task.actionId);
+  };
+
+  const runOutcomeLabel = (outcome: string) => {
+    if (outcome === 'completed') {
+      return 'reinforced';
+    }
+    if (outcome === 'failed') {
+      return 'retry ready';
+    }
+    if (outcome === 'skipped') {
+      return 'kept for later';
+    }
+    if (outcome === 'deferred') {
+      return 'queued';
+    }
+    return outcome;
   };
 
   const isPrimaryActionDisabled =
@@ -459,7 +489,7 @@ export const NowView = ({
                               <CheckCircle2 size={13} /> Complete
                             </PixelButton>
                             <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'failed')} disabled={isDailyRunPending}>
-                              <AlertTriangle size={13} /> Fail
+                              <RefreshCw size={13} /> Another pass
                             </PixelButton>
                             <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'skipped')} disabled={isDailyRunPending}>
                               <ArrowRight size={13} /> Skip
@@ -469,9 +499,16 @@ export const NowView = ({
                             </PixelButton>
                           </div>
                         ) : (
-                          <span className={`today-run-task__outcome today-run-task__outcome--${task.outcome}`}>
-                            {task.outcome}
-                          </span>
+                          <div className="today-run-task__resolved">
+                            <span className={`today-run-task__outcome today-run-task__outcome--${task.outcome}`}>
+                              {runOutcomeLabel(task.outcome)}
+                            </span>
+                            {isDailyRunActive && task.actionId != null ? (
+                              <PixelButton tone="ghost" onClick={() => handleRetryRunTask(task)} disabled={isDailyRunPending}>
+                                <RefreshCw size={13} /> {task.outcome === 'completed' ? 'Repeat' : 'Retry'}
+                              </PixelButton>
+                            ) : null}
+                          </div>
                         )}
                       </div>
                     ))}
@@ -616,10 +653,13 @@ export const NowView = ({
             <PixelSurface frame="warning" padding="md" className="today-weak-panel">
               <div className="today-section-heading">
                 <span className="today-section-icon today-section-icon--warning">
-                  <AlertTriangle size={16} />
+                  <RefreshCw size={16} />
                 </span>
                 <PixelText as="h3" size="sm" uppercase>
-                  Слабые места
+                  Recovery
+                </PixelText>
+                <PixelText as="span" size="xs" color="textMuted" uppercase>
+                  practice opportunities
                 </PixelText>
               </div>
 
@@ -633,11 +673,14 @@ export const NowView = ({
                         className="today-weak-row"
                       >
                         <span className="today-weak-row__icon">
-                          <AlertTriangle size={14} />
+                          <RefreshCw size={14} />
                         </span>
                         <span className="min-w-0">
                           <PixelText as="span" readable size="sm" className="today-weak-row__title">
                             {item.title}
+                          </PixelText>
+                          <PixelText as="span" size="xs" color="textMuted">
+                            {item.weak_spot_reason_label ?? 'Reinforce the route foundation'}
                           </PixelText>
                           <PixelText as="span" size="xs" color="textMuted">
                             удержание {item.current_mastery_rank}/6
@@ -659,7 +702,7 @@ export const NowView = ({
                         className="today-weak-row"
                       >
                         <span className="today-weak-row__icon">
-                          <AlertTriangle size={14} />
+                          <RefreshCw size={14} />
                         </span>
                         <span className="min-w-0">
                           <PixelText as="span" readable size="sm" className="today-weak-row__title">
@@ -677,7 +720,7 @@ export const NowView = ({
                 {plannerWeakSpots.length === 0 && weakeningItems.length === 0 ? (
                   <div className="today-weak-empty">
                     <PixelText as="p" readable size="sm" color="textMuted">
-                      Явных провалов нет.
+                      Nothing needs extra reinforcement right now.
                     </PixelText>
                   </div>
                 ) : null}
@@ -749,7 +792,7 @@ export const NowView = ({
                   {miniMapPreview.routeTitle ?? 'Маршрут'}
                 </span>
                 <span className="today-mini-map__chip today-mini-map__chip--weak">
-                  {miniMapPreview.weakTitle ? `Слабое: ${miniMapPreview.weakTitle}` : 'Слабых мест нет'}
+                  {miniMapPreview.weakTitle ? `Recovery: ${miniMapPreview.weakTitle}` : 'No recovery item'}
                 </span>
               </div>
 

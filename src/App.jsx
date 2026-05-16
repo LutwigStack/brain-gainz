@@ -751,8 +751,14 @@ export default function App() {
   };
 
   const handleFailDailyRunTask = async (actionId) => {
-    await runDailyRunMutation('Failed to record Daily Run failure', () =>
-      db.failNowActionInTodaySession(actionId, 'Failed during Daily Run.', selectedCampaignId),
+    await runDailyRunMutation('Failed to record Daily Run follow-up', () =>
+      db.failNowActionInTodaySession(actionId, 'Needs another pass in this Daily Run.', selectedCampaignId),
+    );
+  };
+
+  const handleRetryDailyRunTask = async (actionId) => {
+    await runDailyRunMutation('Failed to retry Daily Run task', () =>
+      db.retryNowActionInTodaySession(actionId, 'Retry from Daily Run recovery controls.', selectedCampaignId),
     );
   };
 
@@ -2169,6 +2175,7 @@ export default function App() {
             onStartDailyRun={handleStartDailyRun}
             onCompleteDailyRunTask={handleCompleteDailyRunTask}
             onFailDailyRunTask={handleFailDailyRunTask}
+            onRetryDailyRunTask={handleRetryDailyRunTask}
             onSkipDailyRunTask={handleSkipDailyRunTask}
             onDeferDailyRunTask={handleDeferDailyRunTask}
             onFinishDailyRun={handleFinishDailyRun}
