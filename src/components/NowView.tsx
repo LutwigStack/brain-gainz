@@ -1,4 +1,5 @@
 import {
+  Activity,
   AlertTriangle,
   ArrowRight,
   BookOpen,
@@ -18,8 +19,9 @@ import {
   Trophy,
 } from 'lucide-react';
 
-import { PixelButton, PixelMeter, PixelStack, PixelSurface, PixelText } from './pixel';
+import { PixelButton, PixelStack, PixelSurface, PixelText } from './pixel';
 import {
+  buildTodayRightRail,
   buildDailyTaskCards,
   buildMiniMapPreview,
   clampPercent,
@@ -143,15 +145,10 @@ export const NowView = ({
   const plannerFocusItem = routePlanner?.focusItem ?? routeProgress?.nextItem ?? null;
   const plannerCurrentStage = routePlanner?.currentStage ?? null;
   const plannerNextItems = routePlanner?.nextItems ?? [];
-  const plannerStageItems = routePlanner?.currentStageItems ?? [];
   const plannerWeakSpots = routePlanner?.weakSpots ?? [];
-  const plannerReadyToVerify = routePlanner?.readyToVerify ?? [];
   const routeItems = routeProgress?.items ?? [];
-  const city = today?.city ?? null;
   const opponent = today?.opponent ?? null;
-  const race = today?.race ?? null;
-  const verifiedMasteryCount = today?.mastery.verifiedNodeCount ?? 0;
-  const selfMarkedOnlyCount = today?.mastery.selfMarkedOnlyNodeCount ?? 0;
+  const todayRail = buildTodayRightRail({ today, todaySession });
   const routeCompletionPercent = clampPercent(routeProgress?.completionPercent ?? 0);
   const opponentPressure = clampPercent(opponent?.pressure ?? 0);
   const opponentIsAhead = opponentPressure >= routeCompletionPercent && opponentPressure > 0;
@@ -222,7 +219,6 @@ export const NowView = ({
     : '';
   const routeRequiredRank = masteryRank(plannerFocusItem?.required_mastery_level);
   const routeCurrentRank = plannerFocusItem?.current_mastery_rank ?? 0;
-  const currentStageDoneCount = plannerStageItems.filter((item) => item.is_complete).length;
   const hasNoRoute = todayState.key === 'no_route' || todayState.key === 'free_mode' || todayState.key === 'truly_empty';
 
   const handlePrimaryAction = () => {
@@ -670,73 +666,140 @@ export const NowView = ({
           ) : null}
         </main>
 
-        <aside className="today-meta-rail">
-          <PixelSurface frame="panel" padding="md" className="today-rail-card today-rail-card--race">
-            <div className="today-rail-race-portrait" style={{ borderColor: race?.color ?? 'var(--pixel-accent)' }}>
-              <span>{race?.emblem ?? '◆'}</span>
+        <aside className="today-meta-rail" aria-label="Статус гонки, города и соперника">
+          <PixelSurface
+            frame="panel"
+            padding="md"
+            className={`today-rail-card today-rail-card--race ${todayRail.race.hasIdentity ? '' : 'today-rail-card--empty'}`}
+            style={{ borderColor: todayRail.race.color }}
+          >
+            <div className="today-rail-card-heading">
+              <Trophy size={16} />
+              <PixelText as="h3" size="sm" uppercase>
+                Ваша раса
+              </PixelText>
             </div>
-            <PixelText as="p" size="xs" color="textMuted" uppercase>
-              Ваша раса
-            </PixelText>
-            <PixelText as="h3" readable size="lg" className="today-rail-title">
-              {race?.title ?? 'Свободный режим'}
-            </PixelText>
+            <div className="today-rail-race-portrait" style={{ borderColor: todayRail.race.color }}>
+              <span style={{ color: todayRail.race.color }}>{todayRail.race.emblem}</span>
+              <i aria-hidden="true" />
+            </div>
+            <div className="today-rail-identity">
+              <PixelText as="h3" readable size="lg" className="today-rail-title">
+                {todayRail.race.title}
+              </PixelText>
+              <PixelText as="p" size="xs" color="textMuted">
+                {todayRail.race.stateLabel}
+              </PixelText>
+            </div>
+            <div className="today-rail-kpi-grid">
+              <span>
+                <strong>{todayRail.race.xpLabel}</strong>
+                <small>очки знаний</small>
+              </span>
+              <span>
+                <strong>{todayRail.race.streakLabel}</strong>
+                <small>серия</small>
+              </span>
+              <span className="today-rail-kpi-grid__wide">
+                <strong>{todayRail.race.rankLabel}</strong>
+                <small>ранг</small>
+              </span>
+            </div>
           </PixelSurface>
 
-          <PixelSurface frame="panel" padding="md" className="today-rail-card">
+          <PixelSurface
+            frame="panel"
+            padding="md"
+            className={`today-rail-card today-rail-card--city ${todayRail.city.hasDistricts ? '' : 'today-rail-card--empty'}`}
+          >
             <div className="today-rail-card-heading">
               <Flag size={16} />
               <PixelText as="h3" size="sm" uppercase>
                 Цивилизация
               </PixelText>
-            </div>
-            <div className="today-city-line">
-              <PixelText as="span" size="xs" color="textMuted" uppercase>
-                Уровень города
-              </PixelText>
-              <PixelText as="strong" readable size="lg" color="info">
-                {city?.level ?? 1}
+              <PixelText as="span" size="xs" color="info" uppercase>
+                {todayRail.city.levelLabel}
               </PixelText>
             </div>
-            <PixelMeter value={city?.totalXp ?? 0} max={Math.max(city?.totalXp ?? 0, 1000)} tone="info" showValue={false} />
+            <div className="today-city-visual" aria-hidden="true">
+              {todayRail.city.hasDistricts ? (
+                todayRail.city.districts.slice(0, 6).map((district, index) => (
+                  <span
+                    key={district.id}
+                    className={`today-city-tower today-city-tower--${index + 1}`}
+                    style={{ backgroundColor: district.color, height: `${28 + district.level * 8}px` }}
+                    title={district.title}
+                  >
+                    <i>{district.emblem}</i>
+                  </span>
+                ))
+              ) : (
+                <span className="today-city-empty-silhouette">
+                  <Flag size={26} />
+                </span>
+              )}
+            </div>
+            <div className="today-rail-split-line">
+              <span>
+                <small>{todayRail.city.hasDistricts ? 'главный район' : 'состояние'}</small>
+                <strong>{todayRail.city.title}</strong>
+              </span>
+              <span>
+                <small>XP</small>
+                <strong>{todayRail.city.xpLabel}</strong>
+              </span>
+            </div>
+            <div className="today-rail-meter" aria-label={`Прогресс города: ${todayRail.city.progressLabel}`}>
+              <span style={{ width: `${todayRail.city.progressPercent}%` }} />
+            </div>
             <div className="today-rail-stats">
-              <span>XP {city?.totalXp ?? 0}</span>
-              <span>{verifiedMasteryCount} проверено</span>
-              <span>{selfMarkedOnlyCount} сам отметил</span>
+              <span>{todayRail.city.progressLabel}</span>
+              <span>{todayRail.city.districts.length} районов</span>
+              <span>{todayRail.city.featuredDistrict ? `${todayRail.city.featuredDistrict.level} ур. района` : 'рост начнется с XP'}</span>
             </div>
           </PixelSurface>
 
-          <PixelSurface frame="panel" padding="md" className="today-rail-card">
+          <PixelSurface
+            frame="panel"
+            padding="md"
+            className={`today-rail-card today-rail-card--opponent ${todayRail.opponent.hasOpponent ? '' : 'today-rail-card--empty'}`}
+          >
             <div className="today-rail-card-heading today-rail-card-heading--danger">
               <Swords size={16} />
               <PixelText as="h3" size="sm" uppercase>
                 ИИ-соперник
               </PixelText>
             </div>
-            <div className="today-opponent-row">
+            <div className="today-opponent-banner">
               <div className="today-opponent-avatar" aria-hidden="true">
-                <Swords size={22} />
+                <Swords size={24} />
               </div>
               <div className="min-w-0">
                 <PixelText as="p" readable size="sm" className="today-rail-title">
-                  Corvus AI
+                  {todayRail.opponent.title}
                 </PixelText>
                 <PixelText as="p" size="xs" color="textMuted">
-                  {opponent ? `${opponent.daysElapsed} дней в кампании` : 'Гонка не активна'}
+                  {todayRail.opponent.subtitle}
                 </PixelText>
               </div>
             </div>
-            <PixelMeter
-              label="Прогресс по кампании"
-              value={opponentPressure}
-              max={100}
-              tone={opponentIsAhead ? 'danger' : 'info'}
-              showValue
-            />
+            <div className="today-opponent-race-track" aria-label={`Гонка: ${todayRail.opponent.campaignProgressLabel}`}>
+              <span className="today-opponent-race-track__user" style={{ width: `${todayRail.opponent.userProgressPercent}%` }} />
+              <span className="today-opponent-race-track__ai" style={{ width: `${todayRail.opponent.opponentProgressPercent}%` }} />
+            </div>
+            <div className="today-rail-split-line">
+              <span>
+                <small>кампания</small>
+                <strong>{todayRail.opponent.campaignProgressLabel}</strong>
+              </span>
+              <span>
+                <small>статус</small>
+                <strong>{todayRail.opponent.stateLabel}</strong>
+              </span>
+            </div>
             <div className="today-rail-stats">
-              <span>Вы {routeCompletionPercent}%</span>
-              <span>ИИ {opponentPressure}%</span>
-              <span>{opponent ? `${opponent.score} счет` : 'без счета'}</span>
+              <span>{todayRail.opponent.scoreLabel}</span>
+              <span>{todayRail.opponent.hasOpponent ? 'давление маршрута' : 'пустой слот'}</span>
             </div>
           </PixelSurface>
 
@@ -745,15 +808,15 @@ export const NowView = ({
               Статус маршрута
             </PixelText>
             <PixelText as="p" readable size="sm" className="today-rail-title">
-              {plannerCurrentStage ?? (routeProgress?.isComplete ? 'Маршрут закрыт' : 'Текущий фронт')}
+              {todayRail.route.title}
             </PixelText>
             <div className="today-route-meta">
-              <span>{routeProgress?.routeNodeCount ?? todayState.content.routeNodeCount} узлов</span>
+              <span>{todayRail.route.nodeLabel}</span>
+              <span>{todayRail.route.stageLabel}</span>
+              <span>{todayRail.route.verifyLabel}</span>
               <span>
-                {plannerStageItems.length > 0 ? `${currentStageDoneCount}/${plannerStageItems.length} этап` : 'этап не выбран'}
+                <Activity size={13} /> {todayRail.route.sessionLabel}
               </span>
-              <span>{plannerReadyToVerify.length} к проверке</span>
-              <span>{todaySession ? statusLabel(todaySession.status) : 'сессия не начата'}</span>
             </div>
             {hasNoRoute ? (
               <PixelButton tone="ghost" onClick={onOpenRouteMap} fullWidth>

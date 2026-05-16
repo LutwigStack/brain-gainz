@@ -2631,6 +2631,51 @@ const buildCityProjection = async (database, campaignId) => {
   };
 };
 
+const dateKeyFromUtc = (date) => [
+  date.getUTCFullYear(),
+  padDatePart(date.getUTCMonth() + 1),
+  padDatePart(date.getUTCDate()),
+].join('-');
+
+const subtractUtcDays = (dateKey, dayCount) => {
+  const timestamp = Date.parse(`${dateKey}T00:00:00.000Z`);
+  if (!Number.isFinite(timestamp)) {
+    return dateKey;
+  }
+
+  return dateKeyFromUtc(new Date(timestamp - dayCount * 24 * 60 * 60 * 1000));
+};
+
+const buildActivityProjection = async (database, campaignId) => {
+  const rows = await database.select(
+    `
+      SELECT session_date
+      FROM daily_sessions
+      WHERE campaign_id = ?
+        AND status IN ('active', 'completed')
+      GROUP BY session_date
+      ORDER BY session_date DESC
+    `,
+    [campaignId],
+  );
+  const sessionDates = rows.map((row) => row.session_date).filter(Boolean);
+  const sessionDateSet = new Set(sessionDates);
+  const today = todayDate();
+  let cursor = sessionDateSet.has(today) ? today : subtractUtcDays(today, 1);
+  let streakDays = 0;
+
+  while (sessionDateSet.has(cursor)) {
+    streakDays += 1;
+    cursor = subtractUtcDays(cursor, 1);
+  }
+
+  return {
+    streakDays,
+    lastSessionDate: sessionDates[0] ?? null,
+    activeSessionDayCount: sessionDates.length,
+  };
+};
+
 const computeRouteCompletion = async (database, campaignId, specializationId) => {
   await assertSpecialization(database, campaignId, specializationId);
   const rows = await database.select(
@@ -2920,11 +2965,12 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
 const buildTodayGameSnapshot = async (database, campaignId, career, metrics, primaryRecommendation) => {
   const currentSpecialization = career.currentSpecialization ?? null;
   const hasActiveSpecialization = currentSpecialization?.status === 'active';
-  const [routeCompletion, city] = await Promise.all([
+  const [routeCompletion, city, activity] = await Promise.all([
     currentSpecialization
       ? computeRouteCompletion(database, campaignId, currentSpecialization.id)
       : Promise.resolve(null),
     buildCityProjection(database, campaignId),
+    buildActivityProjection(database, campaignId),
   ]);
   const route = routeCompletion
     ? {
@@ -2951,6 +2997,7 @@ const buildTodayGameSnapshot = async (database, campaignId, career, metrics, pri
     planner,
     state: buildTodayStateProjection({ career, metrics, city, route, planner, primaryRecommendation }),
     city,
+    activity,
     opponent: buildOpponentProjection(currentSpecialization, routeCompletion),
   };
 };

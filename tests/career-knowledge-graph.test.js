@@ -58,6 +58,38 @@ const createSiblingNode = async (nowService, campaignId, sourceNode, title = 'Ro
     .find((node) => node.title === title);
 };
 
+const padDatePart = (value) => String(value).padStart(2, '0');
+
+const localDateKeyDaysAgo = (daysAgo) => {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() - daysAgo);
+
+  return [date.getFullYear(), padDatePart(date.getMonth() + 1), padDatePart(date.getDate())].join('-');
+};
+
+const insertDailySession = async (database, campaignId, sessionDate, status = 'completed') => {
+  const timestamp = `${sessionDate}T09:00:00.000Z`;
+  await database.execute(
+    `
+      INSERT INTO daily_sessions (
+        campaign_id,
+        session_date,
+        status,
+        primary_node_id,
+        primary_action_id,
+        started_at,
+        ended_at,
+        summary_note,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, NULL, NULL, ?, ?, NULL, ?, ?)
+    `,
+    [campaignId, sessionDate, status, timestamp, status === 'completed' ? timestamp : null, timestamp, timestamp],
+  );
+};
+
 test('legacy completed nodes are backfilled into confirmed mastery on migration rerun', async (t) => {
   const { database, campaignStore, nowService } = await setupCareerService();
   t.after(() => database.close());
@@ -583,6 +615,33 @@ test('today projection exposes route, race, city, and specialization-scoped oppo
   const continuedDashboard = await nowService.getDashboard(campaign.id);
   assert.equal(continuedDashboard.today.opponent.specialization_id, next.id);
   assert.equal(continuedDashboard.today.opponent.daysElapsed, 0);
+});
+
+test('today activity streak uses campaign sessions without a sixty-day cap', async (t) => {
+  const { database, campaignStore, nowService } = await setupCareerService();
+  t.after(() => database.close());
+
+  const todayActive = await campaignStore.createUserCampaign({ name: 'Today Active Streak' });
+  await insertDailySession(database, todayActive.id, localDateKeyDaysAgo(0), 'active');
+  assert.equal((await nowService.getDashboard(todayActive.id)).today.activity.streakDays, 1);
+
+  const yesterdayActive = await campaignStore.createUserCampaign({ name: 'Yesterday Active Streak' });
+  await insertDailySession(database, yesterdayActive.id, localDateKeyDaysAgo(1), 'completed');
+  await insertDailySession(database, yesterdayActive.id, localDateKeyDaysAgo(2), 'completed');
+  assert.equal((await nowService.getDashboard(yesterdayActive.id)).today.activity.streakDays, 2);
+
+  const gapCampaign = await campaignStore.createUserCampaign({ name: 'Gap Streak' });
+  await insertDailySession(database, gapCampaign.id, localDateKeyDaysAgo(0), 'completed');
+  await insertDailySession(database, gapCampaign.id, localDateKeyDaysAgo(2), 'completed');
+  assert.equal((await nowService.getDashboard(gapCampaign.id)).today.activity.streakDays, 1);
+
+  const longCampaign = await campaignStore.createUserCampaign({ name: 'Long Streak' });
+  for (let day = 0; day < 61; day += 1) {
+    await insertDailySession(database, longCampaign.id, localDateKeyDaysAgo(day), 'completed');
+  }
+  const longDashboard = await nowService.getDashboard(longCampaign.id);
+  assert.equal(longDashboard.today.activity.streakDays, 61);
+  assert.equal(longDashboard.today.activity.activeSessionDayCount, 61);
 });
 
 test('today planner follows route order and exposes current stage plus next route items', async (t) => {

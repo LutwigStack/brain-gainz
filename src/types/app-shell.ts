@@ -230,6 +230,11 @@ export interface TodaySnapshot {
       stability: number;
     }>;
   };
+  activity?: {
+    streakDays: number;
+    lastSessionDate?: string | null;
+    activeSessionDayCount: number;
+  };
   opponent: {
     specialization_id: number;
     daysElapsed: number;

@@ -1,4 +1,4 @@
-import type { RecommendationCandidate, RouteProgressItem } from '../types/app-shell';
+import type { CareerSpecialization, DailySession, RecommendationCandidate, RouteProgressItem, TodaySnapshot } from '../types/app-shell';
 
 export type DailyTaskState = 'current' | 'next' | 'locked' | 'future' | 'complete';
 
@@ -45,6 +45,56 @@ export interface MiniMapViewModel {
   hasOverflow: boolean;
 }
 
+export interface TodayRailDistrictViewModel {
+  id: number;
+  title: string;
+  emblem: string;
+  color: string;
+  level: number;
+  xp: number;
+  stability: number;
+}
+
+export interface TodayRightRailViewModel {
+  race: {
+    title: string;
+    emblem: string;
+    color: string;
+    stateLabel: string;
+    rankLabel: string;
+    streakLabel: string;
+    xpLabel: string;
+    hasIdentity: boolean;
+  };
+  city: {
+    title: string;
+    levelLabel: string;
+    xpLabel: string;
+    progressPercent: number;
+    progressLabel: string;
+    hasDistricts: boolean;
+    featuredDistrict: TodayRailDistrictViewModel | null;
+    districts: TodayRailDistrictViewModel[];
+  };
+  opponent: {
+    title: string;
+    subtitle: string;
+    hasOpponent: boolean;
+    userProgressPercent: number;
+    opponentProgressPercent: number;
+    campaignProgressLabel: string;
+    scoreLabel: string;
+    stateLabel: string;
+  };
+  route: {
+    title: string;
+    nodeLabel: string;
+    stageLabel: string;
+    verifyLabel: string;
+    sessionLabel: string;
+  };
+}
+
 const masteryRankByLevel = {
   seen: 1,
   understood: 2,
@@ -58,6 +108,169 @@ export const clampPercent = (value: number) => Math.min(100, Math.max(0, Math.ro
 
 export const masteryRank = (level?: string | null) =>
   masteryRankByLevel[level as keyof typeof masteryRankByLevel] ?? 0;
+
+const formatCount = (value: number) => new Intl.NumberFormat('ru-RU').format(Math.max(0, Math.round(value)));
+
+const visualGlyphs: Record<string, string> = {
+  spark: '✦',
+  brain: '◆',
+  compass: '⌖',
+  map: '▧',
+  book: '▤',
+  grid: '▦',
+  tool: '⚒',
+};
+
+const visualGlyph = (value?: string | null) => {
+  const normalized = String(value ?? '').trim();
+
+  if (!normalized) {
+    return '◆';
+  }
+
+  if (visualGlyphs[normalized]) {
+    return visualGlyphs[normalized];
+  }
+
+  return normalized.length <= 2 ? normalized : '◆';
+};
+
+const rankLabelForProgress = (totalXp: number, verifiedNodeCount: number) => {
+  if (verifiedNodeCount >= 24 || totalXp >= 2200) {
+    return 'Магистр маршрутов';
+  }
+
+  if (verifiedNodeCount >= 12 || totalXp >= 900) {
+    return 'Архитектор';
+  }
+
+  if (verifiedNodeCount >= 4 || totalXp >= 250) {
+    return 'Навигатор';
+  }
+
+  return 'Новичок';
+};
+
+const raceStateLabel = (careerStatus: TodaySnapshot['careerStatus'] | null, currentSpecialization: CareerSpecialization | null) => {
+  if (careerStatus === 'victory' || currentSpecialization?.status === 'completed') {
+    return 'маршрут завершен';
+  }
+
+  if (currentSpecialization?.status === 'active') {
+    return currentSpecialization.name;
+  }
+
+  return 'свободный режим';
+};
+
+const todaySessionLabel = (todaySession: DailySession | null) => {
+  if (!todaySession) {
+    return 'сессия не начата';
+  }
+
+  const labels: Record<string, string> = {
+    planned: 'сессия запланирована',
+    active: 'сессия идет',
+    completed: 'сессия закрыта',
+  };
+
+  return labels[todaySession.status] ?? todaySession.status;
+};
+
+const pickFeaturedDistrict = (districts: TodayRailDistrictViewModel[]) =>
+  [...districts].sort((left, right) => right.xp - left.xp || right.level - left.level || left.id - right.id)[0] ?? null;
+
+export const buildTodayRightRail = ({
+  today,
+  todaySession = null,
+}: {
+  today: TodaySnapshot | null;
+  todaySession?: DailySession | null;
+}): TodayRightRailViewModel => {
+  const race = today?.race ?? null;
+  const city = today?.city ?? null;
+  const route = today?.route ?? null;
+  const planner = today?.planner ?? null;
+  const opponent = today?.opponent ?? null;
+  const currentSpecialization = today?.currentSpecialization ?? null;
+  const routeCompletionPercent = clampPercent(route?.completionPercent ?? 0);
+  const opponentPressurePercent = clampPercent(opponent?.pressure ?? 0);
+  const districts = (city?.districts ?? []).map((district) => ({
+    id: district.id,
+    title: district.title,
+    emblem: visualGlyph(district.emblem),
+    color: district.color,
+    level: Number(district.level ?? 1),
+    xp: Number(district.xp ?? 0),
+    stability: clampPercent(district.stability ?? 0),
+  }));
+  const featuredDistrict = pickFeaturedDistrict(districts);
+  const cityProgressPercent =
+    districts.length > 0
+      ? clampPercent(districts.reduce((sum, district) => sum + district.stability, 0) / districts.length)
+      : 0;
+  const verifiedNodeCount = Number(today?.mastery.verifiedNodeCount ?? 0);
+  const totalXp = Number(city?.totalXp ?? 0);
+  const activity = today?.activity ?? null;
+  const streakDays = Number(activity?.streakDays ?? 0);
+
+  return {
+    race: {
+      title: race?.title ?? 'Профиль не выбран',
+      emblem: visualGlyph(race?.emblem),
+      color: race?.color ?? '#7dd3fc',
+      stateLabel: raceStateLabel(today?.careerStatus ?? null, currentSpecialization),
+      rankLabel: rankLabelForProgress(totalXp, verifiedNodeCount),
+      streakLabel: streakDays > 0 ? `${formatCount(streakDays)} дн.` : 'серия не начата',
+      xpLabel: `${formatCount(totalXp)} XP`,
+      hasIdentity: Boolean(race),
+    },
+    city: {
+      title: featuredDistrict ? featuredDistrict.title : districts.length > 0 ? 'Город знаний' : 'Город ждет данных',
+      levelLabel: city ? `ур. ${formatCount(city.level)}` : 'уровень не открыт',
+      xpLabel: totalXp > 0 ? `${formatCount(totalXp)} XP` : 'XP еще не начислен',
+      progressPercent: cityProgressPercent,
+      progressLabel: districts.length > 0 ? `${cityProgressPercent}% стабильность` : 'добавьте статы кампании',
+      hasDistricts: districts.length > 0,
+      featuredDistrict,
+      districts,
+    },
+    opponent: {
+      title: currentSpecialization ? 'ИИ-соперник' : 'Соперник не назначен',
+      subtitle: opponent
+        ? `${formatCount(opponent.daysElapsed)} дн. в маршруте`
+        : currentSpecialization
+          ? 'давление появится после старта маршрута'
+          : 'выберите карьерный маршрут',
+      hasOpponent: Boolean(opponent),
+      userProgressPercent: routeCompletionPercent,
+      opponentProgressPercent: opponentPressurePercent,
+      campaignProgressLabel: opponent
+        ? `вы ${routeCompletionPercent}% / ИИ ${opponentPressurePercent}%`
+        : 'гонка не активна',
+      scoreLabel: opponent ? `${formatCount(opponent.score)} очков` : 'без счета',
+      stateLabel: opponent
+        ? opponentPressurePercent > routeCompletionPercent
+          ? 'ИИ впереди'
+          : opponentPressurePercent === routeCompletionPercent
+            ? 'ровная гонка'
+            : 'вы впереди'
+        : 'нет активного соперника',
+    },
+    route: {
+      title: planner?.currentStage ?? (route?.isComplete ? 'Маршрут закрыт' : 'Текущий фронт'),
+      nodeLabel: `${formatCount(route?.routeNodeCount ?? today?.state.content.routeNodeCount ?? 0)} узл.`,
+      stageLabel:
+        (planner?.currentStageItems.length ?? 0) > 0
+          ? `${formatCount((planner?.currentStageItems ?? []).filter((item) => item.is_complete).length)}/${formatCount(
+              planner?.currentStageItems.length ?? 0,
+            )} этап`
+          : 'этап не выбран',
+      verifyLabel: `${formatCount(planner?.readyToVerify.length ?? 0)} к проверке`,
+      sessionLabel: todaySessionLabel(todaySession),
+    },
+  };
+};
 
 const uniqueRouteItems = (items: Array<RouteProgressItem | null | undefined>) => {
   const byId = new Map<number, RouteProgressItem>();
