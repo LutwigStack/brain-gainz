@@ -121,11 +121,11 @@ interface NowViewProps {
   onContinueSpecialization: () => void;
   isDailyRunPending?: boolean;
   onStartDailyRun: () => void;
-  onCompleteDailyRunTask: (actionId: number) => void;
-  onFailDailyRunTask: (actionId: number) => void;
+  onCompleteDailyRunTask: (taskId: number) => void;
+  onFailDailyRunTask: (taskId: number) => void;
   onRetryDailyRunTask: (actionId: number) => void;
-  onSkipDailyRunTask: (actionId: number) => void;
-  onDeferDailyRunTask: (actionId: number) => void;
+  onSkipDailyRunTask: (taskId: number) => void;
+  onDeferDailyRunTask: (taskId: number) => void;
   onFinishDailyRun: () => void;
   onAbandonDailyRun: () => void;
 }
@@ -310,26 +310,26 @@ export const NowView = ({
     task: NonNullable<NonNullable<NowDashboardSnapshot['todaySession']>['tasks']>[number],
     outcome: 'completed' | 'failed' | 'skipped' | 'deferred',
   ) => {
-    if (isDailyRunPending || task.actionId == null || task.outcome !== 'pending') {
+    if (isDailyRunPending || task.outcome !== 'pending') {
       return;
     }
 
     if (outcome === 'completed') {
-      onCompleteDailyRunTask(task.actionId);
+      onCompleteDailyRunTask(task.id);
       return;
     }
 
     if (outcome === 'failed') {
-      onFailDailyRunTask(task.actionId);
+      onFailDailyRunTask(task.id);
       return;
     }
 
     if (outcome === 'skipped') {
-      onSkipDailyRunTask(task.actionId);
+      onSkipDailyRunTask(task.id);
       return;
     }
 
-    onDeferDailyRunTask(task.actionId);
+    onDeferDailyRunTask(task.id);
   };
 
   const handleRetryRunTask = (

@@ -86,6 +86,126 @@ test('starting a session stamps a daily run header and selected tasks', async (t
   assert.equal(snapshot.todaySession.status, 'active');
 });
 
+test('recording a Daily Run task outcome by task id completes action-backed tasks', async (t) => {
+  const { database, nowService } = await setupNowService();
+  t.after(() => database.close());
+
+  const developer = (await database.select("SELECT * FROM campaigns WHERE type = 'developer_main' LIMIT 1"))[0];
+  await nowService.createStarterWorkspace(developer.id);
+  const session = await nowService.startTodaySessionFromPrimaryRecommendation(developer.id);
+  const task = session.tasks[0];
+
+  const result = await nowService.recordDailyRunTaskOutcome(developer.id, String(task.id), 'completed');
+  const refreshedTask = result.dashboard.todaySession.tasks.find((candidate) => candidate.id === task.id);
+  const [action] = await database.select('SELECT * FROM node_actions WHERE id = ?', [task.actionId]);
+
+  assert.equal(refreshedTask.outcome, 'completed');
+  assert.equal(action.status, 'done');
+});
+
+test('recording a Daily Run task outcome supports node-only selected tasks', async (t) => {
+  const { database, nowService } = await setupNowService();
+  t.after(() => database.close());
+
+  const developer = (await database.select("SELECT * FROM campaigns WHERE type = 'developer_main' LIMIT 1"))[0];
+  const snapshot = await nowService.createStarterWorkspace(developer.id);
+  const session = await nowService.startTodaySessionFromPrimaryRecommendation(developer.id);
+  const nodeId = snapshot.queue[0]?.nodeId ?? snapshot.primaryRecommendation.nodeId;
+  const inserted = await database.execute(
+    `
+      INSERT INTO daily_session_events (session_id, event_type, node_id, action_id, note, occurred_at)
+      VALUES (?, 'selected', ?, NULL, 'Node-only QA task.', '2026-01-01T00:00:00.000Z')
+    `,
+    [session.id, nodeId],
+  );
+
+  const result = await nowService.recordDailyRunTaskOutcome(developer.id, inserted.lastInsertId, 'skipped');
+  const refreshedTask = result.dashboard.todaySession.tasks.find((candidate) => candidate.id === inserted.lastInsertId);
+
+  assert.equal(refreshedTask.actionId, null);
+  assert.equal(refreshedTask.outcome, 'skipped');
+  assert.equal(result.dashboard.todaySession.tasks.filter((candidate) => candidate.outcome === 'pending').length, session.tasks.length);
+});
+
+test('action-backed outcomes do not resolve separate node-only tasks for the same node', async (t) => {
+  const { database, nowService } = await setupNowService();
+  t.after(() => database.close());
+
+  const developer = (await database.select("SELECT * FROM campaigns WHERE type = 'developer_main' LIMIT 1"))[0];
+  await nowService.createStarterWorkspace(developer.id);
+  const session = await nowService.startTodaySessionFromPrimaryRecommendation(developer.id);
+  const actionTask = session.tasks[0];
+  const inserted = await database.execute(
+    `
+      INSERT INTO daily_session_events (session_id, event_type, node_id, action_id, note, occurred_at)
+      VALUES (?, 'selected', ?, NULL, 'Node-only task for the same node.', '2026-01-01T00:00:00.000Z')
+    `,
+    [session.id, actionTask.nodeId],
+  );
+
+  const result = await nowService.recordDailyRunTaskOutcome(developer.id, actionTask.id, 'completed');
+  const refreshedActionTask = result.dashboard.todaySession.tasks.find((candidate) => candidate.id === actionTask.id);
+  const refreshedNodeTask = result.dashboard.todaySession.tasks.find((candidate) => candidate.id === inserted.lastInsertId);
+
+  assert.equal(refreshedActionTask.outcome, 'completed');
+  assert.equal(refreshedNodeTask.actionId, null);
+  assert.equal(refreshedNodeTask.outcome, 'pending');
+});
+
+test('recording a Daily Run task outcome supports legacy fallback task id zero', async (t) => {
+  const { database, nowService } = await setupNowService();
+  t.after(() => database.close());
+
+  const developer = (await database.select("SELECT * FROM campaigns WHERE type = 'developer_main' LIMIT 1"))[0];
+  const snapshot = await nowService.createStarterWorkspace(developer.id);
+  const now = new Date();
+  const timestamp = now.toISOString();
+  const sessionDate = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-');
+  await database.execute(
+    `
+      INSERT INTO daily_sessions (
+        campaign_id,
+        session_date,
+        status,
+        primary_node_id,
+        primary_action_id,
+        started_at,
+        summary_note,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, 'active', ?, ?, ?, 'Legacy active session without selected events.', ?, ?)
+    `,
+    [
+      developer.id,
+      sessionDate,
+      snapshot.primaryRecommendation.nodeId,
+      snapshot.primaryRecommendation.actionId,
+      timestamp,
+      timestamp,
+      timestamp,
+    ],
+  );
+
+  const dashboard = await nowService.getDashboard(developer.id);
+  assert.equal(dashboard.todaySession.tasks[0].id, 0);
+  assert.equal(dashboard.todaySession.tasks[0].outcome, 'pending');
+
+  const result = await nowService.recordDailyRunTaskOutcome(developer.id, 0, 'completed');
+  const refreshedTask = result.dashboard.todaySession.tasks[0];
+  const [action] = await database.select('SELECT * FROM node_actions WHERE id = ?', [
+    snapshot.primaryRecommendation.actionId,
+  ]);
+
+  assert.equal(refreshedTask.id, 0);
+  assert.equal(refreshedTask.outcome, 'completed');
+  assert.equal(action.status, 'done');
+});
+
 test('node focus returns selected action, dependencies, and progress for the chosen recommendation', async (t) => {
   const { database, nowService } = await setupNowService();
   t.after(() => database.close());

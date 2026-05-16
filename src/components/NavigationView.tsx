@@ -2248,6 +2248,58 @@ export const NavigationView = ({
     activeRouteTargetItem != null ? routeItems.findIndex((item) => item.id === activeRouteTargetItem.id) : -1;
   const focusedRouteItem = focus?.node ? routeItemsByNodeId.get(focus.node.id) ?? null : null;
   const focusedRouteIndex = focusedRouteItem != null ? routeItems.findIndex((item) => item.id === focusedRouteItem.id) : -1;
+  const routeOverviewStages = useMemo(() => {
+    const groups = new globalThis.Map<
+      string,
+      {
+        key: string;
+        label: string;
+        items: NonNullable<TodaySnapshot['route']>['items'];
+        completedCount: number;
+        hasCurrentFront: boolean;
+      }
+    >();
+    const currentFrontId = activeRouteTargetItem?.id ?? null;
+
+    for (const item of routeItems) {
+      const label = item.route_stage?.trim() || 'Unstaged';
+      const key = label.toLowerCase();
+      const group =
+        groups.get(key) ??
+        {
+          key,
+          label,
+          items: [],
+          completedCount: 0,
+          hasCurrentFront: false,
+        };
+
+      group.items.push(item);
+      if (item.is_complete) {
+        group.completedCount += 1;
+      }
+      if (currentFrontId != null && item.id === currentFrontId) {
+        group.hasCurrentFront = true;
+      }
+
+      groups.set(key, group);
+    }
+
+    return [...groups.values()].map((group) => {
+      const frontIndex =
+        currentFrontId != null ? group.items.findIndex((item) => item.id === currentFrontId) : -1;
+      const firstOpenIndex = group.items.findIndex((item) => !item.is_complete);
+      const anchorIndex = frontIndex >= 0 ? frontIndex : firstOpenIndex >= 0 ? firstOpenIndex : 0;
+      const startIndex = Math.max(0, anchorIndex - 1);
+      const visibleItems = group.items.slice(startIndex, startIndex + 4);
+
+      return {
+        ...group,
+        visibleItems,
+        hiddenCount: Math.max(0, group.items.length - visibleItems.length),
+      };
+    });
+  }, [activeRouteTargetItem?.id, routeItems]);
   const focusChipScope = isRouteFilterActive
     ? `Маршрут: ${currentSpecialization?.name ?? 'текущий'}`
     : mapCanvasMode === 'layers'
@@ -2829,6 +2881,57 @@ export const NavigationView = ({
                   ) : null}
                 </div>
               </PixelSurface>
+
+              {isRouteFilterActive && routeOverviewStages.length > 0 ? (
+                <PixelSurface frame="inset" padding="sm" className="navigation-route-overview">
+                  <div className="navigation-route-overview__header">
+                    <PixelText as="span" size="xs" color="accent" uppercase>
+                      Route overview
+                    </PixelText>
+                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                      {routeItems.length} nodes / {activeRouteTargetIndex >= 0 ? `front #${activeRouteTargetIndex + 1}` : 'no active front'}
+                    </PixelText>
+                  </div>
+                  <div className="navigation-route-overview__stages">
+                    {routeOverviewStages.map((stage) => (
+                      <div
+                        key={stage.key}
+                        className={`navigation-route-overview__stage${stage.hasCurrentFront ? ' navigation-route-overview__stage--front' : ''}`}
+                      >
+                        <div className="navigation-route-overview__stage-heading">
+                          <PixelText as="span" readable size="sm">
+                            {stage.label}
+                          </PixelText>
+                          <PixelText as="span" size="xs" color="textMuted" uppercase>
+                            {stage.completedCount}/{stage.items.length}
+                          </PixelText>
+                        </div>
+                        <div className="navigation-route-overview__nodes">
+                          {stage.visibleItems.map((item) => {
+                            const isFront = activeRouteTargetItem?.id === item.id;
+                            const isFocused = focus?.node?.id != null && item.node_id === focus.node.id;
+
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className={`navigation-route-overview__node${item.is_complete ? ' navigation-route-overview__node--complete' : ''}${isFront ? ' navigation-route-overview__node--front' : ''}${isFocused ? ' navigation-route-overview__node--focused' : ''}`}
+                                onClick={() => selectRouteItemOnMap(item)}
+                              >
+                                <span>#{item.route_order ?? item.id}</span>
+                                <strong>{item.title}</strong>
+                              </button>
+                            );
+                          })}
+                          {stage.hiddenCount > 0 ? (
+                            <span className="navigation-route-overview__more">+{stage.hiddenCount} more</span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </PixelSurface>
+              ) : null}
 
               {mapCanvasMode === 'layers' ? (
                 <PixelSurface frame="inset" padding="sm" className="navigation-map-layer-panel" style={{ order: 2 }}>

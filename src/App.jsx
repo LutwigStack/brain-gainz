@@ -749,15 +749,15 @@ export default function App() {
     await runDailyRunMutation('Failed to start Daily Run', () => db.startTodaySessionFromPrimaryRecommendation(selectedCampaignId));
   };
 
-  const handleCompleteDailyRunTask = async (actionId) => {
+  const handleCompleteDailyRunTask = async (taskId) => {
     await runDailyRunMutation('Failed to complete Daily Run task', () =>
-      db.completeNowActionInTodaySession(actionId, selectedCampaignId),
+      db.completeDailyRunTask(taskId, selectedCampaignId),
     );
   };
 
-  const handleFailDailyRunTask = async (actionId) => {
+  const handleFailDailyRunTask = async (taskId) => {
     await runDailyRunMutation('Failed to record Daily Run follow-up', () =>
-      db.failNowActionInTodaySession(actionId, 'Needs another pass in this Daily Run.', selectedCampaignId),
+      db.failDailyRunTask(taskId, 'Needs another pass in this Daily Run.', selectedCampaignId),
     );
   };
 
@@ -767,15 +767,15 @@ export default function App() {
     );
   };
 
-  const handleSkipDailyRunTask = async (actionId) => {
+  const handleSkipDailyRunTask = async (taskId) => {
     await runDailyRunMutation('Failed to skip Daily Run task', () =>
-      db.skipNowActionInTodaySession(actionId, 'Skipped during Daily Run.', selectedCampaignId),
+      db.skipDailyRunTask(taskId, 'Skipped during Daily Run.', selectedCampaignId),
     );
   };
 
-  const handleDeferDailyRunTask = async (actionId) => {
+  const handleDeferDailyRunTask = async (taskId) => {
     await runDailyRunMutation('Failed to defer Daily Run task', () =>
-      db.deferNowActionInTodaySession(actionId, 'Deferred during Daily Run.', selectedCampaignId),
+      db.deferDailyRunTask(taskId, 'Deferred during Daily Run.', selectedCampaignId),
     );
   };
 

@@ -1552,13 +1552,16 @@ const normalizeDailyRunOutcome = (eventType) => {
   return 'pending';
 };
 
+const sameDatabaseId = (left, right) =>
+  left != null && right != null && String(left) === String(right);
+
 const latestOutcomeForSelection = (events, selectedEvent) => {
   const selectedEventId = Number(selectedEvent.id ?? 0);
   const isSameSelectionTarget = (event) => {
     if (selectedEvent.action_id != null) {
-      return event.action_id === selectedEvent.action_id;
+      return sameDatabaseId(event.action_id, selectedEvent.action_id);
     }
-    return event.node_id === selectedEvent.node_id;
+    return event.action_id == null && sameDatabaseId(event.node_id, selectedEvent.node_id);
   };
   const nextSelectedAttempt = events
     .filter((event) => Number(event.id ?? 0) > selectedEventId && event.event_type === 'selected')
@@ -2303,6 +2306,21 @@ const refreshOutcomeResult = async (service, campaignId, nodeId, actionId = null
   focus: await service.getNodeFocus(campaignId, nodeId, actionId),
   xpWarning: buildXpWarning(xpGrantResult),
 });
+
+const dailyRunTaskOutcomeNotes = {
+  completed: 'Completed from the Daily Run task controls.',
+  failed: 'Needs another pass in this Daily Run.',
+  skipped: 'Skipped during Daily Run.',
+  deferred: 'Deferred during Daily Run.',
+};
+
+const normalizeDailyRunTaskOutcome = (outcome) => {
+  if (outcome === 'completed' || outcome === 'failed' || outcome === 'skipped' || outcome === 'deferred') {
+    return outcome;
+  }
+
+  return null;
+};
 
 const buildDailyRunFinishSummaryNote = async (database, campaignId, session) => {
   const events = await database.select('SELECT * FROM daily_session_events WHERE session_id = ? ORDER BY id ASC', [
@@ -5091,6 +5109,89 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     }
 
     return loadTodaySession(database, dailySessionStore, resolvedCampaignId);
+  },
+
+  async recordDailyRunTaskOutcome(campaignId, taskId, outcome, note = '') {
+    const normalizedOutcome = normalizeDailyRunTaskOutcome(outcome);
+
+    if (!normalizedOutcome) {
+      return null;
+    }
+
+    const resolvedCampaignId = await resolveCampaignId(database, campaignId);
+    await assertPersonalProgressCampaign(database, resolvedCampaignId);
+
+    const session = await loadTodaySession(database, dailySessionStore, resolvedCampaignId);
+
+    if (!session || session.status !== 'active') {
+      return null;
+    }
+
+    const selectedEvent =
+      session.events.find((event) => event.event_type === 'selected' && sameDatabaseId(event.id, taskId)) ??
+      (sameDatabaseId(taskId, 0) && (session.primary_node_id != null || session.primary_action_id != null)
+        ? {
+            id: 0,
+            event_type: 'selected',
+            node_id: session.primary_node_id,
+            action_id: session.primary_action_id,
+            note: null,
+          }
+        : null);
+
+    if (!selectedEvent) {
+      return null;
+    }
+
+    const eventNote = note?.trim() || dailyRunTaskOutcomeNotes[normalizedOutcome];
+
+    if (selectedEvent.action_id != null) {
+      if (normalizedOutcome === 'completed') {
+        return this.completeActionInTodaySession(resolvedCampaignId, selectedEvent.action_id);
+      }
+
+      if (normalizedOutcome === 'failed') {
+        return this.failActionInTodaySession(resolvedCampaignId, selectedEvent.action_id, eventNote);
+      }
+
+      if (normalizedOutcome === 'skipped') {
+        return this.skipActionInTodaySession(resolvedCampaignId, selectedEvent.action_id, eventNote);
+      }
+
+      return this.deferActionInTodaySession(resolvedCampaignId, selectedEvent.action_id, eventNote);
+    }
+
+    if (selectedEvent.node_id == null) {
+      return null;
+    }
+
+    const timestamp = currentTimestamp();
+
+    await hierarchyStore.updateNode(selectedEvent.node_id, {
+      last_touched_at: timestamp,
+      updated_at: timestamp,
+    });
+
+    if (normalizedOutcome === 'completed') {
+      await reviewStateStore.save({
+        node_id: selectedEvent.node_id,
+        last_reviewed_at: timestamp,
+        next_due_at: addDaysTimestamp(timestamp, 7),
+        current_risk: 'low',
+        updated_at: timestamp,
+      });
+    }
+
+    await dailySessionStore.addSessionEvent({
+      session_id: session.id,
+      event_type: normalizedOutcome,
+      node_id: selectedEvent.node_id,
+      action_id: null,
+      note: eventNote,
+      occurred_at: timestamp,
+    });
+
+    return refreshOutcomeResult(this, resolvedCampaignId, selectedEvent.node_id, null);
   },
 
   async completeActionInTodaySession(campaignId, actionId) {

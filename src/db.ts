@@ -78,6 +78,7 @@ type StoresRegistry = {
     deleteGraphEdge: (campaignId: number | null, edgeId: number) => Promise<GraphEdgeMutationResult | null>;
     getJournalSnapshot: (campaignId?: number | null) => Promise<JournalSnapshot>;
     createJournalFollowUpStep: (campaignId: number | null, payload: JournalFollowUpPayload) => Promise<unknown>;
+    recordDailyRunTaskOutcome: (campaignId: number | null, taskId: number, outcome: string, note?: string) => Promise<unknown>;
     completeActionInTodaySession: (campaignId: number | null, actionId: number) => Promise<unknown>;
     failActionInTodaySession: (campaignId: number | null, actionId: number, note?: string) => Promise<unknown>;
     retryActionInTodaySession: (campaignId: number | null, actionId: number, note?: string) => Promise<unknown>;
@@ -478,6 +479,26 @@ export const createJournalFollowUpStep = async (payload: JournalFollowUpPayload,
 export const completeNowActionInTodaySession = async (actionId: number, campaignId: number | null = null) => {
   const { nowService } = await getStores();
   return nowService.completeActionInTodaySession(requireCampaignId(campaignId), actionId);
+};
+
+export const completeDailyRunTask = async (taskId: number, campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.recordDailyRunTaskOutcome(requireCampaignId(campaignId), taskId, 'completed');
+};
+
+export const failDailyRunTask = async (taskId: number, note = '', campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.recordDailyRunTaskOutcome(requireCampaignId(campaignId), taskId, 'failed', note);
+};
+
+export const skipDailyRunTask = async (taskId: number, note = '', campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.recordDailyRunTaskOutcome(requireCampaignId(campaignId), taskId, 'skipped', note);
+};
+
+export const deferDailyRunTask = async (taskId: number, note = '', campaignId: number | null = null) => {
+  const { nowService } = await getStores();
+  return nowService.recordDailyRunTaskOutcome(requireCampaignId(campaignId), taskId, 'deferred', note);
 };
 
 export const failNowActionInTodaySession = async (actionId: number, note = '', campaignId: number | null = null) => {
