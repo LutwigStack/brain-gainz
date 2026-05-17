@@ -325,7 +325,7 @@ const routeItemState = (
 const dailyStatusByState: Record<DailyTaskState, string> = {
   current: 'Текущая',
   next: 'Следующая',
-  recovery: 'Recovery',
+  recovery: 'Повторение',
   locked: 'Закрыта',
   future: 'Позже',
   complete: 'Готово',
@@ -334,7 +334,7 @@ const dailyStatusByState: Record<DailyTaskState, string> = {
 const dailyActionByState: Record<DailyTaskState, string> = {
   current: 'Начать',
   next: 'Открыть',
-  recovery: 'Repeat',
+  recovery: 'Повторить',
   locked: 'Закрыто',
   future: 'Открыть карту',
   complete: 'Повторить',

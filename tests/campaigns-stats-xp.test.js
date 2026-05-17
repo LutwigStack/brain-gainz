@@ -326,9 +326,9 @@ test('forked CS bachelor Daily Run selects route weak due tasks and records outc
   const finished = await nowService.finishDailyRun(personal.id);
   assert.equal(finished.status, 'completed');
   assert.equal(finished.state, 'completed');
-  assert.match(finished.summary_note, /Changed:/);
-  assert.match(finished.summary_note, /XP\/mastery:/);
-  assert.match(finished.summary_note, /Recovery:/);
+  assert.match(finished.summary_note, /Изменения:/);
+  assert.match(finished.summary_note, /XP\/освоение:/);
+  assert.match(finished.summary_note, /Повторение:/);
 
   const refreshed = await nowService.getDashboard(personal.id);
   assert.equal(refreshed.todaySession.status, 'completed');
@@ -430,8 +430,8 @@ test('Daily Run retry adds a visible recovery attempt and completion removes the
   );
 
   const finished = await nowService.finishDailyRun(personal.id);
-  assert.match(finished.summary_note, /Recovery: 1 reinforced in-run; 0 still queued/);
-  assert.doesNotMatch(finished.summary_note, /Recovery: 2 reinforced/);
+  assert.match(finished.summary_note, /Повторение: 1 закреплено в наборе; 0 еще в очереди/);
+  assert.doesNotMatch(finished.summary_note, /Повторение: 2 закреплено/);
 
   const refreshed = await nowService.getDashboard(personal.id);
   const sameWeakSpot = refreshed.today.planner.weakSpots.find((item) => item.node_id === recoveryTask.nodeId);
@@ -535,8 +535,8 @@ test('forked CS bachelor Daily Run finish summary counts reactivated XP and mast
   assert.equal(reactivatedGrant.active, 1);
   assert.equal(reactivatedGrant.created_at, initialGrant.created_at);
   assert.equal(Number(mastery.count), 1);
-  assert.match(finished.summary_note, new RegExp(`XP/mastery: ${reactivatedGrant.xp_amount} XP active`));
-  assert.match(finished.summary_note, /1 mastery event touched/);
+  assert.match(finished.summary_note, new RegExp(`XP/освоение: ${reactivatedGrant.xp_amount} XP активно`));
+  assert.match(finished.summary_note, /событий освоения: 1/);
 });
 
 test('template campaigns reject learner progress writes', async (t) => {

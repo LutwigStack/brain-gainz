@@ -19,6 +19,7 @@ const toneMap = {
   danger: pixelColors.danger,
   info: pixelColors.info,
 } as const;
+const defaultMeterLabel = 'Прогресс';
 
 export const PixelMeter = ({
   value,
@@ -45,7 +46,7 @@ export const PixelMeter = ({
       gap="xs"
       style={style}
       role="meter"
-      aria-label={label ?? 'Meter'}
+      aria-label={label ?? defaultMeterLabel}
       aria-valuemin={0}
       aria-valuemax={safeMax}
       aria-valuenow={clamped}
@@ -54,7 +55,7 @@ export const PixelMeter = ({
       {(label || showValue) && (
         <PixelStack direction="row" justify="space-between" align="center" gap="sm">
           <PixelText as="span" size="xs" color="textMuted" uppercase>
-            {label ?? 'Meter'}
+            {label ?? defaultMeterLabel}
           </PixelText>
           {showValue && (
             <PixelText as="span" size="xs" color="accent">

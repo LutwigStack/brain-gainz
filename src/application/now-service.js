@@ -301,12 +301,21 @@ const activeActionStatuses = ['todo', 'ready', 'doing'];
 const NODE_COMPLETION_GRANT_REASON = 'node_completion';
 const ASSESSMENT_MASTERY_GRANT_REASON = 'assessment_mastery';
 const MASTERY_LEVELS = ['seen', 'understood', 'remembered', 'applied', 'confirmed', 'retained'];
+const MASTERY_LEVEL_LABELS = {
+  seen: 'ознакомиться',
+  understood: 'понять',
+  remembered: 'запомнить',
+  applied: 'применить',
+  confirmed: 'подтвердить',
+  retained: 'удержать',
+};
 
 const masteryLevelRank = (level) => Math.max(MASTERY_LEVELS.indexOf(level), 0);
 const masteryLevelFromRank = (rank) => {
   const index = Number(rank ?? 0) - 1;
   return index >= 0 && index < MASTERY_LEVELS.length ? MASTERY_LEVELS[index] : null;
 };
+const masteryLevelLabel = (level) => MASTERY_LEVEL_LABELS[level] ?? level;
 
 const assertMasteryLevel = (level) => {
   if (!MASTERY_LEVELS.includes(level)) {
@@ -1497,13 +1506,13 @@ const loadActionRecord = async (database, actionId, campaignId = null) => {
 const DAILY_RUN_OUTCOME_EVENTS = new Set(['completed', 'failed', 'skipped', 'deferred', 'blocked', 'shrunk']);
 
 const dailyRunSourceLabels = {
-  route_front: 'Current front',
-  route_next: 'Route',
-  weak_spot: 'Recovery',
-  recovery_retry: 'Retry',
-  due_check: 'Due check',
-  ready_check: 'Ready check',
-  recommendation: 'Recommended',
+  route_front: 'Текущий фронт',
+  route_next: 'Маршрут',
+  weak_spot: 'Повторение',
+  recovery_retry: 'Повтор',
+  due_check: 'Проверка',
+  ready_check: 'Проверка готова',
+  recommendation: 'Рекомендация',
 };
 
 const dailyRunStateForSession = (session) => {
@@ -1652,7 +1661,7 @@ const buildDailyRunTasksForSession = async (database, session, events) => {
       order: Number(metadata.order ?? index + 1),
       source,
       sourceLabel: dailyRunSourceLabels[source] ?? dailyRunSourceLabels.recommendation,
-      title: metadata.title ?? row.action_title ?? row.node_title ?? 'Daily Run task',
+      title: metadata.title ?? row.action_title ?? row.node_title ?? 'Задача дня',
       subtitle:
         metadata.subtitle ??
         [row.sphere_name, row.direction_name, row.skill_name, row.node_title].filter(Boolean).join(' / '),
@@ -2308,10 +2317,10 @@ const refreshOutcomeResult = async (service, campaignId, nodeId, actionId = null
 });
 
 const dailyRunTaskOutcomeNotes = {
-  completed: 'Completed from the Daily Run task controls.',
-  failed: 'Needs another pass in this Daily Run.',
-  skipped: 'Skipped during Daily Run.',
-  deferred: 'Deferred during Daily Run.',
+  completed: 'Завершено из задач дня.',
+  failed: 'Нужен еще один проход в задачах дня.',
+  skipped: 'Пропущено в задачах дня.',
+  deferred: 'Отложено в задачах дня.',
 };
 
 const normalizeDailyRunTaskOutcome = (outcome) => {
@@ -2368,14 +2377,14 @@ const buildDailyRunFinishSummaryNote = async (database, campaignId, session) => 
     masteryEvents = Number(masteryRows[0]?.count ?? 0);
   }
 
-  const changedTitles = completed.slice(0, 3).map((task) => task.title).join(', ') || 'No tasks completed yet';
+  const changedTitles = completed.slice(0, 3).map((task) => task.title).join(', ') || 'Пока нет завершенных задач';
 
   return [
-    `Changed: ${completed.length}/${tasks.length} tasks completed. ${changedTitles}.`,
-    `XP/mastery: ${xp} XP active from this run; ${masteryEvents} mastery event${masteryEvents === 1 ? '' : 's'} touched.`,
+    `Изменения: ${completed.length}/${tasks.length} задач завершено. ${changedTitles}.`,
+    `XP/освоение: ${xp} XP активно за этот набор; событий освоения: ${masteryEvents}.`,
     recoveredKeys.size > 0 || openRecovery > 0
-      ? `Recovery: ${recoveredKeys.size} reinforced in-run; ${openRecovery} still queued for another pass.`
-      : 'Recovery: no follow-up items from this run.',
+      ? `Повторение: ${recoveredKeys.size} закреплено в наборе; ${openRecovery} еще в очереди.`
+      : 'Повторение: дополнительных задач нет.',
   ].join('\n');
 };
 
@@ -3343,7 +3352,7 @@ const weakSpotSignalsForRouteItem = (item) => {
   ) {
     signals.push({
       source: 'failed_assessment',
-      label: 'Assessment needs another pass',
+      label: 'Проверку нужно повторить',
       priority: 60,
     });
   }
@@ -3351,7 +3360,7 @@ const weakSpotSignalsForRouteItem = (item) => {
   if (isAfterTimestamp(item.latest_failed_run_at, item.latest_completed_run_at)) {
     signals.push({
       source: 'failed_attempt',
-      label: 'Daily Run retry is ready',
+      label: 'Повтор задач дня готов',
       priority: 55,
     });
   }
@@ -3364,7 +3373,7 @@ const weakSpotSignalsForRouteItem = (item) => {
   ) {
     signals.push({
       source: 'stale',
-      label: 'Refresh to keep it available',
+      label: 'Освежить, чтобы удержать',
       priority: 45,
     });
   }
@@ -3372,7 +3381,7 @@ const weakSpotSignalsForRouteItem = (item) => {
   if (Number(item.self_marked_mastery_rank ?? 0) > 0 && Number(item.has_verified_mastery ?? 0) !== 1) {
     signals.push({
       source: 'self_marked_unverified',
-      label: 'Turn self-marked progress into proof',
+      label: 'Подтвердить ручную отметку',
       priority: 50,
     });
   }
@@ -3380,7 +3389,7 @@ const weakSpotSignalsForRouteItem = (item) => {
   if (routeMasteryGap(item) > 0) {
     signals.push({
       source: 'low_mastery',
-      label: 'Reinforce the route foundation',
+      label: 'Укрепить основу маршрута',
       priority: 20,
     });
   }
@@ -3419,7 +3428,7 @@ const buildRoutePlannerProjection = (routeCompletion) => {
         ...item,
         weak_spot_sources: signals.map((signal) => signal.source),
         weak_spot_reason: signals[0]?.source ?? 'low_mastery',
-        weak_spot_reason_label: signals[0]?.label ?? 'Reinforce the route foundation',
+        weak_spot_reason_label: signals[0]?.label ?? 'Укрепить основу маршрута',
         weak_spot_priority: signals[0]?.priority ?? 0,
       };
     })
@@ -3487,7 +3496,7 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
       'completed_route',
       'Маршрут закрыт',
       'Начните следующий маршрут',
-      'Текущий маршрут уже завершен, поэтому Today не выбирает новый узел внутри него.',
+      'Текущий маршрут уже завершен, поэтому «Сегодня» не выбирает новый узел внутри него.',
       { action: 'continue_route', label: 'Новый маршрут' },
       content,
     );
@@ -3513,7 +3522,7 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
         focusItem.title,
         `${focusItem.route_stage ? `${focusItem.route_stage} · ` : ''}${
           focusItem.path || 'Концепт маршрута'
-        } · сейчас ${focusItem.current_mastery_rank}/6 · нужно ${focusItem.required_mastery_level}`,
+        } · сейчас ${focusItem.current_mastery_rank}/6 · нужно ${masteryLevelLabel(focusItem.required_mastery_level)}`,
         { action: 'open_route_node', label: 'Открыть узел' },
         content,
       );
@@ -3524,7 +3533,7 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
         'route_incomplete',
         'Маршрут требует настройки',
         'Проверьте узлы маршрута',
-        'В маршруте есть узлы, но Today не нашел безопасный обязательный следующий узел.',
+        'В маршруте есть узлы, но «Сегодня» не нашел безопасный обязательный следующий узел.',
         { action: 'open_route_map', label: 'Открыть маршрут' },
         content,
       );
@@ -5357,7 +5366,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       event_type: 'skipped',
       node_id: action.node_id,
       action_id: action.id,
-      note: note?.trim() || 'Skipped for this Daily Run.',
+      note: note?.trim() || 'Пропущено в задачах дня.',
       occurred_at: timestamp,
     });
 
@@ -5381,7 +5390,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       event_type: 'failed',
       node_id: action.node_id,
       action_id: action.id,
-      note: note?.trim() || 'Marked for another pass in this Daily Run.',
+      note: note?.trim() || 'Отмечено для повторного прохода в задачах дня.',
       occurred_at: timestamp,
     });
 
@@ -5440,7 +5449,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       note: stringifyDailyRunTaskNote({
         source: 'recovery_retry',
         title: action.title,
-        subtitle: note?.trim() || 'Another pass in the same Daily Run.',
+        subtitle: note?.trim() || 'Еще один проход в этом наборе.',
         nodeId: action.node_id,
         actionId: action.id,
         order: (session.tasks?.length ?? session.events?.length ?? 0) + 1,
@@ -5485,7 +5494,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
     await dailySessionStore.updateSession(session.id, {
       status: 'abandoned',
       ended_at: timestamp,
-      summary_note: 'Daily Run abandoned. Open tasks remain available for a later run.',
+      summary_note: 'Задачи дня сброшены. Открытые задачи останутся доступны позже.',
       updated_at: timestamp,
     });
 

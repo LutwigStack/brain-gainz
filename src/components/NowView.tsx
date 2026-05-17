@@ -274,7 +274,7 @@ export const NowView = ({
     key: 'content_without_day_plan' as const,
     label: 'План дня не получен',
     title: 'Проверьте карту кампании',
-    reason: 'Today не получил готовый дневной план. Кампания не потеряна: откройте карту и выберите безопасный следующий узел.',
+    reason: '«Сегодня» не получил готовый дневной план. Кампания не потеряна: откройте карту и выберите безопасный следующий узел.',
     primaryCta: { action: 'open_route_map' as const, label: 'Открыть карту' },
     content: {
       hasContent: metrics.nodes > 0 || metrics.actions > 0,
@@ -394,16 +394,16 @@ export const NowView = ({
 
   const runOutcomeLabel = (outcome: string) => {
     if (outcome === 'completed') {
-      return 'reinforced';
+      return 'закреплено';
     }
     if (outcome === 'failed') {
-      return 'retry ready';
+      return 'нужен повтор';
     }
     if (outcome === 'skipped') {
-      return 'kept for later';
+      return 'оставлено на потом';
     }
     if (outcome === 'deferred') {
-      return 'queued';
+      return 'отложено';
     }
     return outcome;
   };
@@ -517,14 +517,14 @@ export const NowView = ({
                 <div className="today-run-start">
                   <div className="min-w-0">
                     <PixelText as="p" readable size="sm" className="today-secondary-title">
-                      Start a 3-5 task run from route, weak spots, due checks, and the current front.
+                      Начните короткий набор из 3-5 задач: маршрут, слабые места, проверки и текущий фронт.
                     </PixelText>
                     <PixelText as="p" readable size="xs" color="textMuted">
-                      Tasks are saved, so refresh keeps the active run.
+                      Задачи сохраняются: обновление страницы не сбросит активный набор.
                     </PixelText>
                   </div>
                   <PixelButton tone="accent" onClick={onStartDailyRun} disabled={isDailyRunPending || dailyTaskCards.length === 0}>
-                    <Activity size={14} /> Start Run
+                    <Activity size={14} /> Начать задачи
                   </PixelButton>
                 </div>
               ) : null}
@@ -533,7 +533,7 @@ export const NowView = ({
                 <div className="today-run-active">
                   <div className={`today-run-progress${canFinishDailyRun ? ' today-run-progress--ready' : ''}`}>
                     <PixelText as="span" size="xs" color={canFinishDailyRun ? 'accent' : 'textMuted'} uppercase>
-                      {canFinishDailyRun ? 'ready to finish' : `${resolvedRunTaskCount}/${dailyRunTasks.length} resolved`}
+                      {canFinishDailyRun ? 'можно завершить' : `${resolvedRunTaskCount}/${dailyRunTasks.length} решено`}
                     </PixelText>
                     <span className="today-run-progress__meter" aria-hidden="true">
                       <span style={{ width: `${dailyRunResolvedPercent}%` }} />
@@ -570,23 +570,23 @@ export const NowView = ({
                               {task.sourceLabel} / {task.subtitle}
                             </PixelText>
                             {isCurrentRunTask ? (
-                              <span className="today-run-task__current-chip">current</span>
+                              <span className="today-run-task__current-chip">сейчас</span>
                             ) : null}
                           </span>
                         </div>
                         {task.outcome === 'pending' ? (
                           <div className="today-run-task__actions">
                             <PixelButton tone="accent" onClick={() => handleRunTaskOutcome(task, 'completed')} disabled={isDailyRunPending}>
-                              <CheckCircle2 size={13} /> Complete
+                              <CheckCircle2 size={13} /> Готово
                             </PixelButton>
                             <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'failed')} disabled={isDailyRunPending}>
-                              <RefreshCw size={13} /> Another pass
+                              <RefreshCw size={13} /> Еще раз
                             </PixelButton>
                             <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'skipped')} disabled={isDailyRunPending}>
-                              <ArrowRight size={13} /> Skip
+                              <ArrowRight size={13} /> Пропустить
                             </PixelButton>
                             <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'deferred')} disabled={isDailyRunPending}>
-                              <RefreshCw size={13} /> Defer
+                              <RefreshCw size={13} /> Отложить
                             </PixelButton>
                           </div>
                         ) : (
@@ -596,7 +596,7 @@ export const NowView = ({
                             </span>
                             {isDailyRunActive && task.actionId != null ? (
                               <PixelButton tone="ghost" onClick={() => handleRetryRunTask(task)} disabled={isDailyRunPending}>
-                                <RefreshCw size={13} /> {task.outcome === 'completed' ? 'Repeat' : 'Retry'}
+                                <RefreshCw size={13} /> {task.outcome === 'completed' ? 'Повторить' : 'Вернуть'}
                               </PixelButton>
                             ) : null}
                           </div>
@@ -607,14 +607,14 @@ export const NowView = ({
                   </div>
                   <div className={`today-run-footer${canFinishDailyRun ? ' today-run-footer--ready' : ''}`}>
                     <PixelText as="span" size="xs" color={canFinishDailyRun ? 'accent' : 'textMuted'} uppercase>
-                      {pendingRunTaskCount === 0 ? 'ready to finish' : `${pendingRunTaskCount} pending`}
+                      {pendingRunTaskCount === 0 ? 'можно завершить' : `${pendingRunTaskCount} осталось`}
                     </PixelText>
                     <div className="today-run-footer__actions">
                       <PixelButton tone="ghost" onClick={onAbandonDailyRun} disabled={isDailyRunPending}>
-                        <AlertTriangle size={13} /> Abandon
+                        <AlertTriangle size={13} /> Сбросить
                       </PixelButton>
                       <PixelButton tone="accent" onClick={onFinishDailyRun} disabled={isDailyRunPending || !canFinishDailyRun}>
-                        <Flag size={13} /> Finish
+                        <Flag size={13} /> Завершить
                       </PixelButton>
                     </div>
                   </div>
@@ -624,15 +624,15 @@ export const NowView = ({
               {isDailyRunFinished ? (
                 <div className="today-run-summary">
                   <PixelText as="p" size="xs" color={dailyRunState === 'completed' ? 'success' : 'warning'} uppercase>
-                    {dailyRunState === 'completed' ? 'Run completed' : 'Run abandoned'}
+                    {dailyRunState === 'completed' ? 'Задачи завершены' : 'Задачи сброшены'}
                   </PixelText>
-                  {(todaySession.summary?.lines.length ? todaySession.summary.lines : [todaySession.summary_note ?? 'No summary recorded.']).map((line) => (
+                  {(todaySession.summary?.lines.length ? todaySession.summary.lines : [todaySession.summary_note ?? 'Сводка не записана.']).map((line) => (
                     <PixelText key={line} as="p" readable size="sm" color="textMuted">
                       {line}
                     </PixelText>
                   ))}
                   <PixelButton tone="ghost" onClick={onStartDailyRun} disabled={isDailyRunPending || dailyTaskCards.length === 0}>
-                    <Activity size={14} /> Start New Run
+                    <Activity size={14} /> Начать заново
                   </PixelButton>
                 </div>
               ) : null}
@@ -690,7 +690,7 @@ export const NowView = ({
                 <PixelSurface frame="ghost" padding="md" className="today-empty-slot">
                   <PixelText as="p" readable size="sm" color="textMuted">
                     {todayState.key === 'truly_empty'
-                      ? 'Создайте стартовый набор, чтобы Today выбрал первый рабочий шаг.'
+                      ? 'Создайте стартовый набор, чтобы «Сегодня» выбрал первый рабочий шаг.'
                       : hasNoRoute
                         ? 'Добавьте маршрутные узлы на карте.'
                         : 'На сегодня нет безопасных задач.'}
@@ -761,10 +761,10 @@ export const NowView = ({
                   <RefreshCw size={16} />
                 </span>
                 <PixelText as="h3" size="sm" uppercase>
-                  Recovery
+                  Повторение
                 </PixelText>
                 <PixelText as="span" size="xs" color="textMuted" uppercase>
-                  practice opportunities
+                  слабые места
                 </PixelText>
               </div>
 
@@ -790,7 +790,7 @@ export const NowView = ({
                             {item.title}
                           </PixelText>
                           <PixelText as="span" size="xs" color="textMuted">
-                            {item.weak_spot_reason_label ?? 'Reinforce the route foundation'}
+                            {item.weak_spot_reason_label ?? 'Укрепить основу маршрута'}
                           </PixelText>
                           <PixelText as="span" size="xs" color="textMuted">
                             удержание {item.current_mastery_rank}/6
@@ -835,7 +835,7 @@ export const NowView = ({
                 {plannerWeakSpots.length === 0 && weakeningItems.length === 0 ? (
                   <div className="today-weak-empty">
                     <PixelText as="p" readable size="sm" color="textMuted">
-                      Nothing needs extra reinforcement right now.
+                      Сейчас ничего не требует отдельного повторения.
                     </PixelText>
                   </div>
                 ) : null}
@@ -913,7 +913,7 @@ export const NowView = ({
                   {miniMapPreview.routeTitle ?? 'Маршрут'}
                 </span>
                 <span className="today-mini-map__chip today-mini-map__chip--weak">
-                  {miniMapPreview.weakTitle ? `Recovery: ${miniMapPreview.weakTitle}` : 'No recovery item'}
+                  {miniMapPreview.weakTitle ? `Повторение: ${miniMapPreview.weakTitle}` : 'Нет повторения'}
                 </span>
               </div>
 

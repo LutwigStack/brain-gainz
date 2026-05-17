@@ -164,7 +164,7 @@ export const getAssessmentValidationState = ({
 };
 
 export const getAssessmentResultIdLabel = (resolvedCheckMethod: AssessmentCheckMethod) =>
-  resolvedCheckMethod === 'strict' ? 'Strict result ID' : 'LLM result ID';
+  resolvedCheckMethod === 'strict' ? 'ID результата проверки' : 'ID результата ИИ';
 
 export const getAssessmentResultIdPlaceholder = (resolvedCheckMethod: AssessmentCheckMethod) =>
   resolvedCheckMethod === 'strict' ? 'strict_result_id / checker_run_id' : 'llm_result_id';

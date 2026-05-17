@@ -26,11 +26,10 @@ test('workspace modes define learner and author entry points explicitly', () => 
 });
 
 test('learner mode hides author-only surfaces while author mode keeps editing power', () => {
-  assert.equal(workspaceModeLabels.learner.title, 'Learner view');
-  assert.equal(workspaceModeLabels.author.title, 'Author tools');
+  assert.equal(workspaceModeLabels.learner.title, 'Режим ученика');
+  assert.equal(workspaceModeLabels.author.title, 'Инструменты автора');
   assert.equal(canShowAuthorSurface('learner', 'check-metadata'), false);
   assert.equal(canShowAuthorSurface('learner', 'route-authoring'), false);
   assert.equal(canShowAuthorSurface('author', 'check-metadata'), true);
   assert.equal(canShowAuthorSurface('author', 'graph-editing'), true);
 });
-

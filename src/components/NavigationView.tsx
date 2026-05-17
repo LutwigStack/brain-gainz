@@ -1621,7 +1621,7 @@ export const NavigationView = ({
                   <Target size={15} /> Маршрут завершен
                 </PixelButton>
                 <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
-                  Новый маршрут можно начать в Today.
+                  Новый маршрут можно начать на экране «Сегодня».
                 </PixelText>
               </PixelStack>
             </PixelSurface>
@@ -1639,7 +1639,7 @@ export const NavigationView = ({
                   fullWidth
                   style={{ minHeight: 36, padding: '8px 10px', gap: 6 }}
                 >
-                  <Target size={15} /> Начать маршрут в Today
+                  <Target size={15} /> Начать маршрут в «Сегодня»
                 </PixelButton>
                 <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
                   У кампании нет активного маршрута, поэтому этот узел пока нельзя добавить в маршрут из инспектора.
@@ -1899,7 +1899,7 @@ export const NavigationView = ({
                     onChange={(event) => setAssessmentResultId(event.target.value)}
                     placeholder={getAssessmentResultIdPlaceholder(resolvedCheckMethod)}
                     disabled={pendingAssessment || isEditorArchived}
-                    hint="Для authoring и аудита. Обычному flow достаточно подтверждения проверки выше."
+                    hint="Для авторского режима и аудита. Обычно достаточно подтверждения проверки выше."
                     style={{ minHeight: 34, padding: '4px 8px' }}
                   />
                 </div>
@@ -2036,7 +2036,7 @@ export const NavigationView = ({
                 </PixelSurface>
               ) : null}
               <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
-                Самооценка нужна для памяти. XP, маршрут и verified mastery обновляет только проверенный прогресс.
+                Самооценка нужна для памяти. XP, маршрут и подтвержденное освоение обновляет только проверенный прогресс.
               </PixelText>
             </div>
           ) : null}
@@ -2892,10 +2892,10 @@ export const NavigationView = ({
                 <PixelSurface frame="inset" padding="sm" className="navigation-route-overview">
                   <div className="navigation-route-overview__header">
                     <PixelText as="span" size="xs" color="accent" uppercase>
-                      Route overview
+                      Обзор маршрута
                     </PixelText>
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
-                      {routeItems.length} nodes / {activeRouteTargetIndex >= 0 ? `front #${activeRouteTargetIndex + 1}` : 'no active front'}
+                      {routeItems.length} узл. / {activeRouteTargetIndex >= 0 ? `фронт #${activeRouteTargetIndex + 1}` : 'нет фронта'}
                     </PixelText>
                   </div>
                   <div className="navigation-route-overview__stages">
@@ -2946,7 +2946,7 @@ export const NavigationView = ({
                             );
                           })}
                           {stage.hiddenCount > 0 ? (
-                            <span className="navigation-route-overview__more">+{stage.hiddenCount} more</span>
+                            <span className="navigation-route-overview__more">+{stage.hiddenCount} еще</span>
                           ) : null}
                         </div>
                       </div>
@@ -3747,7 +3747,7 @@ export const NavigationView = ({
                           uppercase
                           className={canUseAuthorTools && isEditorDirty ? 'draft-status draft-status--dirty' : 'draft-status'}
                         >
-                          {canUseAuthorTools ? (isEditorDirty ? 'Draft changes' : 'Saved') : 'Learner view'}
+                          {canUseAuthorTools ? (isEditorDirty ? 'Есть правки' : 'Сохранено') : 'Режим ученика'}
                         </PixelText>
                         {canUseAuthorTools ? (
                         <details className="inspector-compact-details">

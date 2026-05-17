@@ -88,7 +88,7 @@ test('daily task cards surface weak spots as recovery opportunities', () => {
     title: 'Failed proof check',
     current_mastery_rank: 1,
     weak_spot_reason: 'failed_assessment',
-    weak_spot_reason_label: 'Assessment needs another pass',
+    weak_spot_reason_label: 'Проверку нужно повторить',
   });
   const next = routeItem({ id: 2, title: 'Next', current_mastery_rank: 0 });
 
@@ -105,8 +105,8 @@ test('daily task cards surface weak spots as recovery opportunities', () => {
     cards.slice(0, 3).map((card) => card.state),
     ['current', 'recovery', 'next'],
   );
-  assert.equal(cards[1].status, 'Recovery');
-  assert.equal(cards[1].actionLabel, 'Repeat');
+  assert.equal(cards[1].status, 'Повторение');
+  assert.equal(cards[1].actionLabel, 'Повторить');
 });
 
 test('mini map preview keeps a large route compact while preserving front and weak relation', () => {

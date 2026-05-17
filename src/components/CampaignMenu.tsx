@@ -29,9 +29,9 @@ interface CampaignMenuProps {
   onRestoreCampaign: (campaign: CampaignSummary) => void;
 }
 
-const modeLabel = (campaign: CampaignSummary) => (campaign.mode === 'career' ? 'Career' : 'Free mode');
+const modeLabel = (campaign: CampaignSummary) => (campaign.mode === 'career' ? 'Маршрут' : 'Свободный режим');
 const campaignStateLabel = (campaign: CampaignSummary) =>
-  campaign.career_status === 'victory' ? 'Completed route' : campaign.is_archived ? 'Archived' : 'Active';
+  campaign.career_status === 'victory' ? 'Маршрут пройден' : campaign.is_archived ? 'В архиве' : 'Активна';
 
 const CampaignCard = ({
   campaign,
@@ -109,7 +109,7 @@ const CampaignCard = ({
             </PixelText>
             {isTemplate ? (
               <PixelText as="span" readable size="xs" color="textDim">
-                Reusable template
+                Многоразовый шаблон
               </PixelText>
             ) : null}
             <PixelText as="span" readable size="xs" color="textDim">
@@ -128,10 +128,10 @@ const CampaignCard = ({
               tone="accent"
               onClick={onFork}
               disabled={isMutating}
-              aria-label={`Create personal campaign from ${campaign.name}`}
+              aria-label={`Создать личную кампанию из ${campaign.name}`}
               style={{ minHeight: 32, padding: '6px 10px', gap: 6 }}
             >
-              <Copy size={15} /> Use template
+              <Copy size={15} /> Взять шаблон
             </PixelButton>
           ) : null}
           <PixelButton
@@ -228,7 +228,7 @@ export const CampaignMenu = ({
                       onCreateCampaign();
                     }
                   }}
-                  placeholder="Например: English Foundations"
+                  placeholder="Например: Мой курс"
                   style={{ minHeight: 36, padding: '6px 10px' }}
                 />
                 <PixelButton
@@ -290,7 +290,7 @@ export const CampaignMenu = ({
                 {templateCampaigns.length > 0 ? (
                   <div className="campaign-system-section grid min-w-0 gap-2">
                     <PixelText as="p" size="xs" color="textMuted" uppercase>
-                      Reusable templates
+                      Многоразовые шаблоны
                     </PixelText>
                     <div className="grid min-w-0 gap-2">
                       {templateCampaigns.map((campaign) => (

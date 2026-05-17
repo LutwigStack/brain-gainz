@@ -234,7 +234,7 @@ export const WindRoseView = ({
                     <div className="flex min-w-0 items-center justify-between gap-3">
                       <span className="truncate text-sm font-bold text-[var(--pixel-text)]">{stat.title}</span>
                       <span className="text-xs uppercase text-[var(--pixel-text-muted)]">
-                        lvl {stat.level} · {stat.branches?.length ?? 0} ветк.
+                        ур. {stat.level} · {stat.branches?.length ?? 0} ветк.
                       </span>
                     </div>
                     <PixelMeter value={stat.progressToNext ?? 0} />

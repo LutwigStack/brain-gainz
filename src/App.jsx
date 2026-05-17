@@ -56,7 +56,8 @@ const WindRoseView = lazy(() =>
 );
 
 const domainErrorMessages = new globalThis.Map([
-  ['Passed assessment requires evidence payload.', 'Зачет требует результата проверки. Заполните evidence и повторите попытку.'],
+  ['Passed assessment requires evidence payload.', 'Зачет требует результата проверки. Заполните данные результата и повторите попытку.'],
+  ['Verified mastery requires assessment evidence or legacy completion.', 'Подтвержденное освоение требует результата проверки.'],
   ['Assessment submit requires an idempotency key.', 'Не удалось подготовить попытку проверки. Повторите действие.'],
   ['Specialization route is not complete.', 'Маршрут пока нельзя завершить: сначала закройте обязательные узлы.'],
   ['No current specialization to complete.', 'Нет активного маршрута для завершения.'],
@@ -73,6 +74,13 @@ const isExpectedActionError = (error) => {
   const message = String(error?.message ?? error ?? '').trim();
   return domainErrorMessages.has(message);
 };
+
+const specializationLengthLabel = (value) =>
+  ({
+    short: 'короткий',
+    medium: 'средний',
+    long: 'длинный',
+  })[value] ?? value;
 
 const logUnexpectedActionError = (label, error) => {
   if (!isExpectedActionError(error)) {
@@ -430,7 +438,7 @@ export default function App() {
       }
     } catch (error) {
       logUnexpectedActionError('Failed to fork template campaign', error);
-      setCampaignError(userActionErrorMessage(error, 'Could not create a personal campaign from this template.'));
+      setCampaignError(userActionErrorMessage(error, 'Не удалось создать личную кампанию из этого шаблона.'));
     } finally {
       setCampaignMutationPending(false);
     }
@@ -745,52 +753,52 @@ export default function App() {
       await refreshTodayAfterDailyRunMutation(result);
     } catch (error) {
       logUnexpectedActionError(label, error);
-      setNowError(userActionErrorMessage(error, 'Daily Run action failed.'));
+      setNowError(userActionErrorMessage(error, 'Действие с задачами дня не выполнено.'));
     } finally {
       setDailyRunPending(false);
     }
   };
 
   const handleStartDailyRun = async () => {
-    await runDailyRunMutation('Failed to start Daily Run', () => db.startTodaySessionFromPrimaryRecommendation(selectedCampaignId));
+    await runDailyRunMutation('Не удалось начать задачи дня', () => db.startTodaySessionFromPrimaryRecommendation(selectedCampaignId));
   };
 
   const handleCompleteDailyRunTask = async (taskId) => {
-    await runDailyRunMutation('Failed to complete Daily Run task', () =>
+    await runDailyRunMutation('Не удалось завершить задачу дня', () =>
       db.completeDailyRunTask(taskId, selectedCampaignId),
     );
   };
 
   const handleFailDailyRunTask = async (taskId) => {
-    await runDailyRunMutation('Failed to record Daily Run follow-up', () =>
-      db.failDailyRunTask(taskId, 'Needs another pass in this Daily Run.', selectedCampaignId),
+    await runDailyRunMutation('Не удалось отметить повтор задачи дня', () =>
+      db.failDailyRunTask(taskId, 'Нужен еще один проход в задачах дня.', selectedCampaignId),
     );
   };
 
   const handleRetryDailyRunTask = async (actionId) => {
-    await runDailyRunMutation('Failed to retry Daily Run task', () =>
-      db.retryNowActionInTodaySession(actionId, 'Retry from Daily Run recovery controls.', selectedCampaignId),
+    await runDailyRunMutation('Не удалось вернуть задачу дня', () =>
+      db.retryNowActionInTodaySession(actionId, 'Повтор из блока задач дня.', selectedCampaignId),
     );
   };
 
   const handleSkipDailyRunTask = async (taskId) => {
-    await runDailyRunMutation('Failed to skip Daily Run task', () =>
-      db.skipDailyRunTask(taskId, 'Skipped during Daily Run.', selectedCampaignId),
+    await runDailyRunMutation('Не удалось пропустить задачу дня', () =>
+      db.skipDailyRunTask(taskId, 'Пропущено в задачах дня.', selectedCampaignId),
     );
   };
 
   const handleDeferDailyRunTask = async (taskId) => {
-    await runDailyRunMutation('Failed to defer Daily Run task', () =>
-      db.deferDailyRunTask(taskId, 'Deferred during Daily Run.', selectedCampaignId),
+    await runDailyRunMutation('Не удалось отложить задачу дня', () =>
+      db.deferDailyRunTask(taskId, 'Отложено в задачах дня.', selectedCampaignId),
     );
   };
 
   const handleFinishDailyRun = async () => {
-    await runDailyRunMutation('Failed to finish Daily Run', () => db.finishDailyRun(selectedCampaignId));
+    await runDailyRunMutation('Не удалось завершить задачи дня', () => db.finishDailyRun(selectedCampaignId));
   };
 
   const handleAbandonDailyRun = async () => {
-    await runDailyRunMutation('Failed to abandon Daily Run', () => db.abandonDailyRun(selectedCampaignId));
+    await runDailyRunMutation('Не удалось сбросить задачи дня', () => db.abandonDailyRun(selectedCampaignId));
   };
 
   const handleSelectNavigationNode = async (node) => {
@@ -900,7 +908,7 @@ export default function App() {
         (mutationResult) =>
           mutationResult.focus
             ? `Создан дубль. Фокус переведен на «${mutationResult.focus.node.title}».`
-            : 'Создан persisted duplicate узла.',
+            : 'Создан дубль узла.',
       );
       setActiveTab('map');
     } catch (error) {
@@ -1510,7 +1518,7 @@ export default function App() {
 
     if (passed && !usesAutomaticStrictCheck && !hasVerifierAssessmentEvidence(evidencePayload)) {
       setNavigationError(null);
-      setNodeEditorNotice('Зачет требует результата проверки. Заполните evidence, чтобы получить verified mastery и XP.');
+      setNodeEditorNotice('Зачет требует результата проверки. Заполните данные результата, чтобы подтвердить освоение и получить XP.');
       return;
     }
 
@@ -1530,7 +1538,7 @@ export default function App() {
           answer_type: resolvedCheckMethod === 'strict' ? 'manual_check' : 'explanation',
           submitted_answer:
             submittedAnswer?.trim() ||
-            (passed ? 'passed from node inspector assessment form' : 'failed from node inspector assessment form'),
+            (passed ? 'зачтено из формы проверки узла' : 'не зачтено из формы проверки узла'),
           check_method: resolvedCheckMethod,
           strict_check_type: strictCheckType,
           target_mastery_level: targetMasteryLevel,
@@ -1549,7 +1557,7 @@ export default function App() {
           ? 'Проверка засчитана, но XP не начислены: у ветки нет основной характеристики.'
           : attemptPassed
             ? 'Проверка засчитана: проверенный уровень обновлен.'
-            : 'Попытка сохранена. Mastery и XP не изменены.';
+            : 'Попытка сохранена. Освоение и XP не изменены.';
       await refreshNavigationMasterySurfaces(notice);
     } catch (error) {
       logUnexpectedActionError('Assessment attempt submission failed', error);
@@ -1565,7 +1573,7 @@ export default function App() {
 
     if (!nodeId || !specializationId || specializationStatus !== 'active') {
       setNavigationError(null);
-      setNodeEditorNotice('Сначала начните активный маршрут в Today.');
+      setNodeEditorNotice('Сначала начните активный маршрут в «Сегодня».');
       return;
     }
 
@@ -1731,7 +1739,7 @@ export default function App() {
     : selectedCampaign.type === 'developer_main'
       ? 'Системный шаблон'
       : 'Личная кампания';
-  const campaignModeLabel = selectedCampaign ? workspaceModeLabels[workspaceMode].title : 'Setup';
+  const campaignModeLabel = selectedCampaign ? workspaceModeLabels[workspaceMode].title : 'Настройка';
   const campaignStatusLabel =
     selectedCampaign?.career_status === 'victory'
       ? 'Маршрут закрыт'
@@ -1740,8 +1748,8 @@ export default function App() {
         : 'Выберите мир';
   const specializationLabel = contextSpecialization?.name ?? (selectedCampaign ? 'Свободный режим' : 'Нет кампании');
   const specializationMeta = contextSpecialization?.domain
-    ? `${contextSpecialization.domain} / ${contextSpecialization.length}`
-    : contextSpecialization?.length ?? (selectedCampaign ? 'Текущий режим' : 'Ожидает выбора');
+    ? `${contextSpecialization.domain} / ${specializationLengthLabel(contextSpecialization.length)}`
+    : specializationLengthLabel(contextSpecialization?.length) ?? (selectedCampaign ? 'Текущий режим' : 'Ожидает выбора');
   const raceLabel =
     contextRace?.title ?? (selectedCampaign?.mode === 'career' ? 'Персона не назначена' : selectedCampaign ? 'Архитектор' : 'Нет персоны');
   const raceEmblem = contextRace?.emblem ?? (selectedCampaign?.mode === 'career' ? '♜' : '◆');
@@ -1778,8 +1786,8 @@ export default function App() {
     },
     {
       key: 'map',
-      label: workspaceMode === 'author' ? 'Author map' : 'Map overview',
-      description: workspaceMode === 'author' ? 'Nodes, routes, graph' : 'Learner progress map',
+      label: workspaceMode === 'author' ? 'Карта автора' : 'Обзор карты',
+      description: workspaceMode === 'author' ? 'Узлы, маршруты, граф' : 'Карта прогресса',
       icon: TreePine,
       active: Boolean(selectedCampaign && normalizedActiveTab === 'map' && mapInspectorRequest?.mode !== 'assessment'),
       disabled: !selectedCampaign,
@@ -1790,8 +1798,8 @@ export default function App() {
     },
     {
       key: 'assessment',
-      label: workspaceMode === 'author' ? 'Check tools' : 'Attempts',
-      description: workspaceMode === 'author' ? 'Check metadata and attempts' : 'Assessment attempt flow',
+      label: workspaceMode === 'author' ? 'Проверки' : 'Попытки',
+      description: workspaceMode === 'author' ? 'Настройка проверок и попытки' : 'Ход проверки',
       icon: ShieldCheck,
       active: Boolean(selectedCampaign && normalizedActiveTab === 'map' && mapInspectorRequest?.mode === 'assessment'),
       disabled: !selectedCampaign,
@@ -1895,7 +1903,7 @@ export default function App() {
 
             <div className="app-left-nav__footer" title={runtime.dataBoundaryLabel}>
               <PixelText as="p" size="xs" color="textDim" uppercase>
-                Runtime
+                Среда
               </PixelText>
               <PixelText as="p" readable size="xs" color={runtime.isLocalFirst ? 'success' : 'info'} style={{ marginTop: 4 }}>
                 {runtime.shellLabel} / {runtime.storageLabel}
@@ -1949,7 +1957,7 @@ export default function App() {
                           Кампания
                         </PixelText>
                         <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
-                          {selectedCampaign?.name ?? 'Campaign Menu'}
+                          {selectedCampaign?.name ?? 'Меню кампаний'}
                         </PixelText>
                         <PixelText as="p" readable size="xs" color="textMuted" className="truncate" style={{ marginTop: 2 }}>
                           {campaignKindLabel}
@@ -2033,14 +2041,14 @@ export default function App() {
 
                   <div className="app-top-actions" title={runtime.dataBoundaryLabel}>
                     {selectedCampaign ? (
-                      <div className="app-mode-switch" role="group" aria-label="Workspace mode">
+                      <div className="app-mode-switch" role="group" aria-label="Режим работы">
                         <PixelButton
                           tone={workspaceMode === 'learner' ? 'accent' : 'ghost'}
                           onClick={() => setWorkspaceMode('learner')}
                           aria-pressed={workspaceMode === 'learner'}
                           style={{ minHeight: 30, padding: '5px 8px', gap: 5 }}
                         >
-                          <Eye size={14} /> Learn
+                          <Eye size={14} /> Учиться
                         </PixelButton>
                         <PixelButton
                           tone={workspaceMode === 'author' ? 'accent' : 'ghost'}
@@ -2048,7 +2056,7 @@ export default function App() {
                           aria-pressed={workspaceMode === 'author'}
                           style={{ minHeight: 30, padding: '5px 8px', gap: 5 }}
                         >
-                          <PencilLine size={14} /> Author
+                          <PencilLine size={14} /> Автор
                         </PixelButton>
                       </div>
                     ) : null}
@@ -2107,7 +2115,7 @@ export default function App() {
                 <div className="flex items-start gap-2">
                   <Sparkles size={16} className="mt-0.5 flex-shrink-0 text-[var(--pixel-accent)]" />
                   <PixelText as="p" readable size="sm" color="textMuted">
-                    AI помогает с переводом и примерами. Ключ можно взять на{' '}
+                    ИИ помогает с переводом и примерами. Ключ можно взять на{' '}
                     <a href="https://console.groq.com" target="_blank" rel="noreferrer" className="text-[var(--pixel-accent)] underline">
                       console.groq.com
                     </a>
