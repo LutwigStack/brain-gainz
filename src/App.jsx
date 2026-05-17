@@ -1355,17 +1355,31 @@ export default function App() {
   };
 
   const handleStartNavigationSession = async () => {
-    if (!navigationSelection?.actionId) {
+    const actionId =
+      navigationSelection?.actionId ??
+      navigationFocus?.selectedAction?.id ??
+      navigationFocus?.node?.next_action_id ??
+      null;
+
+    if (!actionId) {
       return;
     }
 
+    const nextSelection = {
+      nodeId: navigationSelection?.nodeId ?? navigationFocus?.node?.id ?? null,
+      actionId,
+      skillId: navigationSelection?.skillId ?? null,
+    };
+
     setMapStartingSession(true);
     setNavigationError(null);
+    setNavigationSelection(nextSelection);
 
     try {
-      await db.startTodaySessionFromRecommendation(navigationSelection.actionId, selectedCampaignId);
-      await loadNowDashboard(navigationSelection);
-      await loadNavigationSnapshot(navigationSelection);
+      await db.startTodaySessionFromRecommendation(actionId, selectedCampaignId);
+      await loadNowDashboard(nextSelection);
+      await loadNavigationSnapshot(nextSelection);
+      requestMapInspectorMode('assessment');
     } catch (error) {
       logUnexpectedActionError('Failed to start navigation session', error);
       setNavigationError(userActionErrorMessage(error, 'Не удалось запустить сессию для узла.'));
@@ -2398,6 +2412,7 @@ export default function App() {
             barrierType={mapBarrierType}
             shrinkTitle={mapShrinkTitle}
             onRefresh={loadNavigationSnapshot}
+            onOpenToday={() => setActiveTab('now')}
             onCreateStructure={handleCreateStructure}
             onCreateLinearAlgebraGraph={handleCreateLinearAlgebraGraph}
             onSelectNode={handleSelectNavigationNode}

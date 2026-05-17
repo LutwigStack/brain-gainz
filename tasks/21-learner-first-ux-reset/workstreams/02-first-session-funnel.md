@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -26,3 +26,9 @@ The user path should be:
 - a new user can complete one learning loop without opening the editor
 - every transition has a clear next action
 - no screen dead-ends after a passed or failed check
+
+## Implementation Notes
+
+- Today now labels the active route CTA as starting a lesson.
+- Learner node overview has one primary funnel action: start lesson, go to check, or continue after a result.
+- Assessment results provide a next step after both passed and failed attempts.

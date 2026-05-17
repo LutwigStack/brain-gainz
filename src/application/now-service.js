@@ -3544,7 +3544,7 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
         `${focusItem.route_stage ? `${focusItem.route_stage} · ` : ''}${
           focusItem.path || 'Концепт маршрута'
         } · сейчас ${focusItem.current_mastery_rank}/6 · нужно ${masteryLevelLabel(focusItem.required_mastery_level)}`,
-        { action: 'open_route_node', label: 'Открыть узел' },
+        { action: 'open_route_node', label: 'Начать занятие' },
         content,
       );
     }

@@ -245,6 +245,7 @@ interface NavigationViewProps {
   barrierType: BarrierType;
   shrinkTitle: string;
   onRefresh: () => void;
+  onOpenToday: () => void;
   onCreateStructure: (name: string) => Promise<void> | void;
   onCreateLinearAlgebraGraph: () => Promise<void> | void;
   onSelectNode: (node: NavigationNodeSummary) => void;
@@ -351,6 +352,7 @@ export const NavigationView = ({
   barrierType,
   shrinkTitle,
   onRefresh,
+  onOpenToday,
   onCreateStructure,
   onCreateLinearAlgebraGraph,
   onSelectNode,
@@ -579,6 +581,95 @@ export const NavigationView = ({
   const hasAuthoredCompletionCriteria = Boolean(editorDraft?.completionCriteria.trim());
   const hasAuthoredLinks = Boolean(editorDraft?.links.trim());
   const hasAuthoredReward = Boolean(editorDraft?.reward.trim());
+  const resetAssessmentDraft = () => {
+    setAssessmentAnswer('');
+    setAssessmentResultId('');
+    setAssessmentEvidence('');
+    setAssessmentChecklistValues({});
+  };
+
+  const openAssessmentStep = () => {
+    resetAssessmentDraft();
+    handleInspectorModeChange('assessment');
+  };
+
+  const renderLearnerLessonPanel = (nodeFocus: NodeFocusSnapshot) => {
+    if (canUseAuthorTools) {
+      return null;
+    }
+
+    const lessonAction = nodeFocus.selectedAction;
+    const activeSession = nodeFocus.session?.status === 'active';
+    const latestAttempt = nodeFocus.mastery?.latestAttempt ?? null;
+    const routeRequirement = nodeFocus.mastery?.routeRequirement ?? null;
+    const canStartLesson = Boolean(lessonAction) && !activeSession && !isStartingSession && !isEditorArchived;
+
+    let stateLabel = 'старт';
+    let title = lessonAction?.title ?? nodeFocus.node.title;
+    let description = lessonAction?.details ?? nodeFocus.node.summary ?? 'Начните занятие, затем пройдите проверку.';
+    let buttonLabel = isStartingSession ? 'Запускаю...' : 'Начать занятие';
+    let buttonIcon: ReactNode = <Play size={15} />;
+    let buttonDisabled = !canStartLesson;
+    let buttonAction = onStartSession;
+
+    if (latestAttempt) {
+      stateLabel = latestAttempt.passed ? 'результат' : 'повтор';
+      title = latestAttempt.passed ? 'Результат сохранен' : 'Попытка сохранена';
+      description = latestAttempt.passed
+        ? 'Вернитесь в Сегодня: маршрут покажет следующий шаг.'
+        : 'Можно сразу вернуться к проверке и попробовать еще раз.';
+      buttonLabel = latestAttempt.passed ? 'Следующий шаг' : 'Повторить проверку';
+      buttonIcon = latestAttempt.passed ? <ChevronRight size={15} /> : <RotateCcw size={15} />;
+      buttonDisabled = false;
+      buttonAction = latestAttempt.passed ? onOpenToday : openAssessmentStep;
+    } else if (activeSession) {
+      stateLabel = 'занятие';
+      buttonLabel = 'Перейти к проверке';
+      buttonIcon = <ShieldCheck size={15} />;
+      buttonDisabled = isEditorArchived;
+      buttonAction = openAssessmentStep;
+    }
+
+    return (
+      <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
+        <PixelStack gap="xs">
+          <div className="flex items-center justify-between gap-2">
+            <PixelText as="span" size="xs" color="textDim" uppercase>
+              Учебный путь
+            </PixelText>
+            <PixelText as="span" size="xs" color={activeSession ? 'success' : 'accent'} uppercase>
+              {stateLabel}
+            </PixelText>
+          </div>
+          <PixelText as="p" readable size="sm" style={{ margin: 0 }}>
+            {title}
+          </PixelText>
+          <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+            {description}
+          </PixelText>
+          {routeRequirement ? (
+            <PixelText as="p" readable size="xs" color="accent" style={{ margin: 0 }}>
+              Нужно: {masteryLabel(routeRequirement.required_mastery_level)}
+            </PixelText>
+          ) : null}
+          <PixelButton
+            tone="accent"
+            onClick={() => void buttonAction()}
+            disabled={buttonDisabled}
+            fullWidth
+            style={{ minHeight: 36, padding: '8px 10px', gap: 6 }}
+          >
+            {buttonIcon} {buttonLabel}
+          </PixelButton>
+          {!lessonAction && !activeSession && !latestAttempt ? (
+            <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+              Для этого узла пока нет открытого действия. Вернитесь в Сегодня или выберите другой узел маршрута.
+            </PixelText>
+          ) : null}
+        </PixelStack>
+      </PixelSurface>
+    );
+  };
 
   useEffect(() => {
     const routeTarget = focus?.mastery?.routeRequirement?.required_mastery_level;
@@ -2069,6 +2160,34 @@ export const NavigationView = ({
                           </PixelText>
                         </details>
                       ) : null}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <PixelButton
+                          tone="accent"
+                          onClick={mastery.latestAttempt.passed ? onOpenToday : openAssessmentStep}
+                          disabled={pendingAssessment || pendingSelfMark}
+                          style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                        >
+                          {mastery.latestAttempt.passed ? (
+                            <>
+                              <ChevronRight size={14} /> Следующий шаг
+                            </>
+                          ) : (
+                            <>
+                              <RotateCcw size={14} /> Повторить проверку
+                            </>
+                          )}
+                        </PixelButton>
+                        {!mastery.latestAttempt.passed ? (
+                          <PixelButton
+                            tone="ghost"
+                            onClick={onOpenToday}
+                            disabled={pendingAssessment || pendingSelfMark}
+                            style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                          >
+                            <ChevronRight size={14} /> Сегодня
+                          </PixelButton>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </PixelSurface>
@@ -3923,6 +4042,8 @@ export const NavigationView = ({
                         tone={focus.session?.status === 'active' ? 'success' : 'accent'}
                         showValue
                       />
+
+                      {renderLearnerLessonPanel(focus)}
 
                       {renderMasteryPanel(focus, 'overview')}
 
