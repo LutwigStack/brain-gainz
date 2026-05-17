@@ -87,7 +87,8 @@ test('game asset manifest entries are prompt-first and reviewable', () => {
     assert.equal(typeof asset.transparent_background, 'boolean');
     assert.ok(allowedStatuses.has(asset.status), `unknown status: ${asset.status}`);
 
-    assertReviewMetadataPaths([asset.source_prompt_path], asset.asset_id, 'source_prompt_path');
+    assertExistingPaths([asset.source_prompt_path], asset.asset_id, 'source_prompt_path');
+    assert.match(asset.source_prompt_path, /\.md$/i, `${asset.asset_id} source_prompt_path must be tracked markdown provenance`);
     assert.ok(Array.isArray(asset.raw_variant_paths));
     assert.ok(asset.ui_check, `${asset.asset_id} missing UI check metadata`);
     assert.equal(typeof asset.ui_check.component, 'string');
