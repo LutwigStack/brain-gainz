@@ -1378,6 +1378,21 @@ const rankCandidates = (rows) =>
     .filter((candidate) => candidate.unresolvedDependencies === 0)
     .sort((left, right) => right.score - left.score || left.actionId - right.actionId);
 
+const prioritizeRouteFocusCandidate = (rankedCandidates, routeCompletion) => {
+  const focusNodeId = routeCompletion?.nextItem?.node_id ?? null;
+  if (focusNodeId == null) {
+    return rankedCandidates;
+  }
+
+  const focusIndex = rankedCandidates.findIndex((candidate) => candidate.nodeId === focusNodeId);
+  if (focusIndex <= 0) {
+    return rankedCandidates;
+  }
+
+  const routeFocus = rankedCandidates[focusIndex];
+  return [routeFocus, ...rankedCandidates.slice(0, focusIndex), ...rankedCandidates.slice(focusIndex + 1)];
+};
+
 const loadMetrics = async (database, campaignId) => {
   const metricQueries = [
     ['spheres', 'SELECT COUNT(*) AS count FROM spheres WHERE campaign_id = ?', [campaignId]],
@@ -2273,13 +2288,19 @@ const buildNavigationSnapshot = async (database, campaignId) => {
 
 const createNowServiceContext = (database, campaignId) => ({
   getDashboard: async () => {
-    const [metrics, rawCandidates, todaySession] = await Promise.all([
+    const [metrics, rawCandidates, todaySession, career] = await Promise.all([
       loadMetrics(database, campaignId),
       loadCandidateRows(database, campaignId),
       loadTodaySession(database, { getEventsForSession: (sessionId) => database.select('SELECT * FROM daily_session_events WHERE session_id = ? ORDER BY id ASC', [sessionId]) }, campaignId),
+      buildCareerSnapshot(database, campaignId),
     ]);
+    const currentSpecialization = career.currentSpecialization ?? null;
+    const routeCompletion = currentSpecialization
+      ? await computeRouteCompletion(database, campaignId, currentSpecialization.id)
+      : null;
+    const activeRouteCompletion = currentSpecialization?.status === 'active' ? routeCompletion : null;
 
-    const rankedCandidates = rankCandidates(rawCandidates);
+    const rankedCandidates = prioritizeRouteFocusCandidate(rankCandidates(rawCandidates), activeRouteCompletion);
 
     return {
       metrics,
@@ -3587,11 +3608,13 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
   );
 };
 
-const buildTodayGameSnapshot = async (database, campaignId, career, metrics, primaryRecommendation) => {
+const buildTodayGameSnapshot = async (database, campaignId, career, metrics, primaryRecommendation, routeCompletionOverride = undefined) => {
   const currentSpecialization = career.currentSpecialization ?? null;
   const hasActiveSpecialization = currentSpecialization?.status === 'active';
   const [routeCompletion, city, activity] = await Promise.all([
-    currentSpecialization
+    routeCompletionOverride !== undefined
+      ? Promise.resolve(routeCompletionOverride)
+      : currentSpecialization
       ? computeRouteCompletion(database, campaignId, currentSpecialization.id)
       : Promise.resolve(null),
     buildCityProjection(database, campaignId),
@@ -4076,14 +4099,19 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       buildCareerSnapshot(database, resolvedCampaignId),
     ]);
 
-    const rankedCandidates = rankCandidates(rawCandidates);
+    const currentSpecialization = career.currentSpecialization ?? null;
+    const routeCompletion = currentSpecialization
+      ? await computeRouteCompletion(database, resolvedCampaignId, currentSpecialization.id)
+      : null;
+    const activeRouteCompletion = currentSpecialization?.status === 'active' ? routeCompletion : null;
+    const rankedCandidates = prioritizeRouteFocusCandidate(rankCandidates(rawCandidates), activeRouteCompletion);
 
     return {
       metrics,
       primaryRecommendation: rankedCandidates[0] ?? null,
       queue: rankedCandidates.slice(1, 1 + MAX_QUEUE_ITEMS),
       todaySession,
-      today: await buildTodayGameSnapshot(database, resolvedCampaignId, career, metrics, rankedCandidates[0] ?? null),
+      today: await buildTodayGameSnapshot(database, resolvedCampaignId, career, metrics, rankedCandidates[0] ?? null, routeCompletion),
     };
   },
 

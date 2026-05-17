@@ -70,7 +70,7 @@ test('CS bachelor template seed is idempotent and visible as a template campaign
     `,
     [rows[0].id],
   );
-  assert.equal(Number(nodes[0].count), 58);
+  assert.equal(Number(nodes[0].count), 86);
 
   const branchCounts = await database.select(
     `
@@ -92,6 +92,7 @@ test('CS bachelor template seed is idempotent and visible as a template campaign
       'discrete-math': 10,
       'data-structures': 12,
       algorithms: 10,
+      databases: 28,
       'debugging-and-testing': 5,
       'math-notation-and-proof-support': 4,
       'memory-model-intro': 5,
@@ -122,7 +123,7 @@ test('CS bachelor template seed is idempotent and visible as a template campaign
   const campaigns = await campaignStore.listCampaigns();
   const templateSummary = campaigns.active.find((campaign) => campaign.slug === 'template-cs-bachelor');
   assert.equal(templateSummary?.type, 'template');
-  assert.equal(templateSummary?.node_count, 58);
+  assert.equal(templateSummary?.node_count, 86);
   assert.equal(campaigns.lastOpened?.slug, undefined);
 });
 
@@ -154,8 +155,8 @@ test('CS bachelor template can fork into a personal campaign without copying pro
       )[0].count,
     );
 
-  assert.equal(await countNodes(template.id), 58);
-  assert.equal(await countNodes(personal.id), 58);
+  assert.equal(await countNodes(template.id), 86);
+  assert.equal(await countNodes(personal.id), 86);
 
   const [personalNode] = await database.select(
     `
@@ -192,7 +193,7 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
   const dashboard = await nowService.getDashboard(personal.id);
   assert.equal(dashboard.primaryRecommendation.nodeTitle, 'Programming Environment');
   assert.equal(dashboard.primaryRecommendation.actionTitle, 'Practice Programming Environment');
-  assert.equal(dashboard.today.route.routeNodeCount, 44);
+  assert.equal(dashboard.today.route.routeNodeCount, 72);
   assert.equal(dashboard.today.planner.currentStage, 'Programming Fundamentals');
   assert.deepEqual(
     dashboard.today.planner.nextItems.slice(0, 3).map((item) => item.title),
@@ -201,10 +202,10 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
 
   const navigation = await nowService.getNavigationSnapshot(personal.id);
   assert.equal(navigation.spheres.length, 1);
-  assert.equal(navigation.spheres[0].directions[0].skills.length, 7);
+  assert.equal(navigation.spheres[0].directions[0].skills.length, 8);
   assert.equal(
     navigation.spheres[0].directions[0].skills.reduce((sum, skill) => sum + skill.nodes.length, 0),
-    58,
+    86,
   );
   assert.equal(navigation.edges.filter((edge) => edge.edge_type === 'requires').length > 50, true);
   assert.equal(navigation.edges.some((edge) => edge.edge_type === 'supports'), true);
@@ -218,14 +219,18 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
     `,
     [personal.id],
   );
-  assert.equal(Number(routeEdges[0].count), 43);
+  assert.equal(Number(routeEdges[0].count), 71);
 
   const windRose = await nowService.getWindRoseSnapshot(personal.id);
-  assert.equal(windRose.stats.length, 6);
-  assert.equal(windRose.stats.reduce((sum, stat) => sum + stat.branches.length, 0), 7);
+  assert.equal(windRose.stats.length, 7);
+  assert.equal(windRose.stats.reduce((sum, stat) => sum + stat.branches.length, 0), 8);
   assert.equal(windRose.unassignedBranches.length, 0);
   assert.equal(
     windRose.stats.flatMap((stat) => stat.branches).some((branch) => branch.name === 'Algorithms' && branch.node_count === 10),
+    true,
+  );
+  assert.equal(
+    windRose.stats.flatMap((stat) => stat.branches).some((branch) => branch.name === 'Databases' && branch.node_count === 28),
     true,
   );
 
@@ -292,6 +297,78 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
         edge.target_slug === 'mm-03-references-and-aliasing',
     ),
     false,
+  );
+});
+
+test('CS bachelor second slice becomes the Today focus after foundations are confirmed', async (t) => {
+  const { database, campaignStore, nowService } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const [template] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor' LIMIT 1");
+  const personal = await campaignStore.forkTemplateCampaign(template.id, { name: 'CS Database Slice Fixture' });
+  const [specialization] = await database.select(
+    'SELECT * FROM career_specializations WHERE campaign_id = ? AND key = ? LIMIT 1',
+    [personal.id, 'route-core-cs-foundations'],
+  );
+  const foundationRouteNodes = await database.select(
+    `
+      SELECT route_nodes.node_id, route_nodes.knowledge_node_id
+      FROM specialization_route_nodes route_nodes
+      WHERE route_nodes.specialization_id = ?
+        AND route_nodes.route_stage != 'Database Systems'
+      ORDER BY route_nodes.route_order ASC
+    `,
+    [specialization.id],
+  );
+  assert.equal(foundationRouteNodes.length, 44);
+  const timestamp = '2026-01-15T00:00:00.000Z';
+  for (const [index, routeNode] of foundationRouteNodes.entries()) {
+    await database.execute(
+      `
+        INSERT INTO mastery_events (
+          campaign_id,
+          node_id,
+          specialization_id,
+          knowledge_node_id,
+          mastery_level,
+          source_type,
+          source_id,
+          idempotency_key,
+          active,
+          created_at,
+          reversed_at
+        )
+        VALUES (?, ?, ?, ?, 'confirmed', 'assessment', ?, ?, 1, ?, NULL)
+      `,
+      [
+        personal.id,
+        routeNode.node_id,
+        specialization.id,
+        routeNode.knowledge_node_id,
+        routeNode.node_id,
+        `test-db-slice-foundation:${personal.id}:${index}`,
+        timestamp,
+      ],
+    );
+    await database.execute('UPDATE node_actions SET status = ?, updated_at = ? WHERE node_id = ?', [
+      'done',
+      timestamp,
+      routeNode.node_id,
+    ]);
+    await database.execute('UPDATE nodes SET status = ?, last_touched_at = ?, updated_at = ? WHERE id = ?', [
+      'done',
+      timestamp,
+      timestamp,
+      routeNode.node_id,
+    ]);
+  }
+
+  const dashboard = await nowService.getDashboard(personal.id);
+  assert.equal(dashboard.primaryRecommendation.nodeTitle, 'Data Modeling Purpose');
+  assert.equal(dashboard.today.planner.currentStage, 'Database Systems');
+  assert.deepEqual(
+    dashboard.today.planner.nextItems.slice(0, 3).map((item) => item.title),
+    ['Data Modeling Purpose', 'Entities, Attributes, And Relationships', 'Primary Keys'],
   );
 });
 

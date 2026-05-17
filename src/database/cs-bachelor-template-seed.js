@@ -7,8 +7,9 @@ const CS_BACHELOR_STATS = [
   { key: 'math-reasoning', title: 'Math Reasoning', color: '#ffd166', icon: 'sigma', sort_order: 1 },
   { key: 'structures', title: 'Structures', color: '#5ee6b5', icon: 'network', sort_order: 2 },
   { key: 'algorithms', title: 'Algorithms', color: '#fb7185', icon: 'route', sort_order: 3 },
-  { key: 'debugging', title: 'Debugging', color: '#c084fc', icon: 'bug', sort_order: 4 },
-  { key: 'systems-intuition', title: 'Systems Intuition', color: '#f97316', icon: 'cpu', sort_order: 5 },
+  { key: 'databases', title: 'Databases', color: '#38bdf8', icon: 'database', sort_order: 4 },
+  { key: 'debugging', title: 'Debugging', color: '#c084fc', icon: 'bug', sort_order: 5 },
+  { key: 'systems-intuition', title: 'Systems Intuition', color: '#f97316', icon: 'cpu', sort_order: 6 },
 ];
 
 const BRANCHES = [
@@ -35,6 +36,12 @@ const BRANCHES = [
     title: 'Algorithms',
     statKey: 'algorithms',
     summary: 'Complexity, searching, sorting, recursion, greedy intuition, dynamic programming, and graphs.',
+  },
+  {
+    id: 'databases',
+    title: 'Databases',
+    statKey: 'databases',
+    summary: 'Data modeling, relational tables, SQL queries, joins, constraints, indexes, transactions, and small database design.',
   },
   {
     id: 'debugging-and-testing',
@@ -222,6 +229,154 @@ const NODE_CHECKS = {
     prompt: 'Explain when edge weights matter for shortest paths.',
     required_terms: ['weight', 'path'],
   }),
+  'db-01-data-modeling-purpose': assessment('checklist', {
+    prompt: 'Model a tiny library or habit tracker domain before creating tables.',
+    items: [
+      { id: 'entities', label: 'List core entities', required: true },
+      { id: 'attributes', label: 'List important attributes', required: true },
+      { id: 'relationships', label: 'Name at least one relationship', required: true },
+    ],
+  }),
+  'db-02-entities-attributes-relationships': assessment('contains', {
+    prompt: 'Explain the difference between entities, attributes, and relationships.',
+    required_terms: ['entity', 'attribute', 'relationship'],
+  }),
+  'db-03-primary-keys': assessment('exact', {
+    prompt: 'What kind of key uniquely identifies one row in a table?',
+    expected_answer: 'primary key',
+  }),
+  'db-04-tables-and-rows': assessment('number', {
+    prompt: 'A table has 4 rows and one row is deleted. How many rows remain?',
+    expected_number: 3,
+    tolerance: 0,
+  }),
+  'db-05-basic-select': assessment('contains', {
+    prompt: 'Explain what SELECT and WHERE do in a simple query.',
+    required_terms: ['select', 'where'],
+  }),
+  'db-06-filter-sort-project': assessment('checklist', {
+    prompt: 'Write a query plan that picks columns, filters rows, and orders results.',
+    items: [
+      { id: 'project', label: 'Choose columns to return', required: true },
+      { id: 'filter', label: 'Filter rows with a condition', required: true },
+      { id: 'sort', label: 'Sort the result', required: false },
+    ],
+  }),
+  'db-07-foreign-keys': assessment('exact', {
+    prompt: 'What kind of key points from one table to a row in another table?',
+    expected_answer: 'foreign key',
+  }),
+  'db-08-inner-joins': assessment('contains', {
+    prompt: 'Explain why an inner join needs matching values between tables.',
+    required_terms: ['match', 'key'],
+  }),
+  'db-09-join-cardinality': llmAssessment({
+    prompt: 'Compare one-to-many and many-to-many relationships using a concrete example.',
+    rubric: 'Answer should name both relationship shapes, explain a join table for many-to-many, and avoid confusing rows with tables.',
+  }),
+  'db-10-normalization-basics': assessment('checklist', {
+    prompt: 'Normalize a small repeated-address table into cleaner tables.',
+    items: [
+      { id: 'repeat', label: 'Find repeated data', required: true },
+      { id: 'split', label: 'Split into related tables', required: true },
+      { id: 'keys', label: 'Connect tables with keys', required: true },
+    ],
+  }),
+  'db-11-constraints': assessment('exact', {
+    prompt: 'Which SQL constraint prevents duplicate values in a column?',
+    expected_answer: 'unique',
+  }),
+  'db-12-indexes': assessment('number', {
+    prompt: 'For the course model, what exponent-free Big-O level describes the goal of indexed lookup intuition?',
+    expected_number: 1,
+    tolerance: 0,
+  }),
+  'db-13-transactions': assessment('contains', {
+    prompt: 'Explain why a transfer between two accounts should use a transaction.',
+    required_terms: ['atomic', 'commit'],
+  }),
+  'db-14-acid-properties': assessment('exact', {
+    prompt: 'What four-letter acronym names atomicity, consistency, isolation, and durability?',
+    expected_answer: 'ACID',
+  }),
+  'db-15-isolation-and-races': llmAssessment({
+    prompt: 'Explain one problem that can happen when two users update the same data at the same time.',
+    rubric: 'Answer should mention concurrent updates, stale reads or lost updates, and why isolation or locking matters.',
+  }),
+  'db-16-sql-injection': assessment('contains', {
+    prompt: 'Explain why parameterized queries help prevent SQL injection.',
+    required_terms: ['parameter', 'input'],
+  }),
+  'db-17-schema-migrations': assessment('checklist', {
+    prompt: 'Plan a safe schema change for adding a new column.',
+    items: [
+      { id: 'backward', label: 'Keep old app behavior working', required: true },
+      { id: 'backfill', label: 'Backfill or default existing rows', required: true },
+      { id: 'verify', label: 'Verify the new shape', required: true },
+    ],
+  }),
+  'db-18-crud-app-flow': assessment('checklist', {
+    prompt: 'Trace a CRUD flow from UI action to database change.',
+    items: [
+      { id: 'create', label: 'Create or insert is covered', required: true },
+      { id: 'read', label: 'Read or list is covered', required: true },
+      { id: 'update-delete', label: 'Update or delete is covered', required: true },
+    ],
+  }),
+  'db-19-query-planning': assessment('contains', {
+    prompt: 'Explain why a database query planner cares about filters, joins, and indexes.',
+    required_terms: ['filter', 'index'],
+  }),
+  'db-20-aggregates-and-grouping': assessment('number', {
+    prompt: 'If GROUP BY status finds open, paused, and done groups, how many groups are there?',
+    expected_number: 3,
+    tolerance: 0,
+  }),
+  'db-21-null-and-missing-data': assessment('contains', {
+    prompt: 'Explain why NULL is not the same as an empty string.',
+    required_terms: ['unknown', 'empty'],
+  }),
+  'db-22-backups-and-restore': assessment('checklist', {
+    prompt: 'Describe a minimal backup and restore check.',
+    items: [
+      { id: 'backup', label: 'Create a backup copy', required: true },
+      { id: 'restore', label: 'Test restoring it', required: true },
+    ],
+  }),
+  'db-23-embedded-vs-server-db': llmAssessment({
+    prompt: 'Compare an embedded database and a server database for a small desktop learning app.',
+    rubric: 'Answer should compare deployment, concurrency, local storage, and operational complexity.',
+  }),
+  'db-24-orms-and-query-builders': assessment('contains', {
+    prompt: 'Explain one benefit and one risk of using an ORM or query builder.',
+    required_terms: ['query', 'mapping'],
+  }),
+  'db-25-data-privacy-basics': assessment('checklist', {
+    prompt: 'Classify data before saving it.',
+    items: [
+      { id: 'personal', label: 'Identify personal data', required: true },
+      { id: 'retention', label: 'Decide retention or deletion needs', required: true },
+      { id: 'access', label: 'Limit who can access it', required: true },
+    ],
+  }),
+  'db-26-database-testing': assessment('checklist', {
+    prompt: 'Test code that reads and writes database rows.',
+    items: [
+      { id: 'setup', label: 'Create a known test dataset', required: true },
+      { id: 'assert', label: 'Assert rows after the operation', required: true },
+      { id: 'cleanup', label: 'Keep tests isolated', required: true },
+    ],
+  }),
+  'db-27-performance-debugging': assessment('contains', {
+    prompt: 'Explain how to start investigating a slow database query.',
+    required_terms: ['index', 'plan'],
+  }),
+  'db-28-small-database-project': {
+    check_method: 'strict',
+    strict_check_type: 'manual_strict',
+    prompt: 'Design a tiny database-backed feature with schema, queries, and tests.',
+    expected_summary: 'Reviewer confirms the project includes tables, constraints, at least three queries, and a test plan.',
+  },
   'dt-02-tracing-state-by-hand': assessment('checklist', {
     prompt: 'Trace variable state through a short program.',
     items: [
@@ -331,6 +486,34 @@ const NODE_OUTCOMES = {
   'al-08-dynamic-programming-intuition': 'Identify overlapping subproblems and reusable state.',
   'al-09-graph-traversal': 'Trace breadth-first and depth-first exploration with visited state.',
   'al-10-shortest-path-intuition': 'Explain shortest path goals and why edge weights change the algorithm choice.',
+  'db-01-data-modeling-purpose': 'Start database work from user goals, entities, attributes, and relationships.',
+  'db-02-entities-attributes-relationships': 'Separate entities, attributes, and relationships before creating tables.',
+  'db-03-primary-keys': 'Use primary keys to identify rows reliably.',
+  'db-04-tables-and-rows': 'Read tables as rows and columns with predictable row-level operations.',
+  'db-05-basic-select': 'Use SELECT, FROM, and WHERE to retrieve focused data.',
+  'db-06-filter-sort-project': 'Project columns, filter rows, and sort query results.',
+  'db-07-foreign-keys': 'Connect tables with foreign keys and understand referential integrity.',
+  'db-08-inner-joins': 'Use inner joins to combine rows that match across related tables.',
+  'db-09-join-cardinality': 'Reason about one-to-one, one-to-many, and many-to-many relationships.',
+  'db-10-normalization-basics': 'Reduce duplicated data by splitting repeated concepts into related tables.',
+  'db-11-constraints': 'Use constraints to keep invalid data out of the database.',
+  'db-12-indexes': 'Explain how indexes speed up lookup-heavy access patterns.',
+  'db-13-transactions': 'Group related writes into a transaction so partial updates do not leak.',
+  'db-14-acid-properties': 'Use ACID vocabulary to explain reliable database updates.',
+  'db-15-isolation-and-races': 'Recognize concurrent update risks and why isolation matters.',
+  'db-16-sql-injection': 'Treat user input as data and use parameterized queries.',
+  'db-17-schema-migrations': 'Plan schema changes that preserve existing data and app behavior.',
+  'db-18-crud-app-flow': 'Trace create, read, update, and delete behavior through an app feature.',
+  'db-19-query-planning': 'Use filters, joins, and indexes to reason about query plans.',
+  'db-20-aggregates-and-grouping': 'Summarize rows with aggregate functions and grouping.',
+  'db-21-null-and-missing-data': 'Handle missing, unknown, and optional data without confusing it with empty values.',
+  'db-22-backups-and-restore': 'Verify that important data can be backed up and restored.',
+  'db-23-embedded-vs-server-db': 'Choose between embedded and server databases for a small product context.',
+  'db-24-orms-and-query-builders': 'Understand what ORMs and query builders hide and what they can make risky.',
+  'db-25-data-privacy-basics': 'Classify stored data and make basic privacy decisions before persisting it.',
+  'db-26-database-testing': 'Test database code with known fixtures, assertions, and isolation.',
+  'db-27-performance-debugging': 'Investigate slow queries with indexes, plans, and workload context.',
+  'db-28-small-database-project': 'Build a small database-backed feature from schema through tests.',
   'dt-01-reading-error-messages': 'Use error messages as clues instead of treating them as noise.',
   'dt-02-tracing-state-by-hand': 'Manually trace variable values through branches and loops.',
   'dt-03-edge-cases': 'Find empty, boundary, duplicate, and invalid-input cases before testing.',
@@ -355,6 +538,7 @@ const NODE_POSITIONS = {
   'data-structures': { x: -760, y: 860, dx: 220 },
   'memory-model-intro': { x: -540, y: 1120, dx: 220 },
   algorithms: { x: -540, y: 1420, dx: 220 },
+  databases: { x: -1200, y: 1720, dx: 180 },
 };
 
 const SUPPORT_EDGES = [
@@ -363,6 +547,9 @@ const SUPPORT_EDGES = [
   ['ms-04-recurrence-notation', 'al-06-recursion-and-recurrences'],
   ['dt-04-basic-unit-tests', 'pf-12-small-program-design'],
   ['ms-03-proof-skeletons', 'dm-05-direct-proofs'],
+  ['ds-09-hash-tables', 'db-12-indexes'],
+  ['al-02-asymptotic-complexity', 'db-19-query-planning'],
+  ['dt-04-basic-unit-tests', 'db-26-database-testing'],
 ];
 
 const nodeSummary = (node) => NODE_OUTCOMES[node.id] ?? `Practice ${node.title} in the CS bachelor foundation path.`;
@@ -436,6 +623,34 @@ const NODES = [
   ['algorithms', 'al-08-dynamic-programming-intuition', 'Dynamic Programming Intuition', ['al-06-recursion-and-recurrences', 'al-07-greedy-intuition']],
   ['algorithms', 'al-09-graph-traversal', 'Graph Traversal', ['ds-11-graph-representations', 'ds-04-stacks', 'ds-05-queues']],
   ['algorithms', 'al-10-shortest-path-intuition', 'Shortest Path Intuition', ['al-09-graph-traversal', 'ds-10-heaps-and-priority-queues']],
+  ['databases', 'db-01-data-modeling-purpose', 'Data Modeling Purpose', ['pf-12-small-program-design', 'ds-12-data-structure-tradeoffs']],
+  ['databases', 'db-02-entities-attributes-relationships', 'Entities, Attributes, And Relationships', ['db-01-data-modeling-purpose']],
+  ['databases', 'db-03-primary-keys', 'Primary Keys', ['db-02-entities-attributes-relationships']],
+  ['databases', 'db-04-tables-and-rows', 'Tables And Rows', ['db-03-primary-keys']],
+  ['databases', 'db-05-basic-select', 'Basic SELECT Queries', ['db-04-tables-and-rows', 'pf-04-branching-with-conditionals']],
+  ['databases', 'db-06-filter-sort-project', 'Filter, Sort, And Project', ['db-05-basic-select']],
+  ['databases', 'db-07-foreign-keys', 'Foreign Keys', ['db-03-primary-keys', 'db-02-entities-attributes-relationships']],
+  ['databases', 'db-08-inner-joins', 'Inner Joins', ['db-05-basic-select', 'db-07-foreign-keys']],
+  ['databases', 'db-09-join-cardinality', 'Join Cardinality', ['db-08-inner-joins', 'dm-08-functions-and-relations']],
+  ['databases', 'db-10-normalization-basics', 'Normalization Basics', ['db-09-join-cardinality']],
+  ['databases', 'db-11-constraints', 'Constraints', ['db-03-primary-keys', 'db-07-foreign-keys']],
+  ['databases', 'db-12-indexes', 'Indexes', ['db-05-basic-select', 'ds-09-hash-tables', 'al-02-asymptotic-complexity']],
+  ['databases', 'db-13-transactions', 'Transactions', ['db-11-constraints']],
+  ['databases', 'db-14-acid-properties', 'ACID Properties', ['db-13-transactions']],
+  ['databases', 'db-15-isolation-and-races', 'Isolation And Race Conditions', ['db-14-acid-properties', 'dt-02-tracing-state-by-hand']],
+  ['databases', 'db-16-sql-injection', 'SQL Injection', ['db-05-basic-select', 'pf-10-input-output-and-parsing']],
+  ['databases', 'db-17-schema-migrations', 'Schema Migrations', ['db-11-constraints', 'dt-04-basic-unit-tests']],
+  ['databases', 'db-18-crud-app-flow', 'CRUD App Flow', ['db-05-basic-select', 'pf-12-small-program-design']],
+  ['databases', 'db-19-query-planning', 'Query Planning', ['db-08-inner-joins', 'db-12-indexes']],
+  ['databases', 'db-20-aggregates-and-grouping', 'Aggregates And Grouping', ['db-06-filter-sort-project']],
+  ['databases', 'db-21-null-and-missing-data', 'NULL And Missing Data', ['db-11-constraints']],
+  ['databases', 'db-22-backups-and-restore', 'Backups And Restore', ['db-13-transactions']],
+  ['databases', 'db-23-embedded-vs-server-db', 'Embedded Vs Server Databases', ['db-18-crud-app-flow', 'mm-05-memory-model-for-recursion']],
+  ['databases', 'db-24-orms-and-query-builders', 'ORMs And Query Builders', ['db-18-crud-app-flow', 'pf-06-functions-and-parameters']],
+  ['databases', 'db-25-data-privacy-basics', 'Data Privacy Basics', ['db-21-null-and-missing-data']],
+  ['databases', 'db-26-database-testing', 'Database Testing', ['db-17-schema-migrations', 'dt-04-basic-unit-tests']],
+  ['databases', 'db-27-performance-debugging', 'Database Performance Debugging', ['db-19-query-planning', 'dt-05-debugging-a-small-program']],
+  ['databases', 'db-28-small-database-project', 'Small Database Project', ['db-18-crud-app-flow', 'db-19-query-planning', 'db-26-database-testing', 'db-25-data-privacy-basics']],
   ['debugging-and-testing', 'dt-01-reading-error-messages', 'Reading Error Messages', ['pf-01-programming-environment']],
   ['debugging-and-testing', 'dt-02-tracing-state-by-hand', 'Tracing State By Hand', ['pf-03-expressions-and-operators', 'pf-04-branching-with-conditionals']],
   ['debugging-and-testing', 'dt-03-edge-cases', 'Edge Cases', ['pf-05-loops-and-iteration', 'pf-08-arrays-and-lists']],
@@ -477,6 +692,7 @@ const ROUTE_STAGES = [
   ['Discrete Math For CS', ['dm-01-sets-and-membership', 'dm-02-propositions-and-logic', 'dm-03-truth-tables', 'dm-04-quantifiers', 'dm-05-direct-proofs', 'dm-06-contrapositive-and-contradiction', 'dm-07-induction', 'dm-08-functions-and-relations', 'dm-09-counting-basics', 'dm-10-graph-vocabulary']],
   ['Data Structures', ['ds-01-abstract-data-types', 'ds-02-arrays-and-dynamic-arrays', 'ds-03-linked-lists', 'ds-04-stacks', 'ds-05-queues', 'ds-06-recursion-for-structures', 'ds-07-trees', 'ds-08-binary-search-trees', 'ds-09-hash-tables', 'ds-10-heaps-and-priority-queues', 'ds-11-graph-representations', 'ds-12-data-structure-tradeoffs']],
   ['Algorithms', ['al-01-algorithmic-thinking', 'al-02-asymptotic-complexity', 'al-03-linear-and-binary-search', 'al-04-sorting-basics', 'al-05-divide-and-conquer', 'al-06-recursion-and-recurrences', 'al-07-greedy-intuition', 'al-08-dynamic-programming-intuition', 'al-09-graph-traversal', 'al-10-shortest-path-intuition']],
+  ['Database Systems', ['db-01-data-modeling-purpose', 'db-02-entities-attributes-relationships', 'db-03-primary-keys', 'db-04-tables-and-rows', 'db-05-basic-select', 'db-06-filter-sort-project', 'db-07-foreign-keys', 'db-08-inner-joins', 'db-09-join-cardinality', 'db-10-normalization-basics', 'db-11-constraints', 'db-12-indexes', 'db-13-transactions', 'db-14-acid-properties', 'db-15-isolation-and-races', 'db-16-sql-injection', 'db-17-schema-migrations', 'db-18-crud-app-flow', 'db-19-query-planning', 'db-20-aggregates-and-grouping', 'db-21-null-and-missing-data', 'db-22-backups-and-restore', 'db-23-embedded-vs-server-db', 'db-24-orms-and-query-builders', 'db-25-data-privacy-basics', 'db-26-database-testing', 'db-27-performance-debugging', 'db-28-small-database-project']],
 ];
 
 const selectOne = async (database, sql, params = []) => (await database.select(sql, params))[0] ?? null;
