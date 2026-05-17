@@ -39,7 +39,7 @@ import { buildGraphEdgeCreatePayload } from './application/map-edge-payloads.ts'
 import { createNavigationFollowUpPayload } from './application/navigation-follow-up.ts';
 import { buildMapNodeCreatePayload } from './application/map-node-payloads.ts';
 import { getRuntimeProfile } from './platform/runtime.js';
-import { workspaceModeLabels } from './components/mode-boundary.ts';
+import { requiresAuthorConfirmation, workspaceModeLabels } from './components/mode-boundary.ts';
 import { ReferenceAssetImage } from './assets/ReferenceAssetImage.tsx';
 import {
   csBachelorReferenceAssets,
@@ -454,6 +454,13 @@ export default function App() {
   };
 
   const handleArchiveCampaign = async (campaign) => {
+    if (
+      requiresAuthorConfirmation('archive-campaign') &&
+      !globalThis.confirm(`Архивировать кампанию «${campaign.name}»? Ее можно будет восстановить из архива.`)
+    ) {
+      return;
+    }
+
     setCampaignMutationPending(true);
     setCampaignError(null);
 
@@ -1740,6 +1747,21 @@ export default function App() {
     }));
   };
 
+  const activateLearnerMode = () => {
+    setWorkspaceMode('learner');
+    if (normalizedActiveTab === 'map' && (mapInspectorRequest?.mode === 'route' || mapInspectorRequest?.mode === 'graph')) {
+      requestMapInspectorMode('overview');
+    }
+  };
+
+  const activateAuthorMode = () => {
+    setWorkspaceMode('author');
+    if (selectedCampaign) {
+      requestMapInspectorMode('overview');
+      setActiveTab('map');
+    }
+  };
+
   const todayContext = nowSnapshot?.today ?? null;
   const contextSpecialization = todayContext?.currentSpecialization ?? null;
   const contextRace = todayContext?.race ?? null;
@@ -1795,8 +1817,8 @@ export default function App() {
     },
     {
       key: 'map',
-      label: workspaceMode === 'author' ? 'Карта автора' : 'Обзор карты',
-      description: workspaceMode === 'author' ? 'Узлы, маршруты, граф' : 'Карта прогресса',
+      label: workspaceModeLabels[workspaceMode].mapLabel,
+      description: workspaceModeLabels[workspaceMode].mapDescription,
       icon: TreePine,
       active: Boolean(selectedCampaign && normalizedActiveTab === 'map' && mapInspectorRequest?.mode !== 'assessment'),
       disabled: !selectedCampaign,
@@ -1807,8 +1829,8 @@ export default function App() {
     },
     {
       key: 'assessment',
-      label: workspaceMode === 'author' ? 'Проверки' : 'Попытки',
-      description: workspaceMode === 'author' ? 'Настройка проверок и попытки' : 'Ход проверки',
+      label: workspaceModeLabels[workspaceMode].assessmentLabel,
+      description: workspaceModeLabels[workspaceMode].assessmentDescription,
       icon: ShieldCheck,
       active: Boolean(selectedCampaign && normalizedActiveTab === 'map' && mapInspectorRequest?.mode === 'assessment'),
       disabled: !selectedCampaign,
@@ -2158,19 +2180,21 @@ export default function App() {
                       <div className="app-mode-switch" role="group" aria-label="Режим работы">
                         <PixelButton
                           tone={workspaceMode === 'learner' ? 'accent' : 'ghost'}
-                          onClick={() => setWorkspaceMode('learner')}
+                          onClick={activateLearnerMode}
                           aria-pressed={workspaceMode === 'learner'}
+                          title={workspaceModeLabels.learner.switchDescription}
                           style={{ minHeight: 30, padding: '5px 8px', gap: 5 }}
                         >
-                          <Eye size={14} /> Учиться
+                          <Eye size={14} /> {workspaceModeLabels.learner.switchLabel}
                         </PixelButton>
                         <PixelButton
                           tone={workspaceMode === 'author' ? 'accent' : 'ghost'}
-                          onClick={() => setWorkspaceMode('author')}
+                          onClick={activateAuthorMode}
                           aria-pressed={workspaceMode === 'author'}
+                          title={workspaceModeLabels.author.switchDescription}
                           style={{ minHeight: 30, padding: '5px 8px', gap: 5 }}
                         >
-                          <PencilLine size={14} /> Автор
+                          <PencilLine size={14} /> {workspaceModeLabels.author.switchLabel}
                         </PixelButton>
                       </div>
                     ) : null}

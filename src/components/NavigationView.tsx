@@ -78,7 +78,13 @@ import {
   type NodeEditorDraft,
   type CheckMetadataKind,
 } from './navigation-editor-draft';
-import type { WorkspaceMode } from './mode-boundary';
+import {
+  canRunAuthorAction,
+  canShowAuthorSurface,
+  requiresAuthorConfirmation,
+  type AuthorAction,
+  type WorkspaceMode,
+} from './mode-boundary';
 import type {
   BarrierType,
   GraphEdgeType,
@@ -393,7 +399,16 @@ export const NavigationView = ({
   isSystemCampaign,
   branchFilterSkillId = null,
 }: NavigationViewProps) => {
-  const canUseAuthorTools = workspaceMode === 'author';
+  const canUseAuthorTools = canShowAuthorSurface(workspaceMode, 'node-editing');
+  const canEditRoutes = canShowAuthorSurface(workspaceMode, 'route-authoring');
+  const canEditGraph = canShowAuthorSurface(workspaceMode, 'graph-editing');
+  const canEditChecks = canShowAuthorSurface(workspaceMode, 'check-metadata');
+  const canArchiveNodes = canRunAuthorAction(workspaceMode, 'archive-node');
+  const canDeleteEdges = canRunAuthorAction(workspaceMode, 'delete-edge');
+  const canCreateEdges = canRunAuthorAction(workspaceMode, 'create-edge');
+  const canCreateNodes = canRunAuthorAction(workspaceMode, 'create-node');
+  const canMoveNodes = canRunAuthorAction(workspaceMode, 'move-node');
+  const nodeArchiveRequiresConfirmation = requiresAuthorConfirmation('archive-node');
   const hasCoreCsAssets = isCoreCsFoundations(currentSpecialization);
   const [editorOverride, setEditorOverride] = useState<Partial<NodeEditorDraft> | null>(null);
   const [editorOverrideNodeId, setEditorOverrideNodeId] = useState<number | null>(null);
@@ -452,11 +467,11 @@ export const NavigationView = ({
   };
 
   useEffect(() => {
-    if (!canUseAuthorTools && (inspectorMode === 'route' || inspectorMode === 'graph')) {
+    if ((!canEditRoutes && inspectorMode === 'route') || (!canEditGraph && inspectorMode === 'graph')) {
       setInspectorMode('overview');
       onInspectorModeChange?.('overview');
     }
-  }, [canUseAuthorTools, inspectorMode, onInspectorModeChange]);
+  }, [canEditGraph, canEditRoutes, inspectorMode, onInspectorModeChange]);
 
   useEffect(() => {
     if (canUseAuthorTools) {
@@ -861,9 +876,21 @@ export const NavigationView = ({
   };
 
   const requestNodeArchive = (input: PendingNodeArchiveState) => {
+    if (!canArchiveNodes || !nodeArchiveRequiresConfirmation) {
+      return;
+    }
+
     setPendingNodeArchive(input);
     setCanvasContextMenu(null);
   };
+
+  const confirmAuthorAction = useCallback((action: AuthorAction, message: string) => {
+    if (!requiresAuthorConfirmation(action)) {
+      return true;
+    }
+
+    return globalThis.confirm(message);
+  }, []);
 
   const requestFocusedNodeArchive = (source: PendingNodeArchiveState['source']) => {
     if (!focus?.node || isMapMutating || isEditorArchived) {
@@ -986,7 +1013,11 @@ export const NavigationView = ({
           clearMapTransientState();
           break;
         case 'delete-selected-edge':
-          if (resolvedSelectedEdgeId != null && !isMapMutating) {
+          if (resolvedSelectedEdgeId != null && canDeleteEdges && !isMapMutating) {
+            if (!confirmAuthorAction('delete-edge', 'Удалить выбранную связь с карты?')) {
+              break;
+            }
+
             void (async () => {
               const deleted = await onDeleteEdge(resolvedSelectedEdgeId);
               if (deleted) {
@@ -1031,8 +1062,10 @@ export const NavigationView = ({
     };
   }, [
     focus?.node,
+    canDeleteEdges,
     canUndoMapMutation,
     canUseAuthorTools,
+    confirmAuthorAction,
     isEditorArchived,
     isEditorExpanded,
     isLoading,
@@ -1477,7 +1510,7 @@ export const NavigationView = ({
       : trimmedAnswer;
     const verifiedRank = mastery?.isVerified ? currentRank : 0;
     const selfMarkedRank = mastery?.isSelfMarkedOnly ? currentRank : 0;
-    const showRouteControls = canUseAuthorTools && !compact && mode === 'route';
+    const showRouteControls = canEditRoutes && !compact && mode === 'route';
     const showAssessmentControls = !compact && mode === 'assessment';
     const hasAnswer = trimmedAnswer.length > 0;
     const requiresVerifierEvidence = !isAutoStrictCheck;
@@ -1893,7 +1926,7 @@ export const NavigationView = ({
                 style={{ minHeight: 78 }}
               />
 
-              {canUseAuthorTools ? (
+              {canEditChecks ? (
               <details className="border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] px-2 py-2">
                 <summary className="cursor-pointer text-xs uppercase text-[var(--pixel-text-muted)]">
                   Технические детали
@@ -2026,7 +2059,7 @@ export const NavigationView = ({
                           {mastery.latestAttempt.feedback_summary}
                         </PixelText>
                       ) : null}
-                      {canUseAuthorTools && mastery.latestAttempt.evidence_payload ? (
+                      {canEditChecks && mastery.latestAttempt.evidence_payload ? (
                         <details className="mt-2 border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] px-2 py-2">
                           <summary className="cursor-pointer text-xs uppercase text-[var(--pixel-text-muted)]">
                             Технические детали попытки
@@ -2778,7 +2811,7 @@ export const NavigationView = ({
             />
 
             <div className="navigation-map-body mt-3 min-w-0 space-y-3">
-              {canUseAuthorTools ? (
+              {canUseAuthorTools || canEditGraph ? (
               <PixelSurface frame="secondary" padding="sm" className="navigation-map-controls navigation-map-structure-controls">
                 <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(220px,360px)_minmax(0,1fr)] md:items-end">
                   <PixelSelect
@@ -3044,7 +3077,7 @@ export const NavigationView = ({
                     <PixelButton
                       tone={mapEditTool === 'create' ? 'accent' : 'ghost'}
                       onClick={startCreateMapTool}
-                      disabled={!canUseVisibleCreateTool || isMapMutating}
+                      disabled={!canCreateNodes || !canUseVisibleCreateTool || isMapMutating}
                       style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                     >
                       <Plus size={14} /> {createToolLabel}
@@ -3052,7 +3085,7 @@ export const NavigationView = ({
                     <PixelButton
                       tone={mapEditTool === 'connect' ? 'accent' : 'ghost'}
                       onClick={startConnectMapTool}
-                      disabled={!focus?.node || isMapMutating}
+                      disabled={!canCreateEdges || !focus?.node || isMapMutating}
                       style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                     >
                       <GitBranch size={14} /> Соединить
@@ -3064,13 +3097,17 @@ export const NavigationView = ({
                           return;
                         }
 
+                        if (!confirmAuthorAction('delete-edge', 'Удалить выбранную связь с карты?')) {
+                          return;
+                        }
+
                         const deleted = await onDeleteEdge(selectedEdge.id);
                         if (deleted) {
                           setSelectedEdgeId(null);
                           setFloatingMapPanel(null);
                         }
                       }}
-                      disabled={!selectedEdge || isMapMutating}
+                      disabled={!canDeleteEdges || !selectedEdge || isMapMutating}
                       style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                     >
                       <X size={14} /> Удалить связь
@@ -3078,7 +3115,7 @@ export const NavigationView = ({
                     <PixelButton
                       tone="danger"
                       onClick={() => requestFocusedNodeArchive('map')}
-                      disabled={!focus?.node || isMapMutating || isEditorArchived}
+                      disabled={!canArchiveNodes || !focus?.node || isMapMutating || isEditorArchived}
                       className="inspector-danger-button"
                       style={{
                         minHeight: 30,
@@ -3112,7 +3149,7 @@ export const NavigationView = ({
                           onClick={() => {
                             void createNodeFromVisibleTool();
                           }}
-                          disabled={!canUseVisibleCreateTool || isMapMutating}
+                          disabled={!canCreateNodes || !canUseVisibleCreateTool || isMapMutating}
                           style={{ minHeight: 28, padding: '5px 8px', gap: 6 }}
                         >
                           <Plus size={13} /> {mapCanvasMode === 'layers' ? 'Создать в слое' : 'Создать рядом'}
@@ -3310,14 +3347,14 @@ export const NavigationView = ({
                     onSelectNode={handleCanvasNodeSelect}
                     onFocusChange={setIsMapFocused}
                     onUserCameraControl={() => setHasManualMapViewport(true)}
-                    onSelectEdge={canUseAuthorTools ? (edgeId) => {
+                    onSelectEdge={canEditGraph ? (edgeId) => {
                       setSelectedEdgeId(edgeId);
                       setMapEditTool('select');
                       setConnectSourceNodeId(null);
                       setCanvasContextMenu(null);
                       setInlineNodeEditor(null);
                     } : undefined}
-                    onCreateNodeAt={canUseAuthorTools ? async (input) =>
+                    onCreateNodeAt={canCreateNodes ? async (input) =>
                       createNodeFromCanvasPoint(
                         { worldX: input.x, worldY: input.y },
                         undefined,
@@ -3327,7 +3364,7 @@ export const NavigationView = ({
                         mapCanvasMode === 'layers' ? layerParentEntry?.node.id ?? null : null,
                       )
                     : undefined}
-                    onCreateChildNodeAt={canUseAuthorTools ? async (input) => {
+                    onCreateChildNodeAt={canCreateNodes ? async (input) => {
                       const parentNode = navigationNodeIndex.get(input.parentNodeId);
                       if (!parentNode || isMapMutating) {
                         return false;
@@ -3379,7 +3416,7 @@ export const NavigationView = ({
                       }
                       return created;
                     } : undefined}
-                    onCreateEdge={canUseAuthorTools ? async (input) => {
+                    onCreateEdge={canCreateEdges ? async (input) => {
                       if (isMapMutating) {
                         return false;
                       }
@@ -3402,18 +3439,18 @@ export const NavigationView = ({
                     mapCommand={mapCommand}
                     previewNodePositions={layerPreviewPositions}
                     interactionMode={canUseAuthorTools ? (mapCanvasMode === 'free' ? 'free-edit' : 'layer-edit') : 'readonly'}
-                    createMode={canUseAuthorTools && mapEditTool === 'create'}
+                    createMode={canCreateNodes && mapEditTool === 'create'}
                     snapToGrid={false}
                     selectedEdgeId={selectedEdgeId}
-                    connectSourceNodeId={canUseAuthorTools && mapEditTool === 'connect' ? connectSourceNodeId : null}
-                    connectEdgeType={canUseAuthorTools && mapEditTool === 'connect' ? connectEdgeType : null}
+                    connectSourceNodeId={canCreateEdges && mapEditTool === 'connect' ? connectSourceNodeId : null}
+                    connectEdgeType={canCreateEdges && mapEditTool === 'connect' ? connectEdgeType : null}
                     onCanvasContextMenu={canUseAuthorTools ? (menu) => {
                       setCanvasContextMenu(menu);
                       setNodeCreateTitle('');
                       setInlineNodeEditor(null);
                       setFloatingMapPanel(null);
                     } : undefined}
-                    onCanvasDoubleClick={canUseAuthorTools ? (input) => {
+                    onCanvasDoubleClick={canCreateNodes ? (input) => {
                       startInlineCreate(input);
                     } : undefined}
                     onNodeDoubleClick={canUseAuthorTools ? (input) => {
@@ -3438,7 +3475,7 @@ export const NavigationView = ({
                         });
                       }
                     }}
-                    onMoveNode={canUseAuthorTools && mapCanvasMode === 'free' ? onMoveNode : undefined}
+                    onMoveNode={canMoveNodes && mapCanvasMode === 'free' ? onMoveNode : undefined}
                   className={mapCanvasClassName}
                 />
               </PixelSurface>
@@ -3509,6 +3546,10 @@ export const NavigationView = ({
                       <PixelButton
                         tone="danger"
                         onClick={async () => {
+                          if (!confirmAuthorAction('delete-edge', 'Удалить эту связь с карты?')) {
+                            return;
+                          }
+
                           const deleted = await onDeleteEdge(floatingPanelEdge.id);
                           if (deleted) {
                             setSelectedEdgeId(null);
@@ -3557,13 +3598,17 @@ export const NavigationView = ({
                           <PixelButton
                             tone="danger"
                             onClick={async () => {
+                              if (!confirmAuthorAction('delete-edge', 'Удалить эту связь с карты?')) {
+                                return;
+                              }
+
                               const deleted = await onDeleteEdge(contextEdge.id);
                               if (deleted) {
                                 setSelectedEdgeId(null);
                                 setCanvasContextMenu(null);
                               }
                             }}
-                            disabled={isMapMutating}
+                            disabled={isMapMutating || !canDeleteEdges}
                             style={{
                               justifyContent: 'flex-start',
                               minHeight: 30,
@@ -3784,7 +3829,15 @@ export const NavigationView = ({
                       { id: 'assessment', label: 'Проверка' },
                       { id: 'graph', label: 'Граф' },
                     ] as Array<{ id: InspectorMode; label: string }>)
-                      .filter((item) => canUseAuthorTools || item.id === 'overview' || item.id === 'assessment')
+                      .filter((item) => {
+                        if (item.id === 'route') {
+                          return canEditRoutes;
+                        }
+                        if (item.id === 'graph') {
+                          return canEditGraph;
+                        }
+                        return item.id === 'overview' || item.id === 'assessment';
+                      })
                       .map((item) => (
                       <PixelButton
                         key={item.id}
@@ -3885,10 +3938,10 @@ export const NavigationView = ({
                     </>
                   ) : null}
 
-                  {canUseAuthorTools && inspectorMode === 'route' ? renderMasteryPanel(focus, 'route') : null}
+                  {canEditRoutes && inspectorMode === 'route' ? renderMasteryPanel(focus, 'route') : null}
                   {inspectorMode === 'assessment' ? renderMasteryPanel(focus, 'assessment') : null}
 
-                  {canUseAuthorTools && inspectorMode === 'graph' ? (
+                  {canEditGraph && inspectorMode === 'graph' ? (
                   <PixelSurface frame="inset" padding="sm" className="inspector-graph-panel">
                     <PixelStack gap="xs">
                       <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
@@ -3931,12 +3984,16 @@ export const NavigationView = ({
                             <PixelButton
                               tone="danger"
                               onClick={async () => {
+                                if (!confirmAuthorAction('delete-edge', 'Удалить выбранную связь с карты?')) {
+                                  return;
+                                }
+
                                 const deleted = await onDeleteEdge(selectedEdge.id);
                                 if (deleted) {
                                   setSelectedEdgeId(null);
                                 }
                               }}
-                              disabled={isMapMutating}
+                              disabled={isMapMutating || !canDeleteEdges}
                               style={{ minHeight: 26, padding: '4px 8px', gap: 6 }}
                             >
                               <X size={12} /> Убрать
@@ -4149,9 +4206,9 @@ export const NavigationView = ({
               ) : null}
             </PixelSurface>
 
-            {canUseAuthorTools && (!focus?.node || inspectorMode === 'route') ? renderRouteAuthoringPanel() : null}
+            {canEditRoutes && (!focus?.node || inspectorMode === 'route') ? renderRouteAuthoringPanel() : null}
 
-            {canUseAuthorTools && (!focus?.node || inspectorMode === 'graph') ? (
+            {canEditGraph && (!focus?.node || inspectorMode === 'graph') ? (
             <PixelSurface frame="secondary" padding="sm" className="min-w-0">
               <PixelPanelHeader
                 eyebrow={
@@ -4190,7 +4247,7 @@ export const NavigationView = ({
         ) : null}
       </section>
 
-      {canUseAuthorTools && pendingNodeArchive ? (
+      {canArchiveNodes && pendingNodeArchive ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="absolute inset-0" onClick={cancelPendingNodeArchive} aria-hidden="true" />
           <PixelSurface
