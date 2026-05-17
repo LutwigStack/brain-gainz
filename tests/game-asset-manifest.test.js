@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const manifestPath = resolve(repoRoot, 'assets/game/asset-manifest.json');
+const ignoredReviewPathPrefix = 'output/generated-assets/';
 const allowedStatuses = new Set(['planned', 'generated', 'selected', 'accepted', 'rejected']);
 const allowedFamilies = new Set([
   'campaign',
@@ -28,9 +29,30 @@ const allowedFamilies = new Set([
 ]);
 
 const readManifest = () => JSON.parse(readFileSync(manifestPath, 'utf8'));
+const assertPortableRelativePath = (assetPath, assetId, fieldName) => {
+  assert.equal(typeof assetPath, 'string', `${assetId} ${fieldName} must contain strings`);
+  assert.equal(assetPath.length > 0, true, `${assetId} ${fieldName} must not contain empty paths`);
+  assert.equal(assetPath.includes('\\'), false, `${assetId} ${fieldName} must use forward slashes: ${assetPath}`);
+  assert.equal(assetPath.startsWith('/') || /^[A-Za-z]:/.test(assetPath), false, `${assetId} ${fieldName} must be repo-relative: ${assetPath}`);
+};
+const assertReviewMetadataPaths = (paths, assetId, fieldName) => {
+  for (const assetPath of paths) {
+    assertPortableRelativePath(assetPath, assetId, fieldName);
+    assert.equal(
+      assetPath.startsWith(ignoredReviewPathPrefix),
+      true,
+      `${assetId} ${fieldName} must point at ignored generated review artifacts: ${assetPath}`,
+    );
+    assert.match(
+      assetPath,
+      /\.(md|png|webp)$/i,
+      `${assetId} ${fieldName} must reference review metadata or raster candidates: ${assetPath}`,
+    );
+  }
+};
 const assertExistingPaths = (paths, assetId, fieldName) => {
   for (const assetPath of paths) {
-    assert.equal(typeof assetPath, 'string', `${assetId} ${fieldName} must contain strings`);
+    assertPortableRelativePath(assetPath, assetId, fieldName);
     assert.equal(
       existsSync(resolve(repoRoot, assetPath)),
       true,
@@ -65,7 +87,7 @@ test('game asset manifest entries are prompt-first and reviewable', () => {
     assert.equal(typeof asset.transparent_background, 'boolean');
     assert.ok(allowedStatuses.has(asset.status), `unknown status: ${asset.status}`);
 
-    assert.equal(existsSync(resolve(repoRoot, asset.source_prompt_path)), true, `${asset.asset_id} prompt is missing`);
+    assertReviewMetadataPaths([asset.source_prompt_path], asset.asset_id, 'source_prompt_path');
     assert.ok(Array.isArray(asset.raw_variant_paths));
     assert.ok(asset.ui_check, `${asset.asset_id} missing UI check metadata`);
     assert.equal(typeof asset.ui_check.component, 'string');
@@ -77,7 +99,7 @@ test('game asset manifest entries are prompt-first and reviewable', () => {
         asset.raw_variant_paths.length >= 2 && asset.raw_variant_paths.length <= 4,
         `${asset.asset_id} must keep 2-4 reviewable raw variants once generated`,
       );
-      assertExistingPaths(asset.raw_variant_paths, asset.asset_id, 'raw_variant_paths');
+      assertReviewMetadataPaths(asset.raw_variant_paths, asset.asset_id, 'raw_variant_paths');
     }
 
     if (asset.status === 'generated') {

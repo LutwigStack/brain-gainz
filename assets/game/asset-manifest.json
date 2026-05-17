@@ -626,30 +626,36 @@
     {
       "asset_id": "map.cs-bachelor.algorithms.landmark",
       "family": "map",
-      "usage_surface": "route_overview",
-      "ui_slot": "route overview branch thumbnail",
+      "usage_surface": "today_mini_map_route_overview",
+      "ui_slot": "mini knowledge map and route overview branch thumbnail",
       "target_slots": [
+        "Today mini map",
         "Navigation route overview"
       ],
       "target_width": 480,
       "target_height": 360,
       "format": "webp",
       "transparent_background": false,
-      "source_prompt_path": "tasks/14-reference-style-assets/asset-style-bible.md",
-      "raw_variant_paths": [],
-      "selected_variant_path": null,
-      "status": "planned",
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-algorithms-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-algorithms-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-algorithms-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-algorithms-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-algorithms-landmark.webp",
+      "status": "accepted",
       "alt": "Algorithms route landmark",
       "fallback": "Colored graph-node cluster thumbnail with route label outside image",
       "ui_check": {
-        "component": "NavigationView",
+        "component": "NowView, NavigationView",
         "display_width": 265,
         "display_height": 198,
         "required_states": [
           "Algorithms route stage"
         ]
       },
-      "notes": "Explicit planned gap documented after QA; route overview must use fallback until generated."
+      "notes": "Accepted generated route landmark for Algorithms; graph traversal, sorting, and search motifs match the first-batch dark isometric route family without readable text."
     }
   ]
 }

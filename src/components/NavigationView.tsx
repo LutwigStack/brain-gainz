@@ -2901,6 +2901,8 @@ export const NavigationView = ({
                   <div className="navigation-route-overview__stages">
                     {routeOverviewStages.map((stage) => {
                       const stageAsset = hasCoreCsAssets ? resolveRouteLandmarkAsset(stage.label) : null;
+                      const stageProgressPercent =
+                        stage.items.length > 0 ? Math.round((stage.completedCount / stage.items.length) * 100) : 0;
 
                       return (
                       <div
@@ -2923,6 +2925,9 @@ export const NavigationView = ({
                             {stage.completedCount}/{stage.items.length}
                           </PixelText>
                         </div>
+                        <span className="navigation-route-overview__stage-meter" aria-hidden="true">
+                          <span style={{ width: `${stageProgressPercent}%` }} />
+                        </span>
                         <div className="navigation-route-overview__nodes">
                           {stage.visibleItems.map((item) => {
                             const isFront = activeRouteTargetItem?.id === item.id;

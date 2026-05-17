@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -60,3 +60,19 @@ Do not rely on generated art alone for a critical state.
 - `npm run test`
 - `npm run lint`
 - `npm run build`
+
+## Implementation Notes
+
+- Daily Run and Today task icon slots now use explicit state modifiers: `practice`, `assessment`, `recovery`, and `deferred`.
+- Task icons render in larger fixed slots with distinct frame color, border style, and small geometric markers, while keeping action icons as lucide controls.
+- Mastery ladder icons render larger and each level gets a distinct frame accent, with completion/required state layered on top.
+- No generated derivative assets were needed; layout and frame language were enough.
+
+## QA
+
+- `npm run lint`
+- `npm run test`
+- `npm run build`
+- Browser QA desktop: `tasks/14-reference-style-assets/qa/small-state-icons-desktop.png`
+- Browser QA mobile `390x844`: `tasks/14-reference-style-assets/qa/small-state-icons-mobile-390.png`
+- Browser metrics: desktop and mobile horizontal overflow `0`; Daily Run state icon slots `40x40`; mastery icons `32x32` desktop and `30x30` mobile.

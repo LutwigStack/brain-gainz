@@ -37,6 +37,7 @@ import {
   type DailyTaskCardViewModel,
 } from './today-dashboard-model';
 import type {
+  DailyRunTaskOutcome,
   NodeFocusSnapshot,
   NowDashboardSnapshot,
   RecommendationCandidate,
@@ -111,6 +112,39 @@ const taskIconByState = {
   complete: CheckCircle2,
 } as const;
 
+type TaskStateIconKind = 'practice' | 'assessment' | 'recovery' | 'deferred';
+
+const dailyRunTaskIconState = (
+  source: string | null | undefined,
+  outcome: DailyRunTaskOutcome | null | undefined,
+): TaskStateIconKind => {
+  if (outcome === 'deferred' || outcome === 'skipped') {
+    return 'deferred';
+  }
+
+  if (outcome === 'failed' || source === 'weak_spot' || source === 'recovery_retry') {
+    return 'recovery';
+  }
+
+  if (source === 'due_check' || source === 'ready_check') {
+    return 'assessment';
+  }
+
+  return 'practice';
+};
+
+const dailyCardIconState = (state: DailyTaskCardViewModel['state']): TaskStateIconKind => {
+  if (state === 'recovery') {
+    return 'recovery';
+  }
+
+  if (state === 'locked' || state === 'future') {
+    return 'deferred';
+  }
+
+  return 'practice';
+};
+
 interface NowViewProps {
   snapshot: NowDashboardSnapshot | null;
   focus: NodeFocusSnapshot | null;
@@ -178,7 +212,11 @@ export const NowView = ({
   const isDailyRunActive = dailyRunState === 'active';
   const isDailyRunFinished = dailyRunState === 'completed' || dailyRunState === 'abandoned';
   const pendingRunTaskCount = dailyRunTasks.filter((task) => task.outcome === 'pending').length;
+  const resolvedRunTaskCount = Math.max(0, dailyRunTasks.length - pendingRunTaskCount);
+  const firstPendingRunTaskId = dailyRunTasks.find((task) => task.outcome === 'pending')?.id ?? null;
   const canFinishDailyRun = isDailyRunActive && dailyRunTasks.length > 0 && pendingRunTaskCount === 0;
+  const dailyRunResolvedPercent =
+    dailyRunTasks.length > 0 ? clampPercent((resolvedRunTaskCount / dailyRunTasks.length) * 100) : 0;
   const today = snapshot?.today ?? null;
   const currentSpecialization = today?.currentSpecialization ?? null;
   const hasCoreCsAssets = isCoreCsFoundations(currentSpecialization);
@@ -468,7 +506,13 @@ export const NowView = ({
               </PixelText>
             </div>
 
-            <PixelSurface frame={isDailyRunActive ? 'selected' : isDailyRunFinished ? 'secondary' : 'ghost'} padding="md" className="today-run-panel">
+            <PixelSurface
+              frame={isDailyRunActive ? 'selected' : isDailyRunFinished ? 'secondary' : 'ghost'}
+              padding="md"
+              className={`today-run-panel${isDailyRunActive ? ' today-run-panel--active' : ''}${
+                canFinishDailyRun ? ' today-run-panel--ready' : ''
+              }${isDailyRunFinished ? ' today-run-panel--finished' : ''}`}
+            >
               {!todaySession || dailyRunState === 'not_started' ? (
                 <div className="today-run-start">
                   <div className="min-w-0">
@@ -487,21 +531,36 @@ export const NowView = ({
 
               {isDailyRunActive ? (
                 <div className="today-run-active">
+                  <div className={`today-run-progress${canFinishDailyRun ? ' today-run-progress--ready' : ''}`}>
+                    <PixelText as="span" size="xs" color={canFinishDailyRun ? 'accent' : 'textMuted'} uppercase>
+                      {canFinishDailyRun ? 'ready to finish' : `${resolvedRunTaskCount}/${dailyRunTasks.length} resolved`}
+                    </PixelText>
+                    <span className="today-run-progress__meter" aria-hidden="true">
+                      <span style={{ width: `${dailyRunResolvedPercent}%` }} />
+                    </span>
+                  </div>
                   <div className="today-run-task-list">
                     {dailyRunTasks.map((task) => {
                       const taskAsset = hasCoreCsAssets ? resolveTaskAsset(task.source, task.outcome) : null;
+                      const taskIconState = dailyRunTaskIconState(task.source, task.outcome);
+                      const isCurrentRunTask = task.outcome === 'pending' && task.id === firstPendingRunTaskId;
 
                       return (
-                      <div key={task.id} className={`today-run-task today-run-task--${task.outcome}`}>
+                      <div
+                        key={task.id}
+                        className={`today-run-task today-run-task--${task.outcome}${
+                          isCurrentRunTask ? ' today-run-task--current' : ''
+                        }`}
+                      >
                         <div className="today-run-task__main">
-                          <span className="today-task-card__asset" aria-hidden="true">
+                          <span className={`today-task-card__asset today-task-card__asset--${taskIconState}`} aria-hidden="true">
                             <ReferenceAssetImage
                               asset={taskAsset}
                               decorative
                               className="today-task-card__asset-image"
                               fallback={<Target size={14} />}
                             />
-                            <span>{task.order}</span>
+                            <span className="today-task-card__asset-order">{task.order}</span>
                           </span>
                           <span className="min-w-0">
                             <PixelText as="span" readable size="sm" className="today-run-task__title">
@@ -510,6 +569,9 @@ export const NowView = ({
                             <PixelText as="span" size="xs" color="textMuted" className="today-run-task__subtitle">
                               {task.sourceLabel} / {task.subtitle}
                             </PixelText>
+                            {isCurrentRunTask ? (
+                              <span className="today-run-task__current-chip">current</span>
+                            ) : null}
                           </span>
                         </div>
                         {task.outcome === 'pending' ? (
@@ -543,8 +605,8 @@ export const NowView = ({
                     );
                     })}
                   </div>
-                  <div className="today-run-footer">
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                  <div className={`today-run-footer${canFinishDailyRun ? ' today-run-footer--ready' : ''}`}>
+                    <PixelText as="span" size="xs" color={canFinishDailyRun ? 'accent' : 'textMuted'} uppercase>
                       {pendingRunTaskCount === 0 ? 'ready to finish' : `${pendingRunTaskCount} pending`}
                     </PixelText>
                     <div className="today-run-footer__actions">
@@ -581,6 +643,7 @@ export const NowView = ({
                 ? dailyTaskCards.map((task) => {
                     const TaskIcon = taskIconByState[task.state];
                     const taskAsset = hasCoreCsAssets ? resolveTaskAsset(task.state) : null;
+                    const taskIconState = dailyCardIconState(task.state);
                     return (
                     <button
                       key={task.key}
@@ -590,14 +653,14 @@ export const NowView = ({
                       className={`today-task-card today-task-card--${task.state}`}
                     >
                       <span className="today-task-card__topline">
-                        <span className="today-task-card__asset" aria-hidden="true">
+                        <span className={`today-task-card__asset today-task-card__asset--${taskIconState}`} aria-hidden="true">
                           <ReferenceAssetImage
                             asset={taskAsset}
                             decorative
                             className="today-task-card__asset-image"
                             fallback={<TaskIcon size={15} />}
                           />
-                          <span>{task.order}</span>
+                          <span className="today-task-card__asset-order">{task.order}</span>
                         </span>
                         <span className="today-task-card__status">{task.status}</span>
                       </span>
@@ -671,7 +734,7 @@ export const NowView = ({
                     key={step.level}
                     className={`today-mastery-step ${isDone ? 'today-mastery-step--done' : ''} ${
                       isRequired ? 'today-mastery-step--required' : ''
-                    }`}
+                    } today-mastery-step--${step.level}`}
                   >
                     <ReferenceAssetImage
                       asset={masteryAsset}

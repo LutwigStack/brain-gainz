@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -57,3 +57,30 @@ The app now has richer visual identity, but generated assets should not distract
 - `npm run test`
 - `npm run lint`
 - `npm run build`
+
+## Implementation Notes
+
+- Added a compact Daily Run progress row so active runs show resolved task count before the task list.
+- Marked the first pending Daily Run task as `current` to keep the user's next action visible.
+- Made completed, failed, skipped, and deferred outcomes use different borders, side rails, chip colors, and panel treatments.
+- Made the Daily Run footer sticky and added a stronger `ready to finish` treatment when all tasks are resolved.
+- Added per-branch route overview progress meters and stronger active-branch/current-step highlighting.
+
+## QA
+
+- Browser flow desktop `1280x900`: existing active Daily Run with one deferred task, completed one task, marked one task as another pass, skipped one task, reached `ready to finish`, then finished.
+- Browser flow mobile `390x844`: started a new Daily Run, completed one task, marked one task as another pass, skipped one task, deferred one task, completed one task, reached `ready to finish`, then finished.
+- Desktop route overview after finish: `4` stages, `1` active branch, `1` front node, `1` focused node, branch progress meters visible, horizontal overflow `0`.
+- Mobile Daily Run active and ready states: horizontal overflow `0`; sticky footer kept `Finish` visible at the bottom of the 390px viewport.
+- `npm run lint`
+- `npm run test -- tests/now-service.test.js tests/campaigns-stats-xp.test.js tests/today-dashboard-model.test.js`
+
+## QA Artifacts
+
+- `tasks/14-reference-style-assets/qa/daily-run-route-comprehension-active-1280x900.png`
+- `tasks/14-reference-style-assets/qa/daily-run-route-comprehension-ready-1280x900.png`
+- `tasks/14-reference-style-assets/qa/daily-run-route-comprehension-completed-1280x900.png`
+- `tasks/14-reference-style-assets/qa/daily-run-route-comprehension-route-overview-1280x900.png`
+- `tasks/14-reference-style-assets/qa/daily-run-route-comprehension-active-mobile-390.png`
+- `tasks/14-reference-style-assets/qa/daily-run-route-comprehension-ready-mobile-390.png`
+- `tasks/14-reference-style-assets/qa/daily-run-route-comprehension-completed-mobile-390.png`

@@ -64,21 +64,12 @@ None.
 
 ### Medium
 
-1. Task and mastery icons are useful but under-sized for state comprehension.
-   Daily task icons render around `22x22`; mastery icons render around `24x24`. They add mood and category color, but practice/recovery/deferred and mastery-state differences require careful looking. The style bible asks these to distinguish state at actual card size.
-
-2. Route overview thumbnails create a strong branch identity but the missing `Algorithms` generated thumbnail remains a batch gap.
-   Programming Fundamentals, Discrete Math, and Data Structures fit cleanly and improve route scanning. The fourth route stage now has a deterministic CSS fallback instead of a blank incomplete card, but it should still receive a matching generated asset in the next batch.
+1. Opponent banner identity is present but subdued.
+   The red banner reinforces opponent pressure, but the overlayed avatar/status treatment makes the generated Corvus image feel more like a texture than a named rival. It is still acceptable as a background state asset.
 
 ### Low
 
-1. Mini knowledge map landmark is atmospheric but slightly too dark for route recognition.
-   The landmark supports cockpit mood without overpowering the graph, but the graph still carries most of the comprehension. A slightly clearer landmark or stronger local contrast would better meet the "route cluster recognition" goal.
-
-2. Opponent banner identity is present but subdued.
-   The red banner reinforces opponent pressure, but the overlayed avatar/status treatment makes the generated Corvus image feel more like a texture than a named rival. It is still acceptable as a background state asset.
-
-3. Mobile race portrait crop is dramatic but narrow.
+1. Mobile race portrait crop is dramatic but narrow.
    The raven identity is obvious at mobile width, but the crop emphasizes the eye/head and loses some scholar-cloak context. This is acceptable for the first batch.
 
 ## Asset Comprehension
@@ -88,14 +79,13 @@ Assets improve comprehension most in these slots:
 - campaign crest: fast CS campaign recognition in top context and Campaign Menu
 - race portrait: clear player persona identity
 - city card: clear civilization / progress identity
-- route overview thumbnails: strong branch-level recognition for three routes
+- route overview thumbnails: strong branch-level recognition for all four CS slice routes
 
 Assets improve comprehension moderately in these slots:
 
-- Daily Run task icons: helpful accents, but too small for reliable state recognition
-- mastery icons: good color and shape family, but too small and dense for immediate distinction
 - mini map landmark: reinforces route mood, but graph nodes and labels still do most of the work
 - opponent banner: reinforces danger/pressure, but the opponent identity remains partly generic
+- Daily Run task icons and mastery icons: now readable through larger slots, labels, and frame/state treatments; keep monitoring as task types expand
 
 ## Visual Hierarchy Regressions
 
@@ -113,18 +103,18 @@ Assets improve comprehension moderately in these slots:
 | Race portrait | Keep | Strong identity on desktop and mobile. |
 | City card image | Keep | Best-integrated right rail asset; improves civilization read. |
 | Opponent banner | Revise later | Accept for now, but increase opponent identity/contrast before scaling. |
-| Daily Run task icons | Revise sizing/treatment | Increase effective display size or simplify derivatives for `22-28px` use. |
-| Mastery icons | Revise sizing/treatment | Consider larger icons or simplified small derivatives. |
-| Mini map landmark | Revise contrast | Keep the subdued role, but make route landmark slightly more legible. |
-| Route branch thumbnails | Keep, add missing Algorithms later | Current three thumbnails fit; the missing fourth branch now has a CSS fallback but should get matching art if the overview keeps art. |
+| Daily Run task icons | Keep with monitoring | Larger fixed state slots and frame markers now make practice/assessment/recovery/deferred readable at real card sizes. |
+| Mastery icons | Keep with monitoring | Larger ladder icons plus per-level frame accents improve scan without needing derivative assets. |
+| Mini map landmark | Keep | Contrast was increased enough for route recognition while keeping graph nodes dominant. |
+| Route branch thumbnails | Keep | Programming Fundamentals, Discrete Math, Data Structures, and Algorithms all have generated landmarks in route overview. |
 
 ## Verification
 
 - `npm run test`: passed, `186/186`
 - `npm run lint`: passed
 - `npm run build`: passed
-- Browser post-review smoke: passed on `1280x900` Campaign Menu, `1280x900` route overview fallback, and `390x844` mobile smoke; console errors `0`.
+- Browser post-review smoke: passed on `1280x900` Campaign Menu, `1280x900` four-landmark route overview, Today mini-map desktop/mobile, and `390x844` mobile smoke; console errors `0`.
 
 ## QA Decision
 
-Do not mark the full asset slice as final production-done yet. The QA artifact is current and includes post-review screenshots, but the batch should remain `keep-with-revisions` until task/mastery small-size clarity and the missing Algorithms route asset are addressed.
+Keep the first CS Bachelor asset batch as the current baseline. Small state icons, the missing Algorithms route landmark, and the Daily Run -> finish -> route progress comprehension flow have been validated. Do not mark the broader asset system as production-final yet; keep it `keep-with-monitoring` while future route/task types are added.
