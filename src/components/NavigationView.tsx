@@ -599,10 +599,24 @@ export const NavigationView = ({
     }
 
     const lessonAction = nodeFocus.selectedAction;
-    const activeSession = nodeFocus.session?.status === 'active';
+    const session = nodeFocus.session;
+    const hasActiveDailySession = session?.status === 'active';
+    const matchesNode = (nodeId?: number | null) => nodeId != null && Number(nodeId) === Number(nodeFocus.node.id);
+    const matchesAction = (actionId?: number | null) =>
+      lessonAction?.id != null && actionId != null && Number(actionId) === Number(lessonAction.id);
+    const primarySessionMatches =
+      session?.primary_action_id != null ? matchesAction(session.primary_action_id) : matchesNode(session?.primary_node_id);
+    const selectedSessionTaskMatches =
+      session?.tasks?.some(
+        (task) =>
+          task.outcome === 'pending' &&
+          matchesNode(task.nodeId) &&
+          (task.actionId != null ? matchesAction(task.actionId) : true),
+      ) ?? false;
+    const activeSession = Boolean(hasActiveDailySession && (primarySessionMatches || selectedSessionTaskMatches));
     const latestAttempt = nodeFocus.mastery?.latestAttempt ?? null;
     const routeRequirement = nodeFocus.mastery?.routeRequirement ?? null;
-    const canStartLesson = Boolean(lessonAction) && !activeSession && !isStartingSession && !isEditorArchived;
+    const canStartLesson = Boolean(lessonAction) && !hasActiveDailySession && !isStartingSession && !isEditorArchived;
 
     let stateLabel = 'старт';
     let title = lessonAction?.title ?? nodeFocus.node.title;
@@ -628,6 +642,14 @@ export const NavigationView = ({
       buttonIcon = <ShieldCheck size={15} />;
       buttonDisabled = isEditorArchived;
       buttonAction = openAssessmentStep;
+    } else if (hasActiveDailySession) {
+      stateLabel = 'сейчас';
+      title = 'Уже идет другое занятие';
+      description = 'Вернитесь в Сегодня, чтобы продолжить активный учебный шаг.';
+      buttonLabel = 'Вернуться в Сегодня';
+      buttonIcon = <ChevronRight size={15} />;
+      buttonDisabled = false;
+      buttonAction = onOpenToday;
     }
 
     return (
