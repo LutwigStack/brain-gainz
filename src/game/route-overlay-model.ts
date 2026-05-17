@@ -9,6 +9,8 @@ export interface RouteNodeCanvasMetadata {
   routeStage?: string | null;
   requiredMasteryLevel?: string | null;
   currentMasteryRank?: number;
+  isLocked?: boolean;
+  isWeakSpot?: boolean;
 }
 
 export const applyRouteOverlayToModel = (
@@ -39,6 +41,8 @@ export const applyRouteOverlayToModel = (
             isRouteNode: true,
             isRouteComplete: Boolean(route.isComplete),
             isCurrentRouteTarget: Boolean(route.isCurrentTarget),
+            isRouteLocked: Boolean(route.isLocked),
+            isWeakRouteNode: Boolean(route.isWeakSpot),
             routeNodeId: route.routeNodeId,
             routeSequenceIndex: route.routeSequenceIndex,
             routeOrder: route.routeOrder ?? null,

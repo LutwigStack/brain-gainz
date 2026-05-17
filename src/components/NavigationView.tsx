@@ -51,6 +51,7 @@ import {
   resolveCanvasCreateRoute,
   type CanvasCreateMode,
 } from '../application/map-create-routing';
+import { shouldAutoDisableRouteFilter } from '../application/learner-map-overview';
 import { resolveMapShortcutIntent } from '../application/map-shortcuts';
 import { buildGraphHierarchyIndex } from '../application/graph-hierarchy';
 import {
@@ -435,7 +436,7 @@ export const NavigationView = ({
   const [assessmentChecklistValues, setAssessmentChecklistValues] = useState<Record<string, boolean>>({});
   const [routeRequiredLevel, setRouteRequiredLevel] = useState<MasteryLevel>('confirmed');
   const [routeStageDrafts, setRouteStageDrafts] = useState<Record<number, string>>({});
-  const [isRouteFilterEnabled, setIsRouteFilterEnabled] = useState(false);
+  const [isRouteFilterEnabled, setIsRouteFilterEnabled] = useState(workspaceMode !== 'author');
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
   const [pendingEdgeSelection, setPendingEdgeSelection] = useState<PendingEdgeSelection | null>(null);
   const [mapEditTool, setMapEditTool] = useState<MapEditTool>('select');
@@ -489,6 +490,9 @@ export const NavigationView = ({
     setMapEditTool('select');
     setConnectSourceNodeId(null);
     setPendingNodeArchive(null);
+    setMapCanvasMode('free');
+    setLayerParentNodeId(null);
+    setIsRouteFilterEnabled(true);
   }, [canUseAuthorTools]);
 
   const clearMapTransientUi = () => {
@@ -768,6 +772,8 @@ export const NavigationView = ({
           routeNodeId: item.id,
           isComplete: item.is_complete,
           isCurrentTarget: currentRoute?.nextItem?.id === item.id,
+          isLocked: item.is_actionable === false,
+          isWeakSpot: Boolean(item.weak_spot_reason),
           routeOrder: item.route_order,
           routeStage: item.route_stage,
           requiredMasteryLevel: item.required_mastery_level,
@@ -834,6 +840,8 @@ export const NavigationView = ({
             ...node,
             isRouteNode: true,
             isRouteComplete: routeItem.is_complete,
+            isRouteLocked: routeItem.is_actionable === false,
+            isWeakRouteNode: Boolean(routeItem.weak_spot_reason),
             routeRequiredMasteryLevel: routeItem.required_mastery_level,
             routeCurrentMasteryRank: routeItem.current_mastery_rank,
           }
@@ -841,10 +849,10 @@ export const NavigationView = ({
     }),
   };
   useEffect(() => {
-    if (routeNodeIds.size === 0 && isRouteFilterEnabled) {
+    if (shouldAutoDisableRouteFilter({ canUseAuthorTools, isRouteFilterEnabled, routeNodeCount: routeNodeIds.size })) {
       setIsRouteFilterEnabled(false);
     }
-  }, [isRouteFilterEnabled, routeNodeIds.size]);
+  }, [canUseAuthorTools, isRouteFilterEnabled, routeNodeIds.size]);
   const structureHierarchy = useMemo(
     () => buildGraphHierarchyIndex(snapshot, selectedSphereId, focus?.node?.id ?? null),
     [snapshot, selectedSphereId, focus?.node?.id],
@@ -2526,6 +2534,32 @@ export const NavigationView = ({
     activeRouteTargetItem != null ? routeItems.findIndex((item) => item.id === activeRouteTargetItem.id) : -1;
   const focusedRouteItem = focus?.node ? routeItemsByNodeId.get(focus.node.id) ?? null : null;
   const focusedRouteIndex = focusedRouteItem != null ? routeItems.findIndex((item) => item.id === focusedRouteItem.id) : -1;
+  const routeProgressSummary = useMemo(() => {
+    const completed = routeItems.filter((item) => item.is_complete).length;
+    const locked = routeItems.filter((item) => item.is_actionable === false && !item.is_complete).length;
+    const weak = routeItems.filter((item) => Boolean(item.weak_spot_reason)).length;
+    const available = routeItems.filter((item) => item.is_actionable !== false && !item.is_complete).length;
+
+    return { completed, locked, weak, available };
+  }, [routeItems]);
+  const learnerRouteStatusItems = [
+    { key: 'current', label: 'Текущий', value: activeRouteTargetIndex >= 0 ? `#${activeRouteTargetIndex + 1}` : '-' },
+    { key: 'done', label: 'Готово', value: `${routeProgressSummary.completed}` },
+    { key: 'available', label: 'Доступно', value: `${routeProgressSummary.available}` },
+    { key: 'weak', label: 'Повторить', value: `${routeProgressSummary.weak}` },
+    { key: 'locked', label: 'Закрыто', value: `${routeProgressSummary.locked}` },
+  ];
+  const routeOverviewNodeClassName = (item: NonNullable<TodaySnapshot['route']>['items'][number], isFront: boolean, isFocused: boolean) =>
+    [
+      'navigation-route-overview__node',
+      item.is_complete ? 'navigation-route-overview__node--complete' : '',
+      item.is_actionable === false && !item.is_complete ? 'navigation-route-overview__node--locked' : '',
+      item.weak_spot_reason ? 'navigation-route-overview__node--weak' : '',
+      isFront ? 'navigation-route-overview__node--front' : '',
+      isFocused ? 'navigation-route-overview__node--focused' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
   const routeOverviewStages = useMemo(() => {
     const groups = new globalThis.Map<
       string,
@@ -3099,6 +3133,7 @@ export const NavigationView = ({
               ) : null}
 
               <PixelSurface frame="secondary" padding="sm" className="navigation-map-controls navigation-map-view-controls">
+                {canUseAuthorTools ? (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -3155,10 +3190,78 @@ export const NavigationView = ({
                     <PixelText as="span" size="xs" color={isRouteFilterActive ? 'accent' : 'textMuted'} uppercase>
                       {isRouteFilterActive
                         ? `Фильтр: ${routeNodeIds.size} узл.`
-                        : `В маршруте: ${routeNodeIds.size} узл.`}
+                      : `В маршруте: ${routeNodeIds.size} узл.`}
                     </PixelText>
                   ) : null}
                 </div>
+                ) : (
+                <div className="navigation-learner-map-overview">
+                  <div className="navigation-learner-map-overview__main">
+                    <PixelText as="span" size="xs" color="textDim" uppercase>
+                      Обзор прогресса
+                    </PixelText>
+                    <PixelText as="span" readable size="sm">
+                      {isRouteFilterActive
+                        ? currentSpecialization?.name ?? 'Текущий маршрут'
+                        : selectedSphere?.name ?? 'Вся карта'}
+                    </PixelText>
+                    <PixelText as="span" size="xs" color="textMuted">
+                      {isRouteFilterActive
+                        ? 'Карта показывает порядок маршрута, текущий шаг, готовые и закрытые узлы.'
+                        : 'Показана вся учебная карта без редакторских инструментов.'}
+                    </PixelText>
+                    <PixelText as="span" size="xs" color="accent">
+                      Редактирование: режим «Настраиваю» в верхней панели.
+                    </PixelText>
+                  </div>
+                  <div className="navigation-learner-map-overview__legend" aria-label="Состояния узлов маршрута">
+                    {learnerRouteStatusItems.map((item) => (
+                      <span key={item.key} className={`navigation-learner-map-overview__legend-item navigation-learner-map-overview__legend-item--${item.key}`}>
+                        <strong>{item.value}</strong>
+                        {item.label}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="navigation-learner-map-overview__actions">
+                    <PixelButton
+                      tone={isRouteFilterActive ? 'accent' : 'ghost'}
+                      onClick={() => {
+                        setHasManualMapViewport(false);
+                        setMapCanvasMode('free');
+                        setLayerParentNodeId(null);
+                        setIsRouteFilterEnabled(true);
+                        clearMapTransientUi();
+                        runMapCommand('fit-overview');
+                      }}
+                      disabled={routeNodeIds.size === 0}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <Target size={14} /> Маршрут
+                    </PixelButton>
+                    <PixelButton
+                      tone={!isRouteFilterActive ? 'accent' : 'ghost'}
+                      onClick={() => {
+                        setHasManualMapViewport(false);
+                        setIsRouteFilterEnabled(false);
+                        clearMapTransientUi();
+                        runMapCommand('fit-overview');
+                      }}
+                      disabled={!hasMapNodes}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <MapIcon size={14} /> Вся карта
+                    </PixelButton>
+                    <PixelButton
+                      tone="ghost"
+                      onClick={() => runMapCommand('focus-node')}
+                      disabled={!focus?.node}
+                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                    >
+                      <Compass size={14} /> К текущему
+                    </PixelButton>
+                  </div>
+                </div>
+                )}
               </PixelSurface>
 
               {isRouteFilterActive && routeOverviewStages.length > 0 ? (
@@ -3210,7 +3313,7 @@ export const NavigationView = ({
                               <button
                                 key={item.id}
                                 type="button"
-                                className={`navigation-route-overview__node${item.is_complete ? ' navigation-route-overview__node--complete' : ''}${isFront ? ' navigation-route-overview__node--front' : ''}${isFocused ? ' navigation-route-overview__node--focused' : ''}`}
+                                className={routeOverviewNodeClassName(item, isFront, isFocused)}
                                 onClick={() => selectRouteItemOnMap(item)}
                               >
                                 <span>#{item.route_order ?? item.id}</span>

@@ -958,8 +958,23 @@ textarea:disabled {
 }
 
 .navigation-route-overview__node--complete {
+  border-color: color-mix(in srgb, var(--pixel-success) 52%, var(--pixel-line-soft));
+  background: rgba(45, 212, 191, 0.06);
   color: var(--pixel-text-muted);
   opacity: 0.76;
+}
+
+.navigation-route-overview__node--locked {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--pixel-text-dim) 46%, var(--pixel-line-soft));
+  color: var(--pixel-text-dim);
+  opacity: 0.68;
+}
+
+.navigation-route-overview__node--weak {
+  border-color: color-mix(in srgb, var(--pixel-danger) 58%, var(--pixel-line-soft));
+  background: rgba(248, 113, 113, 0.07);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--pixel-danger) 78%, var(--pixel-accent));
 }
 
 .navigation-route-overview__node--front,
@@ -975,6 +990,73 @@ textarea:disabled {
   font-family: var(--pixel-font-display);
   font-size: 0.64rem;
   text-transform: uppercase;
+}
+
+.navigation-learner-map-overview {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1.1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.navigation-learner-map-overview__main,
+.navigation-learner-map-overview__actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.navigation-learner-map-overview__main {
+  align-items: baseline;
+}
+
+.navigation-learner-map-overview__legend {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(5, minmax(58px, 1fr));
+  gap: 6px;
+}
+
+.navigation-learner-map-overview__legend-item {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--pixel-line-soft);
+  background: var(--pixel-panel-inset);
+  padding: 5px 6px;
+  color: var(--pixel-text-muted);
+  font-size: 0.63rem;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.navigation-learner-map-overview__legend-item strong {
+  color: var(--pixel-text);
+  font-family: var(--pixel-font-display);
+  font-size: 0.78rem;
+}
+
+.navigation-learner-map-overview__legend-item--current {
+  border-color: color-mix(in srgb, var(--pixel-info) 72%, var(--pixel-line-soft));
+}
+
+.navigation-learner-map-overview__legend-item--done {
+  border-color: color-mix(in srgb, var(--pixel-success) 70%, var(--pixel-line-soft));
+}
+
+.navigation-learner-map-overview__legend-item--available {
+  border-color: color-mix(in srgb, var(--pixel-accent) 68%, var(--pixel-line-soft));
+}
+
+.navigation-learner-map-overview__legend-item--weak {
+  border-color: color-mix(in srgb, var(--pixel-danger) 62%, var(--pixel-line-soft));
+}
+
+.navigation-learner-map-overview__legend-item--locked {
+  border-style: dashed;
+  opacity: 0.8;
 }
 
 .today-task-card {
@@ -2534,6 +2616,19 @@ textarea:disabled {
   }
 
   .navigation-focused-check-flow__meta {
+    grid-template-columns: 1fr;
+  }
+
+  .navigation-learner-map-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .navigation-learner-map-overview__legend {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .navigation-learner-map-overview__actions {
+    display: grid;
     grid-template-columns: 1fr;
   }
 

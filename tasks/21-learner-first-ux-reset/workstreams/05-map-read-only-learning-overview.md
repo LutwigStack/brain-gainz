@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -31,3 +31,10 @@ In learner mode, the map should explain:
 - learner can understand route progress from the map
 - editor controls do not compete with learning controls
 - large graph overview stays readable enough to orient the user
+
+## Implementation Notes
+
+- Learner map opens as a route progress overview by default, not as a free editing canvas.
+- Learner controls show route progress, current step, available, weak, locked, and completed counts.
+- Route overview nodes now have distinct complete, current, weak, and locked states.
+- Editor map modes and mutation tools remain behind author mode.

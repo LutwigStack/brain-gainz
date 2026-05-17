@@ -23,6 +23,8 @@ export interface GameNode {
   isRouteNode?: boolean;
   isRouteComplete?: boolean;
   isCurrentRouteTarget?: boolean;
+  isRouteLocked?: boolean;
+  isWeakRouteNode?: boolean;
   routeNodeId?: number;
   routeSequenceIndex?: number;
   routeOrder?: number | null;

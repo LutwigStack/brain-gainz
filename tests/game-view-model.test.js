@@ -127,8 +127,16 @@ test('route overlay annotates route order, stage, and current target for map ren
   };
 
   const routeModel = applyRouteOverlayToModel(model, [
-    { nodeId: 1, routeNodeId: 11, routeOrder: 20, routeStage: 'Final', currentMasteryRank: 2 },
-    { nodeId: 2, routeNodeId: 10, routeOrder: 10, routeStage: 'Base', isCurrentTarget: true, currentMasteryRank: 1 },
+    { nodeId: 1, routeNodeId: 11, routeOrder: 20, routeStage: 'Final', currentMasteryRank: 2, isLocked: true },
+    {
+      nodeId: 2,
+      routeNodeId: 10,
+      routeOrder: 10,
+      routeStage: 'Base',
+      isCurrentTarget: true,
+      isWeakSpot: true,
+      currentMasteryRank: 1,
+    },
   ]);
 
   assert.equal(routeModel.nodes[0].routeSequenceIndex, 2);
@@ -136,6 +144,8 @@ test('route overlay annotates route order, stage, and current target for map ren
   assert.equal(routeModel.nodes[1].routeSequenceIndex, 1);
   assert.equal(routeModel.nodes[1].routeNodeId, 10);
   assert.equal(routeModel.nodes[1].isCurrentRouteTarget, true);
+  assert.equal(routeModel.nodes[0].isRouteLocked, true);
+  assert.equal(routeModel.nodes[1].isWeakRouteNode, true);
 });
 
 test('game view model keeps the hero at the minimum visible energy when progress is 0 percent', () => {

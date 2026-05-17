@@ -145,7 +145,15 @@ const formatRouteNodeLabel = (node: GameNode, overviewMode: boolean) => {
   }
 
   const index = node.routeSequenceIndex != null ? `#${node.routeSequenceIndex}` : 'route';
-  const status = node.isRouteComplete ? 'готово' : node.isCurrentRouteTarget ? 'цель' : 'очередь';
+  const status = node.isRouteComplete
+    ? 'готово'
+    : node.isCurrentRouteTarget
+      ? 'цель'
+      : node.isWeakRouteNode
+        ? 'повтор'
+        : node.isRouteLocked
+          ? 'закрыто'
+          : 'очередь';
   const stage = node.routeStage ? ` · ${node.routeStage}` : '';
   const required = node.routeRequiredMasteryLevel ? ` -> ${node.routeRequiredMasteryLevel}` : '';
   const mastery =
@@ -641,7 +649,15 @@ export class MapLayer extends Container {
     const radius = this.overviewMode ? OVERVIEW_NODE_BOX.radius : NODE_BOX.radius;
     const isHighlighted = node.id === this.highlightedNodeId;
     const isConnectSource = node.id === this.connectSourceNodeId;
-    const routeColor = node.isRouteComplete ? 0x6ee7b7 : node.isCurrentRouteTarget ? 0x38bdf8 : 0xfacc15;
+    const routeColor = node.isRouteComplete
+      ? 0x6ee7b7
+      : node.isCurrentRouteTarget
+        ? 0x38bdf8
+        : node.isWeakRouteNode
+          ? 0xfb7185
+          : node.isRouteLocked
+            ? 0x64748b
+            : 0xfacc15;
     const borderColor = isHighlighted
       ? biome?.accent ?? palette.stroke
       : isConnectSource
