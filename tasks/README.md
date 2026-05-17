@@ -40,3 +40,4 @@ Everything else must be `planned`, `done`, or `parked`.
 - [13 CS Bachelor Campaign And Daily Run](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/13-cs-bachelor-campaign-and-daily-run/README.md)
 - [14 Reference Style Assets](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/README.md)
 - [15 Russian Interface Pass](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/15-russian-interface-pass/README.md)
+- [16 Knowledge Checks Clarity](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/16-knowledge-checks-clarity/README.md)

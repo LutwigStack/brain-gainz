@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  getAssessmentAnswerInputCopy,
+  getAssessmentAttemptResultCopy,
   getAssessmentCheckTypeLabel,
   getAssessmentEvidenceHint,
   getAssessmentExpectedInputText,
@@ -77,7 +79,7 @@ test('assessment validation state gives one actionable reason near the action', 
     {
       tone: 'accent',
       ready: false,
-      message: 'Заполните ответ для проверки: точный ответ.',
+      message: 'Заполните поле ответа рядом с действием: точный ответ.',
     },
   );
 
@@ -92,7 +94,7 @@ test('assessment validation state gives one actionable reason near the action', 
       hasVerifierEvidence: false,
       resolvedCheckMethod: 'llm_assisted',
     }).message,
-    'Ответ заполнен как контекст. Для проверенного прогресса добавьте подтверждение проверки.',
+    'Ответ сохранен как контекст. Для зачета добавьте подтверждение проверки.',
   );
 
   assert.deepEqual(
@@ -109,7 +111,7 @@ test('assessment validation state gives one actionable reason near the action', 
     {
       tone: 'success',
       ready: true,
-      message: 'Готово: есть подтверждение проверки, можно сохранить проверенный прогресс.',
+      message: 'Готово: подтверждение проверки заполнено. После сохранения обновятся прогресс и XP.',
     },
   );
 
@@ -127,6 +129,43 @@ test('assessment validation state gives one actionable reason near the action', 
       resolvedCheckMethod: 'llm_assisted',
     }).ready,
     false,
+  );
+});
+
+test('assessment answer input copy explains what learners should enter', () => {
+  assert.deepEqual(
+    getAssessmentAnswerInputCopy({ strictCheckType: 'number', resolvedCheckMethod: 'strict' }),
+    {
+      label: 'Число для проверки',
+      placeholder: 'Введите число без лишнего текста',
+      helperText: 'Проверка учтет допустимую погрешность, если она задана.',
+    },
+  );
+
+  assert.deepEqual(
+    getAssessmentAnswerInputCopy({ strictCheckType: null, resolvedCheckMethod: 'llm_assisted' }),
+    {
+      label: 'Ответ или объяснение',
+      placeholder: 'Коротко: ответ, ход решения или ссылка на работу',
+      helperText: 'Зачет появится после вывода ИИ-проверки или вашего подтверждения.',
+    },
+  );
+});
+
+test('assessment attempt result copy separates confirmed progress from failed attempts', () => {
+  assert.deepEqual(
+    getAssessmentAttemptResultCopy({ passed: true, targetMasteryLabel: 'Применил' }),
+    {
+      status: 'Зачтено',
+      message: 'Подтвержденный прогресс обновлен до «Применил». XP начислен.',
+    },
+  );
+  assert.deepEqual(
+    getAssessmentAttemptResultCopy({ passed: false, targetMasteryLabel: 'Применил' }),
+    {
+      status: 'Пока не зачтено',
+      message: 'Попытка сохранена для разбора. Прогресс и XP не изменились; можно попробовать снова.',
+    },
   );
 });
 

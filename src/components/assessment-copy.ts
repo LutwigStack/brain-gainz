@@ -18,6 +18,17 @@ type ExpectationInput = CheckTypeInput & {
   requiredTerms?: string[];
 };
 
+type AnswerInputCopy = {
+  label: string;
+  placeholder: string;
+  helperText: string;
+};
+
+type AttemptResultCopyInput = {
+  passed: boolean;
+  targetMasteryLabel: string;
+};
+
 type ValidationInput = {
   pendingAssessment: boolean;
   pendingSelfMark?: boolean;
@@ -70,6 +81,49 @@ export const getAssessmentExpectedInputText = ({
   }
 
   return 'Приложите результат ИИ-проверки или краткое обоснование, почему ответ засчитан.';
+};
+
+export const getAssessmentAnswerInputCopy = ({
+  strictCheckType,
+  resolvedCheckMethod,
+}: CheckTypeInput): AnswerInputCopy => {
+  if (strictCheckType === 'exact') {
+    return {
+      label: 'Ответ для точной проверки',
+      placeholder: 'Введите один ответ так, как он должен быть зачтен',
+      helperText: 'Проверка сравнит ответ с ожидаемым значением.',
+    };
+  }
+
+  if (strictCheckType === 'number') {
+    return {
+      label: 'Число для проверки',
+      placeholder: 'Введите число без лишнего текста',
+      helperText: 'Проверка учтет допустимую погрешность, если она задана.',
+    };
+  }
+
+  if (strictCheckType === 'contains') {
+    return {
+      label: 'Ответ с обязательными терминами',
+      placeholder: 'Напишите ответ так, чтобы в нем были все обязательные термины',
+      helperText: 'Проверка ищет обязательные элементы в тексте ответа.',
+    };
+  }
+
+  if (resolvedCheckMethod === 'strict') {
+    return {
+      label: 'Ответ или артефакт',
+      placeholder: 'Коротко: ссылка, решение, формула или результат внешней проверки',
+      helperText: 'Зачет появится после подтверждения проверки.',
+    };
+  }
+
+  return {
+    label: 'Ответ или объяснение',
+    placeholder: 'Коротко: ответ, ход решения или ссылка на работу',
+    helperText: 'Зачет появится после вывода ИИ-проверки или вашего подтверждения.',
+  };
 };
 
 export const getAssessmentEvidenceHint = ({
@@ -131,7 +185,7 @@ export const getAssessmentValidationState = ({
       return {
         tone: 'success' as const,
         ready: true,
-        message: 'Готово: ответ будет проверен локально, попытка сохранится автоматически.',
+        message: 'Готово: ответ будет проверен сразу. Если он пройдет критерий, прогресс и XP обновятся.',
       };
     }
 
@@ -139,8 +193,8 @@ export const getAssessmentValidationState = ({
       tone: 'accent' as const,
       ready: false,
       message: isChecklistCheck
-        ? 'Отметьте выполненные пункты чек-листа, чтобы сохранить проверенную попытку.'
-        : `Заполните ответ для проверки: ${checkTypeLabel.toLocaleLowerCase()}.`,
+        ? 'Отметьте хотя бы один пункт чек-листа, чтобы сохранить попытку проверки.'
+        : `Заполните поле ответа рядом с действием: ${checkTypeLabel.toLocaleLowerCase()}.`,
     };
   }
 
@@ -148,7 +202,7 @@ export const getAssessmentValidationState = ({
     return {
       tone: 'success' as const,
       ready: true,
-      message: 'Готово: есть подтверждение проверки, можно сохранить проверенный прогресс.',
+      message: 'Готово: подтверждение проверки заполнено. После сохранения обновятся прогресс и XP.',
     };
   }
 
@@ -156,12 +210,19 @@ export const getAssessmentValidationState = ({
     tone: 'accent' as const,
     ready: false,
     message: hasAnswer
-      ? 'Ответ заполнен как контекст. Для проверенного прогресса добавьте подтверждение проверки.'
+      ? 'Ответ сохранен как контекст. Для зачета добавьте подтверждение проверки.'
       : resolvedCheckMethod === 'strict'
         ? 'Добавьте ответ или подтверждение внешней проверки рядом с действием.'
         : 'Добавьте ответ или подтверждение ИИ-проверки рядом с действием.',
   };
 };
+
+export const getAssessmentAttemptResultCopy = ({ passed, targetMasteryLabel }: AttemptResultCopyInput) => ({
+  status: passed ? 'Зачтено' : 'Пока не зачтено',
+  message: passed
+    ? `Подтвержденный прогресс обновлен до «${targetMasteryLabel}». XP начислен.`
+    : 'Попытка сохранена для разбора. Прогресс и XP не изменились; можно попробовать снова.',
+});
 
 export const getAssessmentResultIdLabel = (resolvedCheckMethod: AssessmentCheckMethod) =>
   resolvedCheckMethod === 'strict' ? 'ID результата проверки' : 'ID результата ИИ';

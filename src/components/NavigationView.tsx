@@ -54,6 +54,8 @@ import {
 import { resolveMapShortcutIntent } from '../application/map-shortcuts';
 import { buildGraphHierarchyIndex } from '../application/graph-hierarchy';
 import {
+  getAssessmentAnswerInputCopy,
+  getAssessmentAttemptResultCopy,
   getAssessmentCheckTypeLabel,
   getAssessmentEvidenceHint,
   getAssessmentExpectedInputText,
@@ -1192,8 +1194,8 @@ export const NavigationView = ({
             </PixelText>
             <PixelText as="p" readable size="xs" color="textMuted">
               {check.invalidRaw
-                ? 'Метаданные проверки не разобраны. Raw JSON скрыт и сохранится без изменений.'
-                : 'Формат проверки пока не поддержан формой. Raw JSON скрыт и сохранится без изменений.'}
+                ? 'Метаданные проверки не разобраны. Исходный JSON скрыт и сохранится без изменений.'
+                : 'Формат проверки пока не поддержан формой. Исходный JSON скрыт и сохранится без изменений.'}
             </PixelText>
             <PixelButton
               tone="ghost"
@@ -1242,7 +1244,7 @@ export const NavigationView = ({
                 2 · Задание
               </PixelText>
               <PixelTextarea
-                label="Task prompt"
+                label="Задание для ученика"
                 value={check.prompt}
                 onChange={(event) => updateCheck({ prompt: event.target.value })}
                 placeholder="Что пользователь должен сделать перед проверкой"
@@ -1272,7 +1274,7 @@ export const NavigationView = ({
                     label="Правильный ответ"
                     value={check.expectedAnswer}
                     onChange={(event) => updateCheck({ expectedAnswer: event.target.value })}
-                    placeholder="Например: determinant"
+                    placeholder="Например: детерминант"
                     disabled={isEditorBusy}
                   />
                   <label className="flex items-center gap-2 self-end border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] px-3 py-2">
@@ -1411,7 +1413,7 @@ export const NavigationView = ({
 
           <PixelSurface frame="ghost" padding="xs">
             <PixelText as="p" size="xs" color="textDim" uppercase>
-              4 · Preview
+              4 · Как увидит ученик
             </PixelText>
             <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 4 }}>
               {getCheckMetadataPreview(check)}
@@ -1489,6 +1491,7 @@ export const NavigationView = ({
       resolvedCheckMethod,
     });
     const verifierEvidenceHint = getAssessmentEvidenceHint({ hasVisibleEvidence, hasTechnicalResultId });
+    const answerInputCopy = getAssessmentAnswerInputCopy({ strictCheckType, resolvedCheckMethod });
     const assessmentValidationState = getAssessmentValidationState({
       pendingAssessment,
       pendingSelfMark,
@@ -1503,6 +1506,12 @@ export const NavigationView = ({
     });
     const assessmentValidationTone =
       assessmentValidationState.tone === 'success' ? 'var(--pixel-success)' : 'var(--pixel-accent)';
+    const latestAttemptResultCopy = mastery?.latestAttempt
+      ? getAssessmentAttemptResultCopy({
+          passed: mastery.latestAttempt.passed,
+          targetMasteryLabel: masteryLabel(mastery.latestAttempt.target_mastery_level),
+        })
+      : null;
 
     return (
       <PixelSurface frame="inset" padding="sm">
@@ -1655,7 +1664,11 @@ export const NavigationView = ({
               </PixelText>
               <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
                 {masteryLabel(mastery?.currentLevel)}
-                {mastery?.isVerified ? ' · проверено' : mastery?.isSelfMarkedOnly ? ' · самооценка' : ' · нет проверки'}
+                {mastery?.isVerified
+                  ? ' · подтверждено проверкой'
+                  : mastery?.isSelfMarkedOnly
+                    ? ' · самооценка'
+                    : ' · нет проверки'}
               </PixelText>
             </div>
             <div
@@ -1681,7 +1694,7 @@ export const NavigationView = ({
               <span className="flex items-center gap-2">
                 <ShieldCheck size={14} style={{ color: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-text-dim)' }} />
                 <PixelText as="span" size="xs" color="textMuted" uppercase>
-                  проверено
+                  подтверждено
                 </PixelText>
               </span>
               <PixelText as="span" size="xs" color={mastery?.isVerified ? 'success' : 'textDim'} uppercase>
@@ -1698,7 +1711,7 @@ export const NavigationView = ({
               <span className="flex items-center gap-2">
                 <Eye size={14} style={{ color: mastery?.isSelfMarkedOnly ? 'var(--pixel-accent)' : 'var(--pixel-text-dim)' }} />
                 <PixelText as="span" size="xs" color="textMuted" uppercase>
-                  сам отметил
+                  самооценка
                 </PixelText>
               </span>
               <PixelText as="span" size="xs" color={mastery?.isSelfMarkedOnly ? 'accent' : 'textDim'} uppercase>
@@ -1854,19 +1867,12 @@ export const NavigationView = ({
                 </div>
               ) : (
               <PixelTextarea
-                label={isAutoStrictCheck ? `Ответ · ${checkTypeLabel}` : 'Ответ / артефакт'}
+                label={answerInputCopy.label}
                 value={assessmentAnswer}
                 onChange={(event) => setAssessmentAnswer(event.target.value)}
-                placeholder={
-                  strictCheckType === 'exact'
-                    ? 'Введите точный ответ'
-                    : strictCheckType === 'number'
-                      ? 'Введите число'
-                      : strictCheckType === 'contains'
-                        ? 'Введите текст с обязательными терминами'
-                        : 'Коротко: что сделал пользователь, ссылка, формула, решение или проверяемый результат'
-                }
+                placeholder={answerInputCopy.placeholder}
                 disabled={pendingAssessment || isEditorArchived}
+                hint={answerInputCopy.helperText}
                 style={{ minHeight: 68 }}
               />
               )}
@@ -2010,11 +2016,10 @@ export const NavigationView = ({
                     )}
                     <div>
                       <PixelText as="p" size="xs" color="textMuted" uppercase style={{ margin: 0 }}>
-                        Попытка сохранена
+                        {latestAttemptResultCopy?.status ?? 'Попытка сохранена'}
                       </PixelText>
                       <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
-                        {mastery.latestAttempt.passed ? 'Проверенный прогресс обновлен' : 'Учебный результат сохранен · можно повторить'} ·{' '}
-                        {masteryLabel(mastery.latestAttempt.target_mastery_level)}
+                        {latestAttemptResultCopy?.message ?? 'Попытка сохранена.'}
                       </PixelText>
                       {mastery.latestAttempt.feedback_summary ? (
                         <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 4 }}>

@@ -358,7 +358,9 @@ export const serializeCheckMetadataDraft = (draft: CheckMetadataDraft): string |
 
 export const getCheckMetadataPreview = (draft: CheckMetadataDraft) => {
   if (draft.kind === 'none') return 'Проверка не задана.';
-  if (draft.kind === 'raw') return draft.invalidRaw ? 'Raw JSON: ошибка разбора.' : 'Raw JSON: сохранится без изменений.';
+  if (draft.kind === 'raw') {
+    return draft.invalidRaw ? 'Исходный JSON: ошибка разбора.' : 'Исходный JSON: сохранится без изменений.';
+  }
   if (draft.kind === 'exact') return `Точный ответ: ${draft.expectedAnswer || 'не задан'}`;
   if (draft.kind === 'number') return `Число: ${draft.expectedNumber || 'не задано'} ± ${draft.tolerance || '0'}`;
   if (draft.kind === 'contains') return `Термины: ${draft.requiredTerms.split(/\n|,/).filter((item) => item.trim()).length}`;
