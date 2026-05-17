@@ -717,11 +717,11 @@ export default function App() {
     await loadNowFocus(selection);
   };
 
-  const handleOpenTodayRouteNode = async (nodeId) => {
+  const handleOpenTodayRouteNode = async (nodeId, actionId = null) => {
     if (!nodeId) {
       return;
     }
-    const selection = { nodeId, actionId: null, skillId: null };
+    const selection = { nodeId, actionId: actionId ?? null, skillId: null };
     requestMapInspectorMode('overview');
     setNavigationBranchFilterId(null);
     setNavigationSelection(selection);

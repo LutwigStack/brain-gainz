@@ -156,7 +156,7 @@ interface NowViewProps {
   onCreateStarterWorkspace: () => void;
   onSelectRecommendation: (recommendation: RecommendationCandidate) => void;
   onOpenMap: (recommendation: RecommendationCandidate) => void;
-  onOpenRouteNode: (nodeId: number) => void;
+  onOpenRouteNode: (nodeId: number, actionId?: number | null) => void;
   onOpenRouteMap: () => void;
   onRefresh: () => void;
   onCompleteSpecialization: () => void;
@@ -379,7 +379,7 @@ export const NowView = ({
 
     if (isDailyRunActive && firstPendingRunTask) {
       if (firstPendingRunTask.nodeId != null) {
-        onOpenRouteNode(firstPendingRunTask.nodeId);
+        onOpenRouteNode(firstPendingRunTask.nodeId, firstPendingRunTask.actionId ?? null);
         return;
       }
 
@@ -413,7 +413,7 @@ export const NowView = ({
       return;
     }
 
-    onOpenRouteNode(task.nodeId);
+    onOpenRouteNode(task.nodeId, task.actionId ?? null);
   };
 
   const handleRunTaskOutcome = (
