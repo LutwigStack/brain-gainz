@@ -439,7 +439,10 @@ test('today projection distinguishes empty, content without plan, free mode, and
   const emptyDashboard = await nowService.getDashboard(emptyCampaign.id);
   assert.equal(emptyDashboard.metrics.nodes, 0);
   assert.equal(emptyDashboard.today.state.key, 'truly_empty');
+  assert.equal(emptyDashboard.today.state.label, 'Карта пустая');
+  assert.equal(emptyDashboard.today.state.title, 'Создайте первый набор');
   assert.equal(emptyDashboard.today.state.primaryCta.action, 'create_starter');
+  assert.equal(emptyDashboard.today.state.primaryCta.label, 'Создать набор');
 
   const contentCampaign = await campaignStore.createUserCampaign({ name: 'Content Without Day Plan' });
   const contentDashboard = await nowService.getDashboard(contentCampaign.id);
@@ -447,6 +450,7 @@ test('today projection distinguishes empty, content without plan, free mode, and
   assert.equal(contentDashboard.today.state.key, 'content_without_day_plan');
   assert.equal(contentDashboard.today.state.content.nodeCount, contentDashboard.metrics.nodes);
   assert.equal(contentDashboard.today.state.primaryCta.action, 'open_route_map');
+  assert.equal(contentDashboard.today.state.label, 'Нет шага');
   assert.match(contentDashboard.today.state.reason, /1 узл\./);
 
   const freeModeCampaign = await campaignStore.createUserCampaign({ name: 'Free Mode Today State' });
@@ -462,6 +466,7 @@ test('today projection distinguishes empty, content without plan, free mode, and
   const freeModeDashboard = await nowService.getDashboard(freeModeCampaign.id);
   assert.equal(freeModeDashboard.today.state.key, 'free_mode');
   assert.equal(freeModeDashboard.today.state.primaryCta.action, 'open_recommendation_map');
+  assert.equal(freeModeDashboard.today.state.primaryCta.label, 'Открыть шаг');
 
   const noRouteCampaign = await campaignStore.createUserCampaign({ name: 'No Route Today State' });
   await nowService.createSpecialization(noRouteCampaign.id, {
@@ -472,6 +477,8 @@ test('today projection distinguishes empty, content without plan, free mode, and
   assert.equal(noRouteDashboard.today.state.key, 'no_route');
   assert.equal(noRouteDashboard.today.route.routeNodeCount, 0);
   assert.equal(noRouteDashboard.today.state.primaryCta.action, 'open_route_map');
+  assert.equal(noRouteDashboard.today.state.label, 'Маршрут пуст');
+  assert.equal(noRouteDashboard.today.state.primaryCta.label, 'Настроить маршрут');
 });
 
 test('today projection keeps route incomplete CTA safe when no required next node exists', async (t) => {
@@ -492,6 +499,7 @@ test('today projection keeps route incomplete CTA safe when no required next nod
 
   const dashboard = await nowService.getDashboard(campaign.id);
   assert.equal(dashboard.today.state.key, 'route_incomplete');
+  assert.equal(dashboard.today.state.label, 'Нет доступного шага');
   assert.equal(dashboard.today.route.isComplete, false);
   assert.equal(dashboard.today.planner.focusItem, null);
   assert.equal(dashboard.today.state.primaryCta.action, 'open_route_map');
@@ -522,6 +530,7 @@ test('today projection does not open archived route nodes as the next step', asy
   assert.equal(dashboard.today.route.nextItem, null);
   assert.equal(dashboard.today.planner.focusItem, null);
   assert.equal(dashboard.today.state.key, 'route_incomplete');
+  assert.equal(dashboard.today.state.label, 'Нет доступного шага');
   assert.equal(dashboard.today.state.primaryCta.action, 'open_route_map');
 });
 
@@ -593,7 +602,9 @@ test('today projection exposes route, race, city, and specialization-scoped oppo
   assert.equal(dashboard.today.route.nextItem, null);
   assert.equal(dashboard.today.planner.focusItem, null);
   assert.equal(dashboard.today.state.key, 'completed_route');
+  assert.equal(dashboard.today.state.label, 'Маршрут готов');
   assert.equal(dashboard.today.state.primaryCta.action, 'complete_route');
+  assert.equal(dashboard.today.state.primaryCta.label, 'Закрыть маршрут');
   assert.ok(dashboard.today.race.key);
   assert.ok(dashboard.today.city.level >= 1);
   assert.ok(dashboard.today.city.totalXp > 0);
@@ -606,7 +617,9 @@ test('today projection exposes route, race, city, and specialization-scoped oppo
   assert.equal(victoryDashboard.today.route.isComplete, true);
   assert.equal(victoryDashboard.today.planner, null);
   assert.equal(victoryDashboard.today.state.key, 'completed_route');
+  assert.equal(victoryDashboard.today.state.label, 'Маршрут завершен');
   assert.equal(victoryDashboard.today.state.primaryCta.action, 'continue_route');
+  assert.equal(victoryDashboard.today.state.primaryCta.label, 'Выбрать маршрут');
 
   const next = await nowService.continueWithSpecialization(campaign.id, {
     name: 'Backend Route',
@@ -1217,6 +1230,7 @@ test('strict assessment metadata runs local checks and creates verifier evidence
     idempotency_key: 'auto-exact-fail',
   });
   assert.equal(failedExact.attempt.passed, 0);
+  assert.equal(failedExact.attempt.feedback_summary, 'Ответ не совпал с ожидаемым.');
   assert.equal(failedExact.masteryEvent, null);
 
   const passedExact = await nowService.submitAssessmentAttempt(campaign.id, {
@@ -1229,6 +1243,7 @@ test('strict assessment metadata runs local checks and creates verifier evidence
     idempotency_key: 'auto-exact-pass',
   });
   assert.equal(passedExact.attempt.passed, 1);
+  assert.equal(passedExact.attempt.feedback_summary, 'Ответ совпал с ожидаемым.');
   assert.match(passedExact.attempt.evidence_payload, /"strict_check_type":"exact"/);
   assert.ok(passedExact.masteryEvent);
 
@@ -1254,6 +1269,7 @@ test('strict assessment metadata runs local checks and creates verifier evidence
     idempotency_key: 'auto-number-pass',
   });
   assert.equal(passedNumber.attempt.passed, 1);
+  assert.equal(passedNumber.attempt.feedback_summary, 'Число попало в допустимый диапазон.');
 
   const failedContains = await nowService.submitAssessmentAttempt(campaign.id, {
     node_id: node.id,
@@ -1265,6 +1281,7 @@ test('strict assessment metadata runs local checks and creates verifier evidence
     idempotency_key: 'auto-contains-fail',
   });
   assert.equal(failedContains.attempt.passed, 0);
+  assert.equal(failedContains.attempt.feedback_summary, 'Не хватает обязательных элементов: dimension.');
 
   const passedChecklist = await nowService.submitAssessmentAttempt(campaign.id, {
     node_id: node.id,
@@ -1277,6 +1294,7 @@ test('strict assessment metadata runs local checks and creates verifier evidence
     idempotency_key: 'auto-checklist-pass',
   });
   assert.equal(passedChecklist.attempt.passed, 1);
+  assert.equal(passedChecklist.attempt.feedback_summary, 'Все обязательные пункты чек-листа отмечены.');
   assert.match(passedChecklist.attempt.evidence_payload, /"strict_check_type":"checklist"/);
 });
 

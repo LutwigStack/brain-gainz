@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -27,3 +27,10 @@ Do not fix unclear UI by adding paragraphs. Prefer clear layout, visible state, 
 - failed checks do not look like app errors
 - destructive actions are clearly named and confirmed
 - Russian copy is short enough for mobile
+
+## Implementation Notes
+
+- Campaign cards now use action-first buttons like `Продолжить`, `Посмотреть`, and `Архивировать`.
+- Today empty/completed/no-route states use short labels, one compact reason, and one clear CTA.
+- Check validation, failed attempt, and result copy is shorter and separates `Не зачтено` from app errors.
+- Learner map and inspector empty states now point to the next action instead of only saying what is missing.

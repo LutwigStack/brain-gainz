@@ -335,7 +335,7 @@ const dailyActionByState: Record<DailyTaskState, string> = {
   current: 'Начать',
   next: 'Открыть',
   recovery: 'Повторить',
-  locked: 'Закрыто',
+  locked: 'Недоступно',
   future: 'Открыть карту',
   complete: 'Повторить',
 };
@@ -415,8 +415,8 @@ export const buildDailyTaskCards = ({
       cards.push({
         key: `locked-slot-${order}`,
         order,
-        title: placeholderIndex === 0 ? 'Доп. задание' : 'Слот маршрута',
-        subtitle: 'откроется позже',
+        title: placeholderIndex === 0 ? 'Позже' : 'Слот закрыт',
+        subtitle: 'откроется после текущего шага',
         status: dailyStatusByState.locked,
         state: 'locked',
         progressPercent: 0,
@@ -441,7 +441,7 @@ export const buildDailyTaskCards = ({
     cards.push({
       key: `future-slot-${order}`,
       order,
-      title: state === 'future' ? 'Будущий шаг' : 'Следующий слот',
+      title: state === 'future' ? 'Следующий шаг' : 'Слот закрыт',
       subtitle: 'появится после текущей задачи',
       status: dailyStatusByState[state],
       state,

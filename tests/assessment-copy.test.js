@@ -6,7 +6,9 @@ import {
   getAssessmentAttemptResultCopy,
   getAssessmentCheckTypeLabel,
   getAssessmentEvidenceHint,
+  getAssessmentFailedAttemptState,
   getAssessmentExpectedInputText,
+  getAssessmentPrimaryActionLabel,
   getAssessmentValidationState,
 } from '../src/components/assessment-copy.ts';
 
@@ -79,7 +81,7 @@ test('assessment validation state gives one actionable reason near the action', 
     {
       tone: 'accent',
       ready: false,
-      message: 'Заполните поле ответа рядом с действием: точный ответ.',
+      message: 'Введите ответ: точный ответ.',
     },
   );
 
@@ -94,7 +96,7 @@ test('assessment validation state gives one actionable reason near the action', 
       hasVerifierEvidence: false,
       resolvedCheckMethod: 'llm_assisted',
     }).message,
-    'Ответ сохранен как контекст. Для зачета добавьте подтверждение проверки.',
+    'Добавьте подтверждение, чтобы засчитать.',
   );
 
   assert.deepEqual(
@@ -111,7 +113,7 @@ test('assessment validation state gives one actionable reason near the action', 
     {
       tone: 'success',
       ready: true,
-      message: 'Готово: подтверждение проверки заполнено. После сохранения обновятся прогресс и XP.',
+      message: 'Готово. Можно засчитать.',
     },
   );
 
@@ -157,14 +159,74 @@ test('assessment attempt result copy separates confirmed progress from failed at
     getAssessmentAttemptResultCopy({ passed: true, targetMasteryLabel: 'Применил' }),
     {
       status: 'Зачтено',
-      message: 'Подтвержденный прогресс обновлен до «Применил». XP зависит от настройки основной характеристики ветки.',
+      message: 'Прогресс обновлен до «Применил».',
     },
   );
   assert.deepEqual(
     getAssessmentAttemptResultCopy({ passed: false, targetMasteryLabel: 'Применил' }),
     {
-      status: 'Пока не зачтено',
-      message: 'Попытка сохранена для разбора. Прогресс и XP не изменились; можно попробовать снова.',
+      status: 'Не зачтено',
+      message: 'Попытка сохранена. Прогресс и XP не изменились.',
+    },
+  );
+});
+
+test('assessment primary and failed-attempt actions describe the real outcome', () => {
+  assert.equal(
+    getAssessmentPrimaryActionLabel({ pendingAssessment: false, isAutoStrictCheck: true }),
+    'Проверить ответ',
+  );
+  assert.equal(
+    getAssessmentPrimaryActionLabel({ pendingAssessment: false, isAutoStrictCheck: false }),
+    'Засчитать прогресс',
+  );
+  assert.equal(
+    getAssessmentPrimaryActionLabel({ pendingAssessment: true, isAutoStrictCheck: true }),
+    'Проверяю…',
+  );
+
+  assert.deepEqual(
+    getAssessmentFailedAttemptState({
+      isAutoStrictCheck: true,
+      pendingAssessment: false,
+      hasAnswer: true,
+      hasVerifierEvidence: false,
+      resolvedCheckMethod: 'strict',
+    }),
+    {
+      visible: false,
+      disabled: true,
+      message: 'Неверный ответ сохранится после проверки.',
+    },
+  );
+
+  assert.deepEqual(
+    getAssessmentFailedAttemptState({
+      isAutoStrictCheck: false,
+      pendingAssessment: false,
+      hasAnswer: false,
+      hasVerifierEvidence: false,
+      resolvedCheckMethod: 'llm_assisted',
+    }),
+    {
+      visible: true,
+      disabled: true,
+      message: 'Добавьте ответ или вывод ИИ-проверки.',
+    },
+  );
+
+  assert.deepEqual(
+    getAssessmentFailedAttemptState({
+      isAutoStrictCheck: false,
+      pendingAssessment: false,
+      hasAnswer: true,
+      hasVerifierEvidence: false,
+      resolvedCheckMethod: 'strict',
+    }),
+    {
+      visible: true,
+      disabled: false,
+      message: 'Сохранить без зачета. XP не изменится.',
     },
   );
 });

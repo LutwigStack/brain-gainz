@@ -59,7 +59,9 @@ import {
   getAssessmentAttemptResultCopy,
   getAssessmentCheckTypeLabel,
   getAssessmentEvidenceHint,
+  getAssessmentFailedAttemptState,
   getAssessmentExpectedInputText,
+  getAssessmentPrimaryActionLabel,
   getAssessmentResultIdLabel,
   getAssessmentResultIdPlaceholder,
   getAssessmentValidationState,
@@ -632,10 +634,10 @@ export const NavigationView = ({
 
     if (latestAttempt) {
       stateLabel = latestAttempt.passed ? 'результат' : 'повтор';
-      title = latestAttempt.passed ? 'Результат сохранен' : 'Попытка сохранена';
+      title = latestAttempt.passed ? 'Зачтено' : 'Не зачтено';
       description = latestAttempt.passed
-        ? 'Вернитесь в Сегодня: маршрут покажет следующий шаг.'
-        : 'Можно сразу вернуться к проверке и попробовать еще раз.';
+        ? 'Today покажет следующий шаг.'
+        : 'Попробуйте еще раз или вернитесь в Today.';
       buttonLabel = latestAttempt.passed ? 'Следующий шаг' : 'Повторить проверку';
       buttonIcon = latestAttempt.passed ? <ChevronRight size={15} /> : <RotateCcw size={15} />;
       buttonDisabled = false;
@@ -648,8 +650,8 @@ export const NavigationView = ({
       buttonAction = openAssessmentStep;
     } else if (hasActiveDailySession) {
       stateLabel = 'сейчас';
-      title = 'Уже идет другое занятие';
-      description = 'Вернитесь в Сегодня, чтобы продолжить активный учебный шаг.';
+      title = 'Уже идет занятие';
+      description = 'Вернитесь в Today и продолжите текущий шаг.';
       buttonLabel = 'Вернуться в Сегодня';
       buttonIcon = <ChevronRight size={15} />;
       buttonDisabled = false;
@@ -689,7 +691,7 @@ export const NavigationView = ({
           </PixelButton>
           {!lessonAction && !activeSession && !latestAttempt ? (
             <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
-              Для этого узла пока нет открытого действия. Вернитесь в Сегодня или выберите другой узел маршрута.
+              Нет открытого действия. Вернитесь в Today или выберите другой узел.
             </PixelText>
           ) : null}
         </PixelStack>
@@ -701,7 +703,7 @@ export const NavigationView = ({
     const routeTarget = focus?.mastery?.routeRequirement?.required_mastery_level;
     setAssessmentTargetLevel(routeTarget ?? 'understood');
     setRouteRequiredLevel(routeTarget ?? 'confirmed');
-    setAssessmentCheckMethod(focus?.mastery?.check?.isStrictCheckable ? 'strict' : 'llm_assisted');
+    setAssessmentCheckMethod(focus?.mastery?.check?.checkMethod === 'llm_assisted' ? 'llm_assisted' : 'strict');
     setAssessmentAnswer('');
     setAssessmentResultId('');
     setAssessmentEvidence('');
@@ -709,9 +711,15 @@ export const NavigationView = ({
   }, [
     focus?.node?.id,
     focus?.mastery?.routeRequirement?.required_mastery_level,
-    focus?.mastery?.check?.isStrictCheckable,
-    focus?.mastery?.latestAttempt?.id,
+    focus?.mastery?.check?.checkMethod,
   ]);
+
+  useEffect(() => {
+    setAssessmentAnswer('');
+    setAssessmentResultId('');
+    setAssessmentEvidence('');
+    setAssessmentChecklistValues({});
+  }, [focus?.mastery?.latestAttempt?.id]);
 
   const navigationNodeIndex = new globalThis.Map<number, NavigationNodeSummary>();
 
@@ -1666,6 +1674,19 @@ export const NavigationView = ({
           targetMasteryLabel: masteryLabel(mastery.latestAttempt.target_mastery_level),
         })
       : null;
+    const primaryAssessmentActionLabel = getAssessmentPrimaryActionLabel({
+      pendingAssessment,
+      isAutoStrictCheck,
+    });
+    const failedAttemptState = getAssessmentFailedAttemptState({
+      isAutoStrictCheck,
+      pendingAssessment,
+      pendingSelfMark,
+      isEditorArchived,
+      hasAnswer,
+      hasVerifierEvidence,
+      resolvedCheckMethod,
+    });
 
     return (
       <PixelSurface frame="inset" padding="sm">
@@ -2120,7 +2141,7 @@ export const NavigationView = ({
                   fullWidth
                   style={{ minHeight: 36, padding: '8px 10px', gap: 6 }}
                 >
-                  <ShieldCheck size={15} /> {pendingAssessment ? 'Проверяю…' : 'Сохранить проверенный прогресс'}
+                  <ShieldCheck size={15} /> {primaryAssessmentActionLabel}
                 </PixelButton>
                 </PixelStack>
               </PixelSurface>
@@ -2135,24 +2156,31 @@ export const NavigationView = ({
                 >
                   <Eye size={14} /> Сам отметил без XP
                 </PixelButton>
-                <PixelButton
-                  tone="ghost"
-                  onClick={() =>
-                    void onSubmitAssessment({
-                      targetMasteryLevel: assessmentTargetLevel,
-                      checkMethod: resolvedCheckMethod,
-                      passed: false,
-                      submittedAnswer: trimmedAnswer,
-                      feedbackSummary: trimmedEvidence || 'Попытка сохранена: пока не зачтено.',
-                      evidencePayload: null,
-                    })
-                  }
-                  disabled={isAutoStrictCheck || pendingAssessment || pendingSelfMark || isEditorArchived}
-                  style={{ minHeight: 30, padding: '6px 8px', gap: 6 }}
-                >
-                  <X size={14} /> Сохранить попытку
-                </PixelButton>
+                {failedAttemptState.visible ? (
+                  <PixelButton
+                    tone="ghost"
+                    onClick={() =>
+                      void onSubmitAssessment({
+                        targetMasteryLevel: assessmentTargetLevel,
+                        checkMethod: resolvedCheckMethod,
+                        passed: false,
+                        submittedAnswer: trimmedAnswer || trimmedEvidence,
+                        feedbackSummary: trimmedEvidence || trimmedAnswer || 'Попытка сохранена: пока не зачтено.',
+                        evidencePayload: null,
+                      })
+                    }
+                    disabled={failedAttemptState.disabled}
+                    style={{ minHeight: 30, padding: '6px 8px', gap: 6 }}
+                  >
+                    <X size={14} /> Сохранить попытку
+                  </PixelButton>
+                ) : null}
               </div>
+              {failedAttemptState.visible ? (
+                <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+                  {failedAttemptState.message}
+                </PixelText>
+              ) : null}
 
               {mastery?.latestAttempt ? (
                 <PixelSurface
@@ -2272,7 +2300,7 @@ export const NavigationView = ({
               2 · Цель
             </PixelText>
             <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
-              {routeRequirement ? `Подтвердить: ${masteryLabel(routeRequirement.required_mastery_level)}` : 'Сохранить проверенный прогресс'}
+              {routeRequirement ? `Подтвердить: ${masteryLabel(routeRequirement.required_mastery_level)}` : 'Засчитать прогресс'}
             </PixelText>
           </PixelSurface>
           <PixelSurface frame="ghost" padding="xs">
@@ -2280,7 +2308,7 @@ export const NavigationView = ({
               3 · Результат
             </PixelText>
             <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
-              {latestAttempt ? (latestAttempt.passed ? 'Прогресс подтвержден' : 'Попытка сохранена') : 'Появится после проверки'}
+              {latestAttempt ? (latestAttempt.passed ? 'Зачтено' : 'Не зачтено') : 'Появится после проверки'}
             </PixelText>
           </PixelSurface>
         </div>
@@ -2365,7 +2393,7 @@ export const NavigationView = ({
 
         {routeItems.length === 0 ? (
           <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 12 }}>
-            В маршруте пока нет узлов. Выберите узел на карте и добавьте его через инспектор.
+            Маршрут пуст. Добавьте узлы в режиме «Настраиваю».
           </PixelText>
         ) : (
           <div
@@ -2624,7 +2652,7 @@ export const NavigationView = ({
       : selectedDirection && selectedSkill
         ? `Ветка: ${selectedDirection.name} / ${selectedSkill.name}`
         : null;
-  const focusChipNode = focus?.node?.title ?? selectedSphere?.name ?? 'Фокус не выбран';
+  const focusChipNode = focus?.node?.title ?? selectedSphere?.name ?? 'Выберите узел';
   const focusChipRoute = activeRouteTargetItem
     ? `Текущий шаг #${activeRouteTargetIndex + 1}: ${activeRouteTargetItem.title}`
     : focusedRouteItem
@@ -4109,7 +4137,7 @@ export const NavigationView = ({
                     size="sm"
                     style={{ marginTop: 16, textAlign: 'center' }}
                   >
-                    Выберите узел на карте или в дереве структуры.
+                    Выберите узел на карте.
                   </PixelText>
                 </PixelSurface>
               ) : null}
@@ -4954,7 +4982,7 @@ export const NavigationView = ({
               {isEditorArchived ? (
                 <PixelSurface frame="ghost" padding="xs">
                   <PixelText as="p" readable size="sm" color="textMuted">
-                    Узел уже в архиве. Операционные действия отключены.
+                    Узел в архиве. Восстановите его для действий.
                   </PixelText>
                 </PixelSurface>
               ) : null}
@@ -5018,7 +5046,7 @@ export const NavigationView = ({
                 <div className="mt-2 space-y-2">
                   {modalSummaryFocus.actions.length === 0 ? (
                     <PixelText as="p" readable color="textMuted" size="sm">
-                      Пока нет открытых шагов.
+                      Нет открытых шагов. Создайте шаг в режиме «Настраиваю».
                     </PixelText>
                   ) : (
                     modalSummaryFocus.actions.map((action) => (
@@ -5042,7 +5070,7 @@ export const NavigationView = ({
                   </PixelText>
                   {modalSummaryFocus.dependents.length === 0 ? (
                     <PixelText as="p" readable color="textMuted" size="sm" style={{ marginTop: 16 }}>
-                      Пока ничего.
+                      Ничего не блокирует следующий шаг.
                     </PixelText>
                   ) : (
                     <div className="mt-2 space-y-2">

@@ -523,6 +523,7 @@ export interface NodeFocusMastery {
   } | null;
   check: {
     taskId: string;
+    checkMethod?: 'strict' | 'llm_assisted' | null;
     strictCheckType: string | null;
     isStrictCheckable: boolean;
     isAutoStrictCheck?: boolean;

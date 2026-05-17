@@ -29,6 +29,21 @@ type AttemptResultCopyInput = {
   targetMasteryLabel: string;
 };
 
+type PrimaryActionCopyInput = {
+  pendingAssessment: boolean;
+  isAutoStrictCheck: boolean;
+};
+
+type FailedAttemptStateInput = {
+  isAutoStrictCheck: boolean;
+  pendingAssessment: boolean;
+  pendingSelfMark?: boolean;
+  isEditorArchived?: boolean;
+  hasAnswer: boolean;
+  hasVerifierEvidence: boolean;
+  resolvedCheckMethod: AssessmentCheckMethod;
+};
+
 type ValidationInput = {
   pendingAssessment: boolean;
   pendingSelfMark?: boolean;
@@ -160,7 +175,7 @@ export const getAssessmentValidationState = ({
     return {
       tone: 'accent' as const,
       ready: false,
-      message: 'Проверка выполняется. Дождитесь сохранения попытки.',
+      message: 'Сохраняю попытку…',
     };
   }
 
@@ -168,7 +183,7 @@ export const getAssessmentValidationState = ({
     return {
       tone: 'accent' as const,
       ready: false,
-      message: 'Сначала дождитесь сохранения самооценки, затем можно сохранить проверенную попытку.',
+      message: 'Сначала дождитесь самооценки.',
     };
   }
 
@@ -185,7 +200,7 @@ export const getAssessmentValidationState = ({
       return {
         tone: 'success' as const,
         ready: true,
-        message: 'Готово: ответ будет проверен сразу. Если он пройдет критерий, прогресс и XP обновятся.',
+        message: 'Готово. Нажмите «Проверить ответ».',
       };
     }
 
@@ -193,8 +208,8 @@ export const getAssessmentValidationState = ({
       tone: 'accent' as const,
       ready: false,
       message: isChecklistCheck
-        ? 'Отметьте хотя бы один пункт чек-листа, чтобы сохранить попытку проверки.'
-        : `Заполните поле ответа рядом с действием: ${checkTypeLabel.toLocaleLowerCase()}.`,
+        ? 'Отметьте пункт чек-листа.'
+        : `Введите ответ: ${checkTypeLabel.toLocaleLowerCase()}.`,
     };
   }
 
@@ -202,7 +217,7 @@ export const getAssessmentValidationState = ({
     return {
       tone: 'success' as const,
       ready: true,
-      message: 'Готово: подтверждение проверки заполнено. После сохранения обновятся прогресс и XP.',
+      message: 'Готово. Можно засчитать.',
     };
   }
 
@@ -210,19 +225,78 @@ export const getAssessmentValidationState = ({
     tone: 'accent' as const,
     ready: false,
     message: hasAnswer
-      ? 'Ответ сохранен как контекст. Для зачета добавьте подтверждение проверки.'
+      ? 'Добавьте подтверждение, чтобы засчитать.'
       : resolvedCheckMethod === 'strict'
-        ? 'Добавьте ответ или подтверждение внешней проверки рядом с действием.'
-        : 'Добавьте ответ или подтверждение ИИ-проверки рядом с действием.',
+        ? 'Добавьте ответ или подтверждение.'
+        : 'Добавьте ответ или вывод ИИ-проверки.',
   };
 };
 
 export const getAssessmentAttemptResultCopy = ({ passed, targetMasteryLabel }: AttemptResultCopyInput) => ({
-  status: passed ? 'Зачтено' : 'Пока не зачтено',
+  status: passed ? 'Зачтено' : 'Не зачтено',
   message: passed
-    ? `Подтвержденный прогресс обновлен до «${targetMasteryLabel}». XP зависит от настройки основной характеристики ветки.`
-    : 'Попытка сохранена для разбора. Прогресс и XP не изменились; можно попробовать снова.',
+    ? `Прогресс обновлен до «${targetMasteryLabel}».`
+    : 'Попытка сохранена. Прогресс и XP не изменились.',
 });
+
+export const getAssessmentPrimaryActionLabel = ({
+  pendingAssessment,
+  isAutoStrictCheck,
+}: PrimaryActionCopyInput) => {
+  if (pendingAssessment) return 'Проверяю…';
+  return isAutoStrictCheck ? 'Проверить ответ' : 'Засчитать прогресс';
+};
+
+export const getAssessmentFailedAttemptState = ({
+  isAutoStrictCheck,
+  pendingAssessment,
+  pendingSelfMark = false,
+  isEditorArchived = false,
+  hasAnswer,
+  hasVerifierEvidence,
+  resolvedCheckMethod,
+}: FailedAttemptStateInput) => {
+  if (isAutoStrictCheck) {
+    return {
+      visible: false,
+      disabled: true,
+      message: 'Неверный ответ сохранится после проверки.',
+    };
+  }
+
+  if (isEditorArchived) {
+    return {
+      visible: true,
+      disabled: true,
+      message: 'Узел в архиве. Восстановите его, чтобы сохранить попытку.',
+    };
+  }
+
+  if (pendingAssessment || pendingSelfMark) {
+    return {
+      visible: true,
+      disabled: true,
+      message: 'Сохраняю текущее действие…',
+    };
+  }
+
+  if (!hasAnswer && !hasVerifierEvidence) {
+    return {
+      visible: true,
+      disabled: true,
+      message:
+        resolvedCheckMethod === 'llm_assisted'
+          ? 'Добавьте ответ или вывод ИИ-проверки.'
+          : 'Добавьте ответ или результат проверки.',
+    };
+  }
+
+  return {
+    visible: true,
+    disabled: false,
+    message: 'Сохранить без зачета. XP не изменится.',
+  };
+};
 
 export const getAssessmentResultIdLabel = (resolvedCheckMethod: AssessmentCheckMethod) =>
   resolvedCheckMethod === 'strict' ? 'ID результата проверки' : 'ID результата ИИ';

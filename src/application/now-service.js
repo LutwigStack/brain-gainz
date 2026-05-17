@@ -615,7 +615,7 @@ const evaluateStrictAssessmentCheck = ({ strictCheckType, config, input, timesta
       strictCheckType,
       passed,
       score: passed ? 1 : 0,
-      feedbackSummary: passed ? 'Exact answer matched.' : 'Exact answer did not match.',
+      feedbackSummary: passed ? 'Ответ совпал с ожидаемым.' : 'Ответ не совпал с ожидаемым.',
       evidenceExtra: {
         expected_summary: summarizeExpectedAnswer(expectedValues),
         case_sensitive: caseSensitive,
@@ -637,7 +637,7 @@ const evaluateStrictAssessmentCheck = ({ strictCheckType, config, input, timesta
       strictCheckType,
       passed,
       score: passed ? 1 : 0,
-      feedbackSummary: passed ? 'Number is within tolerance.' : 'Number is outside tolerance.',
+      feedbackSummary: passed ? 'Число попало в допустимый диапазон.' : 'Число вне допустимого диапазона.',
       evidenceExtra: {
         expected_summary: String(expected),
         tolerance,
@@ -665,8 +665,8 @@ const evaluateStrictAssessmentCheck = ({ strictCheckType, config, input, timesta
       passed,
       score: requiredTerms.length === 0 ? 0 : (requiredTerms.length - missingTerms.length) / requiredTerms.length,
       feedbackSummary: passed
-        ? 'All required terms are present.'
-        : `Missing required terms: ${missingTerms.map(String).join(', ')}.`,
+        ? 'Все обязательные элементы найдены.'
+        : `Не хватает обязательных элементов: ${missingTerms.map(String).join(', ')}.`,
       evidenceExtra: {
         expected_summary: `${requiredTerms.length} required terms`,
         missing_terms: missingTerms,
@@ -690,8 +690,8 @@ const evaluateStrictAssessmentCheck = ({ strictCheckType, config, input, timesta
       passed,
       score: requiredItems.length === 0 ? 0 : (requiredItems.length - missingItems.length) / requiredItems.length,
       feedbackSummary: passed
-        ? 'All required checklist items are selected.'
-        : `Missing checklist items: ${missingItems.map((item) => item.label ?? item.id ?? item.key).join(', ')}.`,
+        ? 'Все обязательные пункты чек-листа отмечены.'
+        : `Не отмечены пункты чек-листа: ${missingItems.map((item) => item.label ?? item.id ?? item.key).join(', ')}.`,
       evidenceExtra: {
         expected_summary: `${requiredItems.length} required checklist items`,
         selected_items: Array.from(selected),
@@ -2001,6 +2001,7 @@ const loadNodeMasteryFocus = async (database, node, selectedAction = null) => {
     routeRequirement: routeRequirementRows[0] ?? null,
     check: {
       taskId,
+      checkMethod: assessmentTask?.checkMethod ?? null,
       strictCheckType,
       isStrictCheckable: strictCheckType != null,
       isAutoStrictCheck: strictCheckType != null && autoStrictCheckTypes.has(strictCheckType),
@@ -3515,10 +3516,10 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
   if (career.campaign.career_status === 'victory' || currentSpecialization?.status === 'completed') {
     return createTodayState(
       'completed_route',
-      'Маршрут закрыт',
-      'Начните следующий маршрут',
-      'Текущий маршрут уже завершен, поэтому «Сегодня» не выбирает новый узел внутри него.',
-      { action: 'continue_route', label: 'Новый маршрут' },
+      'Маршрут завершен',
+      'Выберите следующий маршрут',
+      'Этот маршрут закрыт. Today ждет новый учебный путь.',
+      { action: 'continue_route', label: 'Выбрать маршрут' },
       content,
     );
   }
@@ -3526,10 +3527,10 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
   if (route?.isComplete) {
     return createTodayState(
       'completed_route',
-      'Готово к закрытию',
-      'Завершите текущий маршрут',
-      'Все обязательные узлы проверены. Завершение закроет только этот активный маршрут.',
-      { action: 'complete_route', label: 'Завершить маршрут' },
+      'Маршрут готов',
+      'Закройте маршрут',
+      'Все обязательные узлы зачтены.',
+      { action: 'complete_route', label: 'Закрыть маршрут' },
       content,
     );
   }
@@ -3543,7 +3544,7 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
         focusItem.title,
         `${focusItem.route_stage ? `${focusItem.route_stage} · ` : ''}${
           focusItem.path || 'Концепт маршрута'
-        } · сейчас ${focusItem.current_mastery_rank}/6 · нужно ${masteryLevelLabel(focusItem.required_mastery_level)}`,
+        } · нужно ${masteryLevelLabel(focusItem.required_mastery_level)}`,
         { action: 'open_route_node', label: 'Начать занятие' },
         content,
       );
@@ -3552,9 +3553,9 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
     if (route?.routeNodeCount > 0) {
       return createTodayState(
         'route_incomplete',
-        'Маршрут требует настройки',
-        'Проверьте узлы маршрута',
-        'В маршруте есть узлы, но «Сегодня» не нашел безопасный обязательный следующий узел.',
+        'Нет доступного шага',
+        'Проверьте маршрут',
+        'Есть узлы, но нет безопасного обязательного шага.',
         { action: 'open_route_map', label: 'Открыть маршрут' },
         content,
       );
@@ -3562,10 +3563,10 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
 
     return createTodayState(
       'no_route',
-      'Маршрут не собран',
-      'Добавьте обязательные узлы',
-      'Специализация активна, но ее дневной маршрут пока пустой.',
-      { action: 'open_route_map', label: 'Добавить узлы' },
+      'Маршрут пуст',
+      'Добавьте узлы',
+      'Без обязательных узлов Today не выберет занятие.',
+      { action: 'open_route_map', label: 'Настроить маршрут' },
       content,
     );
   }
@@ -3582,7 +3583,7 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
       ]
         .filter(Boolean)
         .join(' / ')}`,
-      { action: 'open_recommendation_map', label: 'Открыть рекомендацию' },
+      { action: 'open_recommendation_map', label: 'Открыть шаг' },
       content,
     );
   }
@@ -3590,9 +3591,9 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
   if (content.hasContent) {
     return createTodayState(
       'content_without_day_plan',
-      'План дня не собран',
-      'Выберите маршрут или узел на карте',
-      `В кампании есть ${content.nodeCount} узл. и ${content.totalXp} XP, но нет активного маршрута или готовой рекомендации на сегодня.`,
+      'Нет шага',
+      'Откройте карту',
+      `${content.nodeCount} узл. · ${content.totalXp} XP. Выберите маршрут или узел.`,
       { action: 'open_route_map', label: 'Открыть карту' },
       content,
     );
@@ -3600,9 +3601,9 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
 
   return createTodayState(
     'truly_empty',
-    'Пока нет карты',
-    'Создайте стартовый набор',
-    'В этой кампании еще нет узлов, маршрута и проверенного прогресса.',
+    'Карта пустая',
+    'Создайте первый набор',
+    'Появятся узлы, маршрут и первая проверка.',
     { action: 'create_starter', label: 'Создать набор' },
     content,
   );

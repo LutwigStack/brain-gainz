@@ -40,6 +40,7 @@ test('daily task cards expose current, next, locked, and future route states', (
   assert.equal(cards[0].title, 'Front');
   assert.equal(cards[0].progressPercent, 20);
   assert.equal(cards[2].disabled, true);
+  assert.equal(cards[2].actionLabel, 'Недоступно');
   assert.equal(cards[3].actionLabel, 'Открыть карту');
 });
 

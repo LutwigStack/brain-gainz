@@ -51,7 +51,7 @@ const CampaignCard = ({
   const nodeCount = Number(campaign.node_count ?? 0);
   const totalXp = Number(campaign.total_xp ?? 0);
   const hasCsAssets = isCsBachelorCampaign(campaign);
-  const openLabel = isSystem ? 'Открыть шаблон' : 'Открыть';
+  const openLabel = isSystem ? 'Открыть шаблон' : isTemplate ? 'Посмотреть' : 'Продолжить';
 
   return (
     <PixelSurface
@@ -150,7 +150,7 @@ const CampaignCard = ({
               disabled={isMutating}
               aria-label={`Архивировать кампанию ${campaign.name}`}
             >
-              <Archive size={15} /> В архив
+              <Archive size={15} /> Архивировать
             </PixelButton>
           ) : (
             null
@@ -190,7 +190,7 @@ export const CampaignMenu = ({
             <PixelPanelHeader
               eyebrow="Кампании"
               title="Личные кампании"
-              description="Выберите свой рабочий мир или создайте новый."
+              description="Продолжите кампанию или возьмите шаблон."
               aside={
                 lastOpened ? (
                   <PixelButton
@@ -262,7 +262,7 @@ export const CampaignMenu = ({
                 {emptyPersonalCampaigns ? (
                   <PixelSurface frame="inset" padding="md">
                     <PixelText as="p" readable size="sm" color="textMuted">
-                      Личных кампаний пока нет. Введите название выше, чтобы начать со своего набора.
+                      Создайте кампанию выше или возьмите шаблон ниже.
                     </PixelText>
                   </PixelSurface>
                 ) : null}

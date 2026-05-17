@@ -273,9 +273,9 @@ export const NowView = ({
   const modeTitle = currentSpecialization?.name ?? 'Свободный режим';
   const todayState = today?.state ?? {
     key: 'content_without_day_plan' as const,
-    label: 'План дня не получен',
-    title: 'Проверьте карту кампании',
-    reason: '«Сегодня» не получил готовый дневной план. Кампания не потеряна: откройте карту и выберите безопасный следующий узел.',
+    label: 'Нет плана',
+    title: 'Откройте карту',
+    reason: 'Today не получил план. Выберите узел на карте.',
     primaryCta: { action: 'open_route_map' as const, label: 'Открыть карту' },
     content: {
       hasContent: metrics.nodes > 0 || metrics.actions > 0,
@@ -307,10 +307,10 @@ export const NowView = ({
   const recoveryIsBestNextAction = bestDailyTaskCard?.state === 'recovery';
   const showWeakPanel = recoveryIsBestNextAction && (plannerWeakSpots.length > 0 || weakeningItems.length > 0);
   const singleNextAction = canFinishDailyRun
-    ? {
-        title: 'Задачи дня готовы',
-        description: 'Все задачи в текущем наборе разобраны. Закройте набор, чтобы Today выбрал следующий безопасный шаг.',
-        label: 'Завершить задачи',
+      ? {
+        title: 'Набор готов',
+        description: 'Закройте задачи дня, чтобы Today выбрал следующий шаг.',
+        label: 'Закрыть набор',
         icon: <Flag size={16} />,
         disabled: isDailyRunPending,
       }
@@ -746,10 +746,10 @@ export const NowView = ({
                 <PixelSurface frame="ghost" padding="md" className="today-empty-slot">
                   <PixelText as="p" readable size="sm" color="textMuted">
                     {todayState.key === 'truly_empty'
-                      ? 'Создайте стартовый набор, чтобы «Сегодня» выбрал первый рабочий шаг.'
+                      ? 'Создайте набор, чтобы Today выбрал первый шаг.'
                       : hasNoRoute
-                        ? 'Добавьте маршрутные узлы на карте.'
-                        : 'На сегодня нет безопасных задач.'}
+                        ? 'Добавьте узлы маршрута на карте.'
+                        : 'Безопасных задач нет. Откройте карту.'}
                   </PixelText>
                   {todayState.key === 'truly_empty' ? (
                     <PixelButton tone="ghost" onClick={onCreateStarterWorkspace} disabled={isCreatingStarter}>
