@@ -2223,6 +2223,99 @@ export const NavigationView = ({
       </PixelSurface>
     );
   };
+
+  const renderLearnerFocusedCheckFlow = (nodeFocus: NodeFocusSnapshot) => {
+    const latestAttempt = nodeFocus.mastery?.latestAttempt ?? null;
+    const routeRequirement = nodeFocus.mastery?.routeRequirement ?? null;
+    const focusAction = nodeFocus.selectedAction ?? null;
+
+    return (
+      <PixelSurface frame="selected" padding="md" className="navigation-focused-check-flow">
+        <PixelPanelHeader
+          eyebrow={
+            <span className="flex items-center gap-2">
+              <ShieldCheck size={14} className="text-[var(--pixel-accent)]" /> Проверка
+            </span>
+          }
+          title={focusAction?.title ?? nodeFocus.node.title}
+          description={
+            focusAction?.details ??
+            nodeFocus.node.summary ??
+            'Ответьте на задание, проверьте результат и посмотрите, как изменится подтвержденный прогресс.'
+          }
+          aside={
+            <PixelText as="span" size="xs" color={latestAttempt?.passed ? 'success' : 'accent'} uppercase>
+              {latestAttempt ? (latestAttempt.passed ? 'результат' : 'повтор') : 'учебный поток'}
+            </PixelText>
+          }
+        />
+
+        <div className="navigation-focused-check-flow__meta">
+          <PixelSurface frame="ghost" padding="xs">
+            <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+              1 · Задание
+            </PixelText>
+            <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
+              {focusAction?.title ?? nodeFocus.node.title}
+            </PixelText>
+          </PixelSurface>
+          <PixelSurface frame="ghost" padding="xs">
+            <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+              2 · Цель
+            </PixelText>
+            <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
+              {routeRequirement ? `Подтвердить: ${masteryLabel(routeRequirement.required_mastery_level)}` : 'Сохранить проверенный прогресс'}
+            </PixelText>
+          </PixelSurface>
+          <PixelSurface frame="ghost" padding="xs">
+            <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+              3 · Результат
+            </PixelText>
+            <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
+              {latestAttempt ? (latestAttempt.passed ? 'Прогресс подтвержден' : 'Попытка сохранена') : 'Появится после проверки'}
+            </PixelText>
+          </PixelSurface>
+        </div>
+
+        <div className="navigation-focused-check-flow__body">
+          {renderMasteryPanel(nodeFocus, 'assessment')}
+        </div>
+      </PixelSurface>
+    );
+  };
+
+  const renderLearnerFocusedCheckRailSummary = (nodeFocus: NodeFocusSnapshot) => (
+    <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
+      <PixelStack gap="xs">
+        <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+          Проверка открыта
+        </PixelText>
+        <PixelText as="p" readable size="sm" style={{ margin: 0 }}>
+          {nodeFocus.selectedAction?.title ?? nodeFocus.node.title}
+        </PixelText>
+        <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+          Форма ответа и результат находятся в основном учебном потоке слева.
+        </PixelText>
+        <div className="grid grid-cols-2 gap-2">
+          <PixelButton
+            tone="ghost"
+            onClick={() => handleInspectorModeChange('overview')}
+            style={{ justifyContent: 'center', minHeight: 30, padding: '6px 8px', gap: 6 }}
+          >
+            <MapIcon size={14} /> Обзор
+          </PixelButton>
+          <PixelButton
+            tone="accent"
+            onClick={onOpenToday}
+            style={{ justifyContent: 'center', minHeight: 30, padding: '6px 8px', gap: 6 }}
+          >
+            <ChevronRight size={14} /> Сегодня
+          </PixelButton>
+        </div>
+      </PixelStack>
+    </PixelSurface>
+  );
+
   const renderRouteAuthoringPanel = () => {
     if (!currentSpecialization) {
       return null;
@@ -2907,6 +3000,7 @@ export const NavigationView = ({
   const mapCanvasClassName = `${
     focus?.node && !isInspectorCollapsed ? 'h-[340px]' : 'h-[420px]'
   } navigation-map-canvas min-w-0 max-w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] sm:h-[clamp(680px,calc(100dvh-220px),1040px)]`;
+  const showFocusedLearnerCheckFlow = Boolean(!canUseAuthorTools && inspectorMode === 'assessment' && focus?.node);
 
   return (
     <div className="space-y-3">
@@ -3476,6 +3570,9 @@ export const NavigationView = ({
                 ) : null}
               </div>
 
+              {showFocusedLearnerCheckFlow && focus?.node ? (
+                renderLearnerFocusedCheckFlow(focus)
+              ) : (
               <PixelSurface frame="selected" padding="xxs" className="navigation-map-canvas-frame min-w-0 overflow-hidden">
                   <GameMapCanvas
                     snapshot={snapshot}
@@ -3620,6 +3717,7 @@ export const NavigationView = ({
                   className={mapCanvasClassName}
                 />
               </PixelSurface>
+              )}
 
               {canUseAuthorTools && inlineNodeEditor ? (
                 <form
@@ -4082,7 +4180,11 @@ export const NavigationView = ({
                   ) : null}
 
                   {canEditRoutes && inspectorMode === 'route' ? renderMasteryPanel(focus, 'route') : null}
-                  {inspectorMode === 'assessment' ? renderMasteryPanel(focus, 'assessment') : null}
+                  {inspectorMode === 'assessment'
+                    ? showFocusedLearnerCheckFlow
+                      ? renderLearnerFocusedCheckRailSummary(focus)
+                      : renderMasteryPanel(focus, 'assessment')
+                    : null}
 
                   {canEditGraph && inspectorMode === 'graph' ? (
                   <PixelSurface frame="inset" padding="sm" className="inspector-graph-panel">
