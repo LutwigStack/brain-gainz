@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" role="img" aria-labelledby="title desc">
+  <title id="title">Database Systems landmark</title>
+  <desc id="desc">A dark circuit-map landmark with database cylinders, linked tables, and cyan data paths.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101a24"/>
+      <stop offset="0.52" stop-color="#14262e"/>
+      <stop offset="1" stop-color="#1c1f33"/>
+    </linearGradient>
+    <linearGradient id="cylinder" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#71f4ff"/>
+      <stop offset="0.45" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#146c94"/>
+    </linearGradient>
+    <linearGradient id="table" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f6c445"/>
+      <stop offset="1" stop-color="#fb7185"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.22 0 0 0 0 0.74 0 0 0 0 0.97 0 0 0 0.8 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="480" height="360" rx="28" fill="url(#bg)"/>
+  <path d="M28 292h424M42 68h396M74 38v284M405 38v284" stroke="#284b5d" stroke-width="2" opacity="0.55"/>
+  <g opacity="0.45" stroke="#38bdf8" stroke-width="2" fill="none">
+    <path d="M102 92h74v58h64"/>
+    <path d="M374 90h-62v70h-72"/>
+    <path d="M108 270h82v-62h54"/>
+    <path d="M372 270h-84v-62h-44"/>
+    <path d="M240 94v172"/>
+  </g>
+  <g filter="url(#glow)">
+    <path d="M168 112c0-19 32-34 72-34s72 15 72 34v136c0 19-32 34-72 34s-72-15-72-34z" fill="#0b1720" stroke="#71f4ff" stroke-width="5"/>
+    <ellipse cx="240" cy="112" rx="72" ry="34" fill="url(#cylinder)" stroke="#b8fbff" stroke-width="5"/>
+    <path d="M168 156c0 19 32 34 72 34s72-15 72-34M168 202c0 19 32 34 72 34s72-15 72-34M168 248c0 19 32 34 72 34s72-15 72-34" fill="none" stroke="#71f4ff" stroke-width="4"/>
+  </g>
+  <g>
+    <rect x="62" y="88" width="92" height="76" rx="10" fill="#121b27" stroke="#5ee6b5" stroke-width="4"/>
+    <path d="M78 110h60M78 132h60M78 154h42" stroke="#5ee6b5" stroke-width="6" stroke-linecap="round"/>
+    <rect x="326" y="88" width="92" height="76" rx="10" fill="#121b27" stroke="url(#table)" stroke-width="4"/>
+    <path d="M342 110h60M342 132h48M342 154h60" stroke="#f6c445" stroke-width="6" stroke-linecap="round"/>
+    <rect x="62" y="204" width="92" height="76" rx="10" fill="#121b27" stroke="#c084fc" stroke-width="4"/>
+    <path d="M78 226h60M78 248h48M78 270h34" stroke="#c084fc" stroke-width="6" stroke-linecap="round"/>
+    <rect x="326" y="204" width="92" height="76" rx="10" fill="#121b27" stroke="#fb7185" stroke-width="4"/>
+    <path d="M342 226h60M342 248h36M342 270h56" stroke="#fb7185" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  <g fill="#b8fbff" opacity="0.95">
+    <circle cx="154" cy="126" r="8"/>
+    <circle cx="326" cy="126" r="8"/>
+    <circle cx="154" cy="242" r="8"/>
+    <circle cx="326" cy="242" r="8"/>
+    <circle cx="240" cy="180" r="10"/>
+  </g>
+  <path d="M188 316h104" stroke="#f6c445" stroke-width="8" stroke-linecap="round"/>
+</svg>

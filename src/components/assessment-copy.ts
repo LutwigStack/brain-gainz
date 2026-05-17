@@ -220,7 +220,7 @@ export const getAssessmentValidationState = ({
 export const getAssessmentAttemptResultCopy = ({ passed, targetMasteryLabel }: AttemptResultCopyInput) => ({
   status: passed ? 'Зачтено' : 'Пока не зачтено',
   message: passed
-    ? `Подтвержденный прогресс обновлен до «${targetMasteryLabel}». XP начислен.`
+    ? `Подтвержденный прогресс обновлен до «${targetMasteryLabel}». XP зависит от настройки основной характеристики ветки.`
     : 'Попытка сохранена для разбора. Прогресс и XP не изменились; можно попробовать снова.',
 });
 

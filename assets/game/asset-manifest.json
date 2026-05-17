@@ -656,6 +656,38 @@
         ]
       },
       "notes": "Accepted generated route landmark for Algorithms; graph traversal, sorting, and search motifs match the first-batch dark isometric route family without readable text."
+    },
+    {
+      "asset_id": "map.cs-bachelor.database-systems.landmark",
+      "family": "map",
+      "usage_surface": "today_mini_map_route_overview",
+      "ui_slot": "mini knowledge map and route overview branch thumbnail",
+      "target_slots": [
+        "Today mini map",
+        "Navigation route overview"
+      ],
+      "target_width": 480,
+      "target_height": 360,
+      "format": "svg",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/17-cs-course-second-slice/second-slice-outline.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-database-systems-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-database-systems-candidate-02.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-database-systems-landmark.svg",
+      "status": "accepted",
+      "alt": "Database Systems route landmark",
+      "fallback": "Database cylinder thumbnail with route label outside image",
+      "ui_check": {
+        "component": "NowView, NavigationView",
+        "display_width": 265,
+        "display_height": 198,
+        "required_states": [
+          "Database Systems route stage"
+        ]
+      },
+      "notes": "Tracked deterministic vector landmark for the database second slice; avoids a blank route stage while keeping route text outside the image."
     }
   ]
 }

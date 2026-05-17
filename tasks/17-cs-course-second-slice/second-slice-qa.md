@@ -12,11 +12,11 @@ The in-app browser was also opened first, but its existing IndexedDB still had a
 
 - Forked `Computer Science Bachelor` into a personal campaign.
 - Confirmed Today opens on `Programming Environment` with `0/72` required route progress.
-- Confirmed route overview shows five stages and includes `Database Systems` with 28 nodes.
+- Confirmed route overview shows five stages, includes `Database Systems` with 28 nodes, and renders the Database Systems landmark instead of the blank fallback.
 - Opened `Data Modeling Purpose` from the route overview.
 - Opened the database checklist check and confirmed the database prompt appears.
 - Confirmed Wind Rose includes `Databases`.
-- Captured mobile route overview at `390x844`.
+- Captured mobile route overview cards at `390x844`.
 - Browser console warnings/errors during the clean-profile run: none.
 
 ## Screenshots

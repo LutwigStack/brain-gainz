@@ -157,7 +157,7 @@ test('assessment attempt result copy separates confirmed progress from failed at
     getAssessmentAttemptResultCopy({ passed: true, targetMasteryLabel: 'Применил' }),
     {
       status: 'Зачтено',
-      message: 'Подтвержденный прогресс обновлен до «Применил». XP начислен.',
+      message: 'Подтвержденный прогресс обновлен до «Применил». XP зависит от настройки основной характеристики ветки.',
     },
   );
   assert.deepEqual(

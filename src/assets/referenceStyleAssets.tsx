@@ -1,6 +1,7 @@
 import campaignCrest from '../../assets/game/reference-style-first-batch/campaign/bgz-ref-campaign-cs-bachelor-computer-science-bachelor-crest.webp';
 import algorithmsLandmark from '../../assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-algorithms-landmark.webp';
 import cityCard from '../../assets/game/reference-style-first-batch/city/bgz-ref-city-cs-bachelor-core-cs-citadel-card.webp';
+import databaseSystemsLandmark from '../../assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-database-systems-landmark.svg';
 import dataStructuresLandmark from '../../assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-data-structures-landmark.webp';
 import discreteMathLandmark from '../../assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-discrete-math-landmark.webp';
 import programmingFundamentalsLandmark from '../../assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-programming-fundamentals-landmark.webp';
@@ -99,6 +100,7 @@ export const csBachelorReferenceAssets = {
     discreteMath: acceptedAsset('map.cs-bachelor.discrete-math.landmark', discreteMathLandmark),
     dataStructures: acceptedAsset('map.cs-bachelor.data-structures.landmark', dataStructuresLandmark),
     algorithms: acceptedAsset('map.cs-bachelor.algorithms.landmark', algorithmsLandmark),
+    databaseSystems: acceptedAsset('map.cs-bachelor.database-systems.landmark', databaseSystemsLandmark),
   },
 } as const satisfies Record<string, unknown>;
 
@@ -181,6 +183,9 @@ export const resolveRouteLandmarkAsset = (title?: string | null): ReferenceAsset
   }
   if (normalized.includes('algorithms') || normalized.includes('algorithm')) {
     return csBachelorReferenceAssets.map.algorithms;
+  }
+  if (normalized.includes('database') || normalized.includes('databases') || normalized.includes('sql')) {
+    return csBachelorReferenceAssets.map.databaseSystems;
   }
 
   return null;

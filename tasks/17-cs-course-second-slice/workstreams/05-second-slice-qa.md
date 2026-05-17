@@ -34,4 +34,4 @@ Created:
 
 ## Result
 
-Browser QA used a clean temporary Chrome profile against `http://127.0.0.1:5174/`. The route overview, database check, Wind Rose, and mobile route layout were captured in `tasks/17-cs-course-second-slice/qa/`.
+Browser QA used a clean temporary Chrome profile against `http://127.0.0.1:5174/`. The route overview, database check, Wind Rose, and mobile route overview cards were captured in `tasks/17-cs-course-second-slice/qa/`.
