@@ -57,7 +57,7 @@ test('CS bachelor template seed is idempotent and visible as a template campaign
   const rows = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor'");
   assert.equal(rows.length, 1);
   assert.equal(rows[0].type, 'template');
-  assert.equal(rows[0].name, 'Computer Science Bachelor');
+  assert.equal(rows[0].name, 'Бакалавриат по информатике');
 
   const nodes = await database.select(
     `
@@ -135,7 +135,7 @@ test('CS bachelor template can fork into a personal campaign without copying pro
   const personal = await campaignStore.forkTemplateCampaign(template.id);
 
   assert.equal(personal.type, 'user');
-  assert.equal(personal.name, 'Computer Science Bachelor');
+  assert.equal(personal.name, 'Бакалавриат по информатике');
   assert.notEqual(personal.id, template.id);
 
   const countNodes = async (campaignId) =>
@@ -191,13 +191,13 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
   const personal = await campaignStore.forkTemplateCampaign(template.id, { name: 'CS Playable Slice' });
 
   const dashboard = await nowService.getDashboard(personal.id);
-  assert.equal(dashboard.primaryRecommendation.nodeTitle, 'Programming Environment');
-  assert.equal(dashboard.primaryRecommendation.actionTitle, 'Practice Programming Environment');
+  assert.equal(dashboard.primaryRecommendation.nodeTitle, 'Среда программирования');
+  assert.equal(dashboard.primaryRecommendation.actionTitle, 'Потренировать: Среда программирования');
   assert.equal(dashboard.today.route.routeNodeCount, 72);
-  assert.equal(dashboard.today.planner.currentStage, 'Programming Fundamentals');
+  assert.equal(dashboard.today.planner.currentStage, 'Основы программирования');
   assert.deepEqual(
     dashboard.today.planner.nextItems.slice(0, 3).map((item) => item.title),
-    ['Programming Environment', 'Values, Variables, And Types', 'Expressions And Operators'],
+    ['Среда программирования', 'Значения, переменные и типы', 'Выражения и операторы'],
   );
 
   const navigation = await nowService.getNavigationSnapshot(personal.id);
@@ -226,11 +226,11 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
   assert.equal(windRose.stats.reduce((sum, stat) => sum + stat.branches.length, 0), 8);
   assert.equal(windRose.unassignedBranches.length, 0);
   assert.equal(
-    windRose.stats.flatMap((stat) => stat.branches).some((branch) => branch.name === 'Algorithms' && branch.node_count === 10),
+    windRose.stats.flatMap((stat) => stat.branches).some((branch) => branch.name === 'Алгоритмы' && branch.node_count === 10),
     true,
   );
   assert.equal(
-    windRose.stats.flatMap((stat) => stat.branches).some((branch) => branch.name === 'Databases' && branch.node_count === 28),
+    windRose.stats.flatMap((stat) => stat.branches).some((branch) => branch.name === 'Базы данных' && branch.node_count === 28),
     true,
   );
 
@@ -249,7 +249,7 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
   );
   const tradeoffFocus = await nowService.getNodeFocus(personal.id, tradeoffNode.id, null);
   assert.equal(tradeoffFocus.mastery.check.isStrictCheckable, false);
-  assert.equal(tradeoffFocus.mastery.check.prompt, 'Compare arrays, hash tables, and graphs for a concrete scenario.');
+  assert.equal(tradeoffFocus.mastery.check.prompt, 'Сравните массивы, хеш-таблицы и графы для конкретного сценария.');
 
   await database.execute(
     'UPDATE nodes SET check_metadata = ? WHERE id = ?',
@@ -315,7 +315,7 @@ test('CS bachelor second slice becomes the Today focus after foundations are con
       SELECT route_nodes.node_id, route_nodes.knowledge_node_id
       FROM specialization_route_nodes route_nodes
       WHERE route_nodes.specialization_id = ?
-        AND route_nodes.route_stage != 'Database Systems'
+        AND route_nodes.route_stage != 'Базы данных'
       ORDER BY route_nodes.route_order ASC
     `,
     [specialization.id],
@@ -364,11 +364,11 @@ test('CS bachelor second slice becomes the Today focus after foundations are con
   }
 
   const dashboard = await nowService.getDashboard(personal.id);
-  assert.equal(dashboard.primaryRecommendation.nodeTitle, 'Data Modeling Purpose');
-  assert.equal(dashboard.today.planner.currentStage, 'Database Systems');
+  assert.equal(dashboard.primaryRecommendation.nodeTitle, 'Зачем моделировать данные');
+  assert.equal(dashboard.today.planner.currentStage, 'Базы данных');
   assert.deepEqual(
     dashboard.today.planner.nextItems.slice(0, 3).map((item) => item.title),
-    ['Data Modeling Purpose', 'Entities, Attributes, And Relationships', 'Primary Keys'],
+    ['Зачем моделировать данные', 'Сущности, атрибуты и связи', 'Первичные ключи'],
   );
 });
 

@@ -42,6 +42,74 @@ const OLD_PR1_NODES_TABLE_SQL = `
   )
 `;
 
+const rebuildNodeNoteTableWithoutSourceEventForeignKey = async (database, tableName) => {
+  const isBarrierTable = tableName === 'node_barrier_notes';
+  const typeColumn = isBarrierTable ? 'barrier_type' : 'note_kind';
+  const typeCheck = isBarrierTable
+    ? "CHECK (barrier_type IN ('too complex', 'unclear next step', 'low energy', 'aversive / scary to start', 'wrong time / wrong context'))"
+    : "CHECK (note_kind IN ('shrink', 'defer', 'error', 'follow_up'))";
+  const oldTableName = `${tableName}_old_missing_event_fk`;
+
+  await database.execute('PRAGMA foreign_keys = OFF');
+  await database.execute('PRAGMA legacy_alter_table = ON');
+  await database.execute('BEGIN');
+
+  try {
+    await database.execute(`DROP INDEX IF EXISTS idx_${tableName}_node_id`);
+    await database.execute(`DROP INDEX IF EXISTS idx_${tableName}_action_id`);
+    await database.execute(`ALTER TABLE ${tableName} RENAME TO ${oldTableName}`);
+    await database.execute(`
+      CREATE TABLE ${tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id INTEGER NOT NULL,
+        action_id INTEGER,
+        ${typeColumn} TEXT NOT NULL ${typeCheck},
+        note TEXT NOT NULL,
+        source_event_id INTEGER,
+        is_open INTEGER NOT NULL DEFAULT 1 CHECK (is_open IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (node_id) REFERENCES nodes (id),
+        FOREIGN KEY (action_id) REFERENCES node_actions (id)
+      )
+    `);
+    await database.execute(`
+      INSERT INTO ${tableName} (
+        id,
+        node_id,
+        action_id,
+        ${typeColumn},
+        note,
+        source_event_id,
+        is_open,
+        created_at,
+        updated_at
+      )
+      SELECT
+        id,
+        node_id,
+        action_id,
+        ${typeColumn},
+        note,
+        source_event_id,
+        is_open,
+        created_at,
+        updated_at
+      FROM ${oldTableName}
+    `);
+    await database.execute(`DROP TABLE ${oldTableName}`);
+    await database.execute(`CREATE INDEX IF NOT EXISTS idx_${tableName}_node_id ON ${tableName} (node_id)`);
+    await database.execute(`CREATE INDEX IF NOT EXISTS idx_${tableName}_action_id ON ${tableName} (action_id)`);
+    await database.execute('COMMIT');
+  } catch (error) {
+    await database.execute('ROLLBACK');
+    throw error;
+  } finally {
+    await database.execute('PRAGMA legacy_alter_table = OFF');
+    await database.execute('PRAGMA foreign_keys = ON');
+  }
+};
+
 test('bootstrap is idempotent and ensures all PR1 tables', async (t) => {
   const database = createSqliteTestDatabase();
   t.after(() => database.close());
@@ -107,6 +175,120 @@ test('node note store persists barrier and error notes against PR1 bootstrap sch
   assert.equal(barrierNotes[0].barrier_type, 'too complex');
   assert.equal(errorNotes.length, 1);
   assert.equal(errorNotes[0].note_kind, 'shrink');
+});
+
+test('bootstrap repairs old node note tables that are missing source event foreign keys', async (t) => {
+  const database = await setupBootstrappedDatabase();
+  t.after(() => database.close());
+  const hierarchyStore = createHierarchyStore(database);
+  const dailySessionStore = createDailySessionStore(database);
+  const nodeNoteStore = createNodeNoteStore(database);
+
+  const sphere = await hierarchyStore.createSphere({ name: 'Old Storage', slug: 'old-storage' });
+  const direction = await hierarchyStore.createDirection({ sphere_id: sphere.id, name: 'Recovery', slug: 'recovery' });
+  const skill = await hierarchyStore.createSkill({ direction_id: direction.id, name: 'Migration', slug: 'migration' });
+  const node = await hierarchyStore.createNode({ skill_id: skill.id, type: 'task', title: 'Repair local data', slug: 'repair-local-data' });
+  const action = await hierarchyStore.createNodeAction({ node_id: node.id, title: 'Open app', status: 'ready' });
+  const session = await dailySessionStore.createSession({
+    session_date: '2026-05-17',
+    status: 'active',
+    primary_node_id: node.id,
+    primary_action_id: action.id,
+  });
+  const event = await dailySessionStore.addSessionEvent({
+    session_id: session.id,
+    event_type: 'blocked',
+    node_id: node.id,
+    action_id: action.id,
+    note: 'Old local data blocked startup.',
+  });
+  const barrierNote = await nodeNoteStore.createBarrierNote({
+    node_id: node.id,
+    action_id: action.id,
+    barrier_type: 'unclear next step',
+    note: 'Need a safe repair path.',
+    source_event_id: event.id,
+  });
+  const errorNote = await nodeNoteStore.createErrorNote({
+    node_id: node.id,
+    action_id: action.id,
+    note_kind: 'error',
+    note: 'Schema verification failed.',
+    source_event_id: event.id,
+  });
+
+  await rebuildNodeNoteTableWithoutSourceEventForeignKey(database, 'node_barrier_notes');
+  await rebuildNodeNoteTableWithoutSourceEventForeignKey(database, 'node_error_notes');
+  const staleBarrierEventId = event.id + 1000;
+  const staleErrorEventId = event.id + 1001;
+  const staleBarrierInsert = await database.execute(
+    `
+      INSERT INTO node_barrier_notes (
+        node_id,
+        action_id,
+        barrier_type,
+        note,
+        source_event_id,
+        is_open,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, 'low energy', 'Keep stale barrier note but drop event link.', ?, 1, datetime('now'), datetime('now'))
+    `,
+    [node.id, action.id, staleBarrierEventId],
+  );
+  const staleErrorInsert = await database.execute(
+    `
+      INSERT INTO node_error_notes (
+        node_id,
+        action_id,
+        note_kind,
+        note,
+        source_event_id,
+        is_open,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, 'error', 'Keep stale error note but drop event link.', ?, 1, datetime('now'), datetime('now'))
+    `,
+    [node.id, action.id, staleErrorEventId],
+  );
+
+  const barrierForeignKeysBefore = await database.select('PRAGMA foreign_key_list(node_barrier_notes)');
+  const errorForeignKeysBefore = await database.select('PRAGMA foreign_key_list(node_error_notes)');
+  assert.equal(barrierForeignKeysBefore.some((foreignKey) => foreignKey.from === 'source_event_id'), false);
+  assert.equal(errorForeignKeysBefore.some((foreignKey) => foreignKey.from === 'source_event_id'), false);
+
+  await bootstrapDatabase(database);
+
+  const barrierForeignKeysAfter = await database.select('PRAGMA foreign_key_list(node_barrier_notes)');
+  const errorForeignKeysAfter = await database.select('PRAGMA foreign_key_list(node_error_notes)');
+  assert.equal(
+    barrierForeignKeysAfter.find((foreignKey) => foreignKey.from === 'source_event_id')?.table,
+    'daily_session_events',
+  );
+  assert.equal(
+    errorForeignKeysAfter.find((foreignKey) => foreignKey.from === 'source_event_id')?.table,
+    'daily_session_events',
+  );
+
+  const [repairedBarrierNote] = await database.select('SELECT * FROM node_barrier_notes WHERE id = ?', [barrierNote.id]);
+  const [repairedErrorNote] = await database.select('SELECT * FROM node_error_notes WHERE id = ?', [errorNote.id]);
+  assert.equal(repairedBarrierNote.note, 'Need a safe repair path.');
+  assert.equal(repairedBarrierNote.source_event_id, event.id);
+  assert.equal(repairedErrorNote.note, 'Schema verification failed.');
+  assert.equal(repairedErrorNote.source_event_id, event.id);
+
+  const [staleBarrierNote] = await database.select('SELECT * FROM node_barrier_notes WHERE id = ?', [
+    staleBarrierInsert.lastInsertId,
+  ]);
+  const [staleErrorNote] = await database.select('SELECT * FROM node_error_notes WHERE id = ?', [
+    staleErrorInsert.lastInsertId,
+  ]);
+  assert.equal(staleBarrierNote.note, 'Keep stale barrier note but drop event link.');
+  assert.equal(staleBarrierNote.source_event_id, null);
+  assert.equal(staleErrorNote.note, 'Keep stale error note but drop event link.');
+  assert.equal(staleErrorNote.source_event_id, null);
 });
 
 test('legacy rows are preserved across PR1 bootstrap migration', async (t) => {

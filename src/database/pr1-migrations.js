@@ -846,6 +846,178 @@ const ensureDailySessionEventTypesSchema = async (database) => {
   }
 };
 
+const nodeNoteRepairConfigs = [
+  {
+    tableName: 'node_barrier_notes',
+    repairTableName: 'node_barrier_notes_pr1_fk_repair',
+    oldTableName: 'node_barrier_notes_pr1_fk_old',
+    typeColumn: 'barrier_type',
+    defaultType: "'unclear next step'",
+    allowedTypes: [
+      'too complex',
+      'unclear next step',
+      'low energy',
+      'aversive / scary to start',
+      'wrong time / wrong context',
+    ],
+    createSql: `
+      CREATE TABLE node_barrier_notes_pr1_fk_repair (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id INTEGER NOT NULL,
+        action_id INTEGER,
+        barrier_type TEXT NOT NULL CHECK (barrier_type IN ('too complex', 'unclear next step', 'low energy', 'aversive / scary to start', 'wrong time / wrong context')),
+        note TEXT NOT NULL,
+        source_event_id INTEGER,
+        is_open INTEGER NOT NULL DEFAULT 1 CHECK (is_open IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (node_id) REFERENCES nodes (id),
+        FOREIGN KEY (action_id) REFERENCES node_actions (id),
+        FOREIGN KEY (source_event_id) REFERENCES daily_session_events (id)
+      )
+    `,
+    indexes: [
+      'CREATE INDEX IF NOT EXISTS idx_node_barrier_notes_node_id ON node_barrier_notes (node_id)',
+      'CREATE INDEX IF NOT EXISTS idx_node_barrier_notes_action_id ON node_barrier_notes (action_id)',
+    ],
+  },
+  {
+    tableName: 'node_error_notes',
+    repairTableName: 'node_error_notes_pr1_fk_repair',
+    oldTableName: 'node_error_notes_pr1_fk_old',
+    typeColumn: 'note_kind',
+    defaultType: "'error'",
+    allowedTypes: ['shrink', 'defer', 'error', 'follow_up'],
+    createSql: `
+      CREATE TABLE node_error_notes_pr1_fk_repair (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id INTEGER NOT NULL,
+        action_id INTEGER,
+        note_kind TEXT NOT NULL CHECK (note_kind IN ('shrink', 'defer', 'error', 'follow_up')),
+        note TEXT NOT NULL,
+        source_event_id INTEGER,
+        is_open INTEGER NOT NULL DEFAULT 1 CHECK (is_open IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (node_id) REFERENCES nodes (id),
+        FOREIGN KEY (action_id) REFERENCES node_actions (id),
+        FOREIGN KEY (source_event_id) REFERENCES daily_session_events (id)
+      )
+    `,
+    indexes: [
+      'CREATE INDEX IF NOT EXISTS idx_node_error_notes_node_id ON node_error_notes (node_id)',
+      'CREATE INDEX IF NOT EXISTS idx_node_error_notes_action_id ON node_error_notes (action_id)',
+    ],
+  },
+];
+
+const columnSelect = (columns, columnName, fallbackExpression) =>
+  columns.has(columnName) ? columnName : `${fallbackExpression} AS ${columnName}`;
+
+const columnExpression = (columns, columnName, fallbackExpression) =>
+  columns.has(columnName) ? columnName : fallbackExpression;
+
+const recreateNodeNoteTable = async (database, config) => {
+  const columns = await database.select(`PRAGMA table_info(${config.tableName})`);
+  const columnNames = new Set(columns.map((column) => column.name));
+  const allowedTypeList = config.allowedTypes.map((value) => `'${value}'`).join(', ');
+  const typeSelect = columnNames.has(config.typeColumn)
+    ? `CASE WHEN ${config.typeColumn} IN (${allowedTypeList}) THEN ${config.typeColumn} ELSE ${config.defaultType} END AS ${config.typeColumn}`
+    : `${config.defaultType} AS ${config.typeColumn}`;
+  const noteSelect = columnExpression(columnNames, 'note', 'NULL');
+  const isOpenSelect = columnExpression(columnNames, 'is_open', '1');
+  const createdAtSelect = columnExpression(columnNames, 'created_at', 'NULL');
+  const updatedAtSelect = columnExpression(columnNames, 'updated_at', 'NULL');
+  const sourceEventIdSelect = columnNames.has('source_event_id')
+    ? `
+        CASE
+          WHEN ${config.oldTableName}.source_event_id IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+              FROM daily_session_events
+              WHERE daily_session_events.id = ${config.oldTableName}.source_event_id
+            )
+          THEN ${config.oldTableName}.source_event_id
+          ELSE NULL
+        END AS source_event_id
+      `
+    : 'NULL AS source_event_id';
+
+  await database.execute('PRAGMA foreign_keys = OFF');
+  await database.execute('PRAGMA legacy_alter_table = ON');
+  await database.execute('BEGIN');
+
+  try {
+    for (const indexName of [
+      `idx_${config.tableName}_node_id`,
+      `idx_${config.tableName}_action_id`,
+    ]) {
+      await database.execute(`DROP INDEX IF EXISTS ${indexName}`);
+    }
+    await database.execute(`DROP TABLE IF EXISTS ${config.repairTableName}`);
+    await database.execute(`DROP TABLE IF EXISTS ${config.oldTableName}`);
+    await database.execute(`ALTER TABLE ${config.tableName} RENAME TO ${config.oldTableName}`);
+    await database.execute(config.createSql);
+    await database.execute(`
+      INSERT INTO ${config.repairTableName} (
+        id,
+        node_id,
+        action_id,
+        ${config.typeColumn},
+        note,
+        source_event_id,
+        is_open,
+        created_at,
+        updated_at
+      )
+      SELECT
+        ${columnSelect(columnNames, 'id', 'NULL')},
+        ${columnSelect(columnNames, 'node_id', 'NULL')},
+        ${columnSelect(columnNames, 'action_id', 'NULL')},
+        ${typeSelect},
+        COALESCE(${noteSelect}, 'Recovered local note') AS note,
+        ${sourceEventIdSelect},
+        CASE WHEN ${isOpenSelect} IN (0, 1) THEN ${isOpenSelect} ELSE 1 END AS is_open,
+        COALESCE(${createdAtSelect}, datetime('now')) AS created_at,
+        COALESCE(${updatedAtSelect}, datetime('now')) AS updated_at
+      FROM ${config.oldTableName}
+    `);
+    await database.execute(`DROP TABLE ${config.oldTableName}`);
+    await database.execute(`ALTER TABLE ${config.repairTableName} RENAME TO ${config.tableName}`);
+    for (const indexSql of config.indexes) {
+      await database.execute(indexSql);
+    }
+    await database.execute('COMMIT');
+  } catch (error) {
+    await database.execute('ROLLBACK');
+    throw error;
+  } finally {
+    await database.execute('PRAGMA legacy_alter_table = OFF');
+    await database.execute('PRAGMA foreign_keys = ON');
+  }
+};
+
+const ensureNodeNoteForeignKeys = async (database) => {
+  for (const config of nodeNoteRepairConfigs) {
+    const rows = await database.select(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+      [config.tableName],
+    );
+    if (rows.length === 0) {
+      continue;
+    }
+
+    const foreignKeys = await database.select(`PRAGMA foreign_key_list(${config.tableName})`);
+    const hasSourceEventForeignKey = foreignKeys.some(
+      (foreignKey) => foreignKey.from === 'source_event_id' && foreignKey.table === 'daily_session_events',
+    );
+
+    if (!hasSourceEventForeignKey) {
+      await recreateNodeNoteTable(database, config);
+    }
+  }
+};
+
 const recreateDirectionsTable = async (database) => {
   await database.execute('PRAGMA foreign_keys = OFF');
   await database.execute('PRAGMA legacy_alter_table = ON');
@@ -1095,6 +1267,7 @@ export const runPr1Migrations = async (database) => {
   await ensureLegacySubjectMappingForeignKeyTargets(database);
   await ensureNodeDependenciesSchema(database);
   await ensureDailySessionEventTypesSchema(database);
+  await ensureNodeNoteForeignKeys(database);
   await backfillNodeCoordinates(database);
   await verifyPr1Schema(database);
 };

@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   BarChart3,
   Brain,
   BriefcaseBusiness,
@@ -10,6 +11,7 @@ import {
   Flag,
   Globe2,
   PencilLine,
+  RefreshCw,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -44,6 +46,7 @@ import {
   isCoreCsFoundations,
   isCsBachelorCampaign,
 } from './assets/referenceStyleAssets.tsx';
+import { WEB_SQLITE_STORAGE_KEY } from './database/web-sqlite-storage-key.js';
 
 const NowView = lazy(() =>
   import('./components/NowView').then((module) => ({ default: module.NowView })),
@@ -98,6 +101,8 @@ export default function App() {
   const [campaignsLoading, setCampaignsLoading] = useState(false);
   const [campaignMutationPending, setCampaignMutationPending] = useState(false);
   const [campaignError, setCampaignError] = useState(null);
+  const [databaseRecoveryError, setDatabaseRecoveryError] = useState(null);
+  const [databaseRecoveryNotice, setDatabaseRecoveryNotice] = useState(null);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [newCampaignName, setNewCampaignName] = useState('');
   const [activeSubject, setActiveSubject] = useState(null);
@@ -143,26 +148,6 @@ export default function App() {
   const mapRouteFilterRequestCounterRef = useRef(0);
   const selectedCampaignId = selectedCampaign?.id ?? null;
 
-  useEffect(() => {
-    const init = async () => {
-      try {
-        await db.initDb();
-        await loadCampaigns();
-        const subjects = await db.getSubjects();
-
-        if (subjects.length > 0) {
-          const lastSubjectId = Number(localStorage.getItem('braingainz_last_subject_id'));
-          const preferredSubject = subjects.find((subject) => subject.id === lastSubjectId) ?? subjects[0];
-          setActiveSubject(preferredSubject);
-        }
-      } catch (error) {
-        console.error('DB Initialization error', error);
-      }
-    };
-
-    void init();
-  }, []);
-
   const loadCampaigns = async () => {
     setCampaignsLoading(true);
     setCampaignError(null);
@@ -177,6 +162,30 @@ export default function App() {
       setCampaignsLoading(false);
     }
   };
+
+  const initializeApp = async () => {
+    try {
+      setDatabaseRecoveryError(null);
+      setDatabaseRecoveryNotice(null);
+      await db.initDb();
+      await loadCampaigns();
+      const subjects = await db.getSubjects();
+
+      if (subjects.length > 0) {
+        const lastSubjectId = Number(localStorage.getItem('braingainz_last_subject_id'));
+        const preferredSubject = subjects.find((subject) => subject.id === lastSubjectId) ?? subjects[0];
+        setActiveSubject(preferredSubject);
+      }
+    } catch (error) {
+      console.error('DB Initialization error', error);
+      setDatabaseRecoveryError(error);
+    }
+  };
+
+  useEffect(() => {
+    void initializeApp();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!activeSubject) {
@@ -1861,6 +1870,111 @@ export default function App() {
       </PixelButton>
     </nav>
   );
+
+  const handleDownloadLocalDatabaseBackup = () => {
+    const persistedDatabase = localStorage.getItem(WEB_SQLITE_STORAGE_KEY);
+
+    if (!persistedDatabase) {
+      setDatabaseRecoveryNotice('Локальная копия базы в браузере не найдена.');
+      return;
+    }
+
+    const payload = JSON.stringify(
+      {
+        key: WEB_SQLITE_STORAGE_KEY,
+        exportedAt: new Date().toISOString(),
+        value: persistedDatabase,
+      },
+      null,
+      2,
+    );
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `braingainz-local-database-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setDatabaseRecoveryNotice('Резервная копия локальной базы скачана.');
+  };
+
+  const handleClearLocalDatabase = () => {
+    const confirmed = window.confirm('Очистить локальную базу BrainGainz на этом устройстве и начать заново?');
+
+    if (!confirmed) {
+      return;
+    }
+
+    localStorage.removeItem(WEB_SQLITE_STORAGE_KEY);
+    localStorage.removeItem('braingainz_last_campaign_id');
+    localStorage.removeItem('braingainz_last_subject_id');
+    window.location.reload();
+  };
+
+  if (databaseRecoveryError) {
+    const technicalMessage = String(databaseRecoveryError?.message ?? databaseRecoveryError);
+
+    return (
+      <div
+        className="pixel-shell-grid flex min-h-[100dvh] items-center justify-center px-4 py-8 text-[var(--pixel-text)]"
+        style={{
+          paddingBottom: runtime.usesSafeAreaInsets ? 'env(safe-area-inset-bottom)' : undefined,
+        }}
+      >
+        <PixelSurface frame="secondary" padding="xxl" className="max-w-[760px]">
+          <PixelStack gap="lg">
+            <div className="flex items-start gap-3">
+              <PixelSurface frame="destructive" padding="sm" fullWidth={false}>
+                <AlertTriangle size={24} />
+              </PixelSurface>
+              <div className="min-w-0">
+                <PixelText as="p" size="xs" color="textMuted" uppercase>
+                  Локальное восстановление
+                </PixelText>
+                <PixelText as="h1" readable size="xl" style={{ marginTop: 6, fontWeight: 800 }}>
+                  Не удалось открыть локальные данные
+                </PixelText>
+              </div>
+            </div>
+
+            <PixelText as="p" readable size="md" color="textMuted">
+              BrainGainz не очистил хранилище автоматически. Можно повторить восстановление после обновления, скачать
+              резервную копию или явно начать с чистой локальной базы.
+            </PixelText>
+
+            {databaseRecoveryNotice ? (
+              <PixelSurface frame="selected" padding="sm">
+                <PixelText as="p" readable size="sm">
+                  {databaseRecoveryNotice}
+                </PixelText>
+              </PixelSurface>
+            ) : null}
+
+            <div className="flex flex-wrap gap-2">
+              <PixelButton tone="accent" onClick={() => void initializeApp()}>
+                <RefreshCw size={16} /> Повторить восстановление
+              </PixelButton>
+              <PixelButton tone="ghost" onClick={handleDownloadLocalDatabaseBackup}>
+                <Download size={16} /> Скачать резервную копию
+              </PixelButton>
+              <PixelButton tone="danger" onClick={handleClearLocalDatabase}>
+                Начать заново
+              </PixelButton>
+            </div>
+
+            <details className="text-sm text-[var(--pixel-text-muted)]">
+              <summary className="cursor-pointer font-bold">Техническая причина</summary>
+              <code className="mt-2 block overflow-auto whitespace-pre-wrap rounded border border-[var(--pixel-line-soft)] p-3">
+                {technicalMessage}
+              </code>
+            </details>
+          </PixelStack>
+        </PixelSurface>
+      </div>
+    );
+  }
 
   return (
     <div

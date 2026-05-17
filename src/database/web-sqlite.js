@@ -1,4 +1,6 @@
-const STORAGE_KEY = 'braingainz.web.sqlite.v1';
+import { WEB_SQLITE_STORAGE_KEY } from './web-sqlite-storage-key.js';
+
+export { WEB_SQLITE_STORAGE_KEY };
 
 let sqlJsPromise = null;
 
@@ -45,7 +47,7 @@ const getSqlJs = async () => {
 };
 
 const loadPersistedBytes = () => {
-  const persistedValue = window.localStorage.getItem(STORAGE_KEY);
+  const persistedValue = window.localStorage.getItem(WEB_SQLITE_STORAGE_KEY);
 
   if (!persistedValue) {
     return null;
@@ -53,9 +55,8 @@ const loadPersistedBytes = () => {
 
   try {
     return decodeBase64(persistedValue);
-  } catch {
-    window.localStorage.removeItem(STORAGE_KEY);
-    return null;
+  } catch (error) {
+    throw new Error('Failed to decode persisted local database.', { cause: error });
   }
 };
 
@@ -66,7 +67,7 @@ export const loadWebDatabase = async () => {
 
   const persist = () => {
     const exportedBytes = database.export();
-    window.localStorage.setItem(STORAGE_KEY, encodeBase64(exportedBytes));
+    window.localStorage.setItem(WEB_SQLITE_STORAGE_KEY, encodeBase64(exportedBytes));
   };
 
   return {

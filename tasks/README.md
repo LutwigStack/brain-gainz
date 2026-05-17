@@ -42,3 +42,6 @@ Everything else must be `planned`, `done`, or `parked`.
 - [15 Russian Interface Pass](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/15-russian-interface-pass/README.md)
 - [16 Knowledge Checks Clarity](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/16-knowledge-checks-clarity/README.md)
 - [17 CS Course Second Slice](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/17-cs-course-second-slice/README.md)
+- [18 Local Data Recovery](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/18-local-data-recovery/README.md)
+- [19 Russian CS Content](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/19-russian-cs-content/README.md)
+- [20 Check Flow Final QA](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/20-check-flow-final-qa/README.md)
