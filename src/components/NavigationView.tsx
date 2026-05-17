@@ -37,6 +37,11 @@ import {
   PixelText,
   PixelTextarea,
 } from './pixel';
+import { ReferenceAssetImage } from '../assets/ReferenceAssetImage';
+import {
+  isCoreCsFoundations,
+  resolveRouteLandmarkAsset,
+} from '../assets/referenceStyleAssets';
 import { GameMapCanvas } from '../game';
 import {
   getGraphEdgeSemantics,
@@ -387,6 +392,7 @@ export const NavigationView = ({
   branchFilterSkillId = null,
 }: NavigationViewProps) => {
   const canUseAuthorTools = workspaceMode === 'author';
+  const hasCoreCsAssets = isCoreCsFoundations(currentSpecialization);
   const [editorOverride, setEditorOverride] = useState<Partial<NodeEditorDraft> | null>(null);
   const [editorOverrideNodeId, setEditorOverrideNodeId] = useState<number | null>(null);
   const [isEditorExpanded, setIsEditorExpanded] = useState(false);
@@ -2893,11 +2899,22 @@ export const NavigationView = ({
                     </PixelText>
                   </div>
                   <div className="navigation-route-overview__stages">
-                    {routeOverviewStages.map((stage) => (
+                    {routeOverviewStages.map((stage) => {
+                      const stageAsset = hasCoreCsAssets ? resolveRouteLandmarkAsset(stage.label) : null;
+
+                      return (
                       <div
                         key={stage.key}
                         className={`navigation-route-overview__stage${stage.hasCurrentFront ? ' navigation-route-overview__stage--front' : ''}`}
                       >
+                        <ReferenceAssetImage
+                          asset={stageAsset}
+                          decorative
+                          className="navigation-route-overview__stage-thumb"
+                          fallback={
+                            <span className="navigation-route-overview__stage-thumb navigation-route-overview__stage-thumb--fallback" />
+                          }
+                        />
                         <div className="navigation-route-overview__stage-heading">
                           <PixelText as="span" readable size="sm">
                             {stage.label}
@@ -2928,7 +2945,8 @@ export const NavigationView = ({
                           ) : null}
                         </div>
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 </PixelSurface>
               ) : null}

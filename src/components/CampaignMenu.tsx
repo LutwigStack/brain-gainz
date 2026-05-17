@@ -1,4 +1,4 @@
-import { Archive, Copy, Play, Plus, RotateCcw } from 'lucide-react';
+import { Archive, Copy, Flag, Play, Plus, RotateCcw } from 'lucide-react';
 
 import {
   PixelButton,
@@ -8,6 +8,11 @@ import {
   PixelSurface,
   PixelText,
 } from './pixel';
+import { ReferenceAssetImage } from '../assets/ReferenceAssetImage';
+import {
+  csBachelorReferenceAssets,
+  isCsBachelorCampaign,
+} from '../assets/referenceStyleAssets';
 import type { CampaignListSnapshot, CampaignSummary } from '../types/app-shell';
 
 interface CampaignMenuProps {
@@ -45,6 +50,7 @@ const CampaignCard = ({
   const isTemplate = campaign.type === 'template';
   const nodeCount = Number(campaign.node_count ?? 0);
   const totalXp = Number(campaign.total_xp ?? 0);
+  const hasCsAssets = isCsBachelorCampaign(campaign);
   const openLabel = isSystem ? 'Открыть шаблон' : 'Открыть';
 
   return (
@@ -62,7 +68,18 @@ const CampaignCard = ({
       }
     >
       <div className={isSystem || isTemplate ? 'grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]' : 'grid min-w-0 gap-3'}>
-        <div className="min-w-0">
+        <div className={hasCsAssets ? 'campaign-card__heading min-w-0' : 'min-w-0'}>
+          {hasCsAssets ? (
+            <span className="campaign-card__asset" aria-hidden="true">
+              <ReferenceAssetImage
+                asset={csBachelorReferenceAssets.campaign.crest}
+                decorative
+                className="campaign-card__asset-image"
+                fallback={<Flag size={18} />}
+              />
+            </span>
+          ) : null}
+          <div className="min-w-0">
           {!isSystem && !isTemplate ? (
             <PixelText
               as="h3"
@@ -102,9 +119,10 @@ const CampaignCard = ({
               {nodeCount} узл. · {totalXp} XP
             </PixelText>
           </div>
+          </div>
         </div>
 
-        <div className={isSystem || isTemplate ? 'flex min-w-0 flex-wrap items-center justify-end gap-2' : 'grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]'}>
+        <div className={isSystem || isTemplate ? 'flex min-w-0 flex-wrap items-center justify-end gap-2' : 'campaign-card__actions'}>
           {isTemplate ? (
             <PixelButton
               tone="accent"
@@ -121,7 +139,7 @@ const CampaignCard = ({
             onClick={onOpen}
             disabled={isMutating}
             aria-label={`${openLabel}: ${campaign.name}`}
-            style={isSystem || isTemplate ? { minHeight: 32, padding: '6px 10px', gap: 6 } : undefined}
+            style={{ minHeight: 32, padding: '6px 10px', gap: 6, whiteSpace: 'nowrap' }}
           >
             <Play size={15} /> {openLabel}
           </PixelButton>

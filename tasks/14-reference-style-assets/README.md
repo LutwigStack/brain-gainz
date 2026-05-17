@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`active`
 
 ## Goal
 
@@ -93,10 +93,27 @@ This is enough to validate style, sizing, and UI composition before scaling.
 - Every asset has a documented purpose, filename, target slot, size, and fallback behavior.
 - Browser QA includes screenshots before/after integration.
 
+## Current State
+
+The first CS Bachelor asset batch has been generated, selected, integrated, and QA'd.
+
+Decision: keep the batch as the current baseline, but do not treat the asset system as production-final yet.
+
+Known follow-up work:
+- keep raw generated candidates out of git
+- generate the missing `Algorithms` route landmark
+- make Daily Run task icons and mastery icons more readable at their real UI sizes
+- improve mini-map landmark contrast
+- keep route overview and Daily Run comprehension ahead of broad asset expansion
+
 ## Workstreams
 
-- `planned` - [workstreams/01-asset-style-bible.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/workstreams/01-asset-style-bible.md)
-- `planned` - [workstreams/02-image-generation-first-batch.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/workstreams/02-image-generation-first-batch.md)
-- `planned` - [workstreams/03-asset-manifest-and-integration.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/workstreams/03-asset-manifest-and-integration.md)
-- `planned` - [workstreams/04-asset-qa-and-iteration.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/workstreams/04-asset-qa-and-iteration.md)
-- `planned` - [agent-prompts.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/agent-prompts.md)
+- `done` - [workstreams/01-asset-style-bible.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/workstreams/01-asset-style-bible.md)
+- `done` - [workstreams/02-image-generation-first-batch.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/workstreams/02-image-generation-first-batch.md)
+- `done` - [workstreams/03-asset-manifest-and-integration.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/workstreams/03-asset-manifest-and-integration.md)
+- `done` - [workstreams/04-asset-qa-and-iteration.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/workstreams/04-asset-qa-and-iteration.md)
+- `active` - [workstreams/05-repo-hygiene-and-asset-storage.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/workstreams/05-repo-hygiene-and-asset-storage.md)
+- `planned` - [workstreams/06-small-state-icon-readability.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/workstreams/06-small-state-icon-readability.md)
+- `planned` - [workstreams/07-route-landmark-completion.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/workstreams/07-route-landmark-completion.md)
+- `planned` - [workstreams/08-daily-run-and-route-comprehension.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/workstreams/08-daily-run-and-route-comprehension.md)
+- `active` - [agent-prompts.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/14-reference-style-assets/agent-prompts.md)

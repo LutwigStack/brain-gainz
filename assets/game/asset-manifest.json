@@ -1,96 +1,655 @@
 {
   "version": 1,
-  "art_direction_reference": "tasks/09-strategic-career-knowledge-graph/references/visual-reference-strategy-dashboard.md",
+  "art_direction_reference": "tasks/14-reference-style-assets/asset-style-bible.md",
+  "selection_reference": "tasks/14-reference-style-assets/asset-selection.md",
+  "qa_reference": "tasks/14-reference-style-assets/asset-qa.md",
   "rules": {
     "no_baked_ui_text": true,
     "generate_from_ui_slot_first": true,
     "variant_count": "2-4",
-    "acceptance_requires_real_component_check": true
+    "acceptance_requires_real_component_check": true,
+    "fallbacks_required": true
   },
   "assets": [
     {
-      "asset_id": "race_portrait_crow_commander_v1",
-      "family": "race_portrait",
-      "usage_surface": "campaign_menu_today_panel",
-      "ui_slot": "right-side race identity portrait",
-      "target_width": 256,
-      "target_height": 256,
-      "format": "png",
-      "transparent_background": true,
-      "source_prompt_path": "assets/prompts/race-portrait-crow-commander-v1.md",
-      "raw_variant_paths": [],
-      "selected_variant_path": null,
-      "status": "planned",
+      "asset_id": "campaign.cs-bachelor.computer-science-bachelor.crest",
+      "family": "campaign",
+      "usage_surface": "campaign_menu_top_context_today_goal",
+      "ui_slot": "Campaign Menu card thumbnail, top context campaign crest, Today main goal identity",
+      "target_slots": [
+        "Campaign Menu",
+        "top context campaign",
+        "Today main goal"
+      ],
+      "target_width": 160,
+      "target_height": 160,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/campaign/bgz-ref-campaign-cs-bachelor-computer-science-bachelor-crest-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/campaign/bgz-ref-campaign-cs-bachelor-computer-science-bachelor-crest-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/campaign/bgz-ref-campaign-cs-bachelor-computer-science-bachelor-crest-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/campaign/bgz-ref-campaign-cs-bachelor-computer-science-bachelor-crest-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/campaign/bgz-ref-campaign-cs-bachelor-computer-science-bachelor-crest.webp",
+      "status": "accepted",
+      "alt": "Computer Science Bachelor campaign crest",
+      "fallback": "CSS academy crest frame with campaign name rendered in HTML",
       "ui_check": {
-        "component": "NowView",
-        "display_width": 44,
-        "display_height": 44,
-        "required_states": ["free campaign", "active career specialization"]
+        "component": "CampaignMenu, App, NowView",
+        "display_width": 56,
+        "display_height": 56,
+        "required_states": [
+          "campaign menu",
+          "selected CS campaign",
+          "Today main goal"
+        ]
       },
-      "notes": "First controlled image-generation slot. Do not generate UI text inside the portrait."
+      "notes": "Accepted first-batch crest; text remains outside the image."
     },
     {
-      "asset_id": "city_district_learning_core_v1",
-      "family": "city_district_tile",
-      "usage_surface": "today_city_projection",
-      "ui_slot": "compact city district reward tile",
-      "target_width": 192,
+      "asset_id": "specialization.cs-bachelor.core-cs-foundations.emblem",
+      "family": "specialization",
+      "usage_surface": "top_context_route_identity",
+      "ui_slot": "top context specialization emblem",
+      "target_slots": [
+        "top context specialization"
+      ],
+      "target_width": 160,
+      "target_height": 160,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/specialization/bgz-ref-specialization-cs-bachelor-core-cs-foundations-emblem-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/specialization/bgz-ref-specialization-cs-bachelor-core-cs-foundations-emblem-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/specialization/bgz-ref-specialization-cs-bachelor-core-cs-foundations-emblem-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/specialization/bgz-ref-specialization-cs-bachelor-core-cs-foundations-emblem-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/specialization/bgz-ref-specialization-cs-bachelor-core-cs-foundations-emblem.webp",
+      "status": "accepted",
+      "alt": "Core CS Foundations specialization emblem",
+      "fallback": "Network or branch icon with specialization label in HTML",
+      "ui_check": {
+        "component": "App",
+        "display_width": 32,
+        "display_height": 32,
+        "required_states": [
+          "selected Core CS Foundations specialization"
+        ]
+      },
+      "notes": "Accepted first-batch emblem."
+    },
+    {
+      "asset_id": "race.cs-bachelor.raven-strategist.portrait",
+      "family": "race",
+      "usage_surface": "top_context_today_right_rail",
+      "ui_slot": "top context race crop, right rail race portrait",
+      "target_slots": [
+        "top context race",
+        "Today right rail race"
+      ],
+      "target_width": 480,
+      "target_height": 600,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/race/bgz-ref-race-cs-bachelor-raven-strategist-portrait-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/race/bgz-ref-race-cs-bachelor-raven-strategist-portrait-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/race/bgz-ref-race-cs-bachelor-raven-strategist-portrait-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/race/bgz-ref-race-cs-bachelor-raven-strategist-portrait-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/race/bgz-ref-race-cs-bachelor-raven-strategist-portrait.webp",
+      "status": "accepted",
+      "alt": "Raven Strategist persona portrait",
+      "fallback": "Raven/persona silhouette placeholder with race name in HTML",
+      "ui_check": {
+        "component": "App, NowView",
+        "display_width": 270,
+        "display_height": 138,
+        "required_states": [
+          "active CS race identity"
+        ]
+      },
+      "notes": "Accepted first-batch portrait."
+    },
+    {
+      "asset_id": "city.cs-bachelor.core-cs-citadel.card",
+      "family": "city",
+      "usage_surface": "today_right_rail_city",
+      "ui_slot": "right rail city/civilization card",
+      "target_slots": [
+        "Today right rail city"
+      ],
+      "target_width": 640,
+      "target_height": 360,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/city/bgz-ref-city-cs-bachelor-core-cs-citadel-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/city/bgz-ref-city-cs-bachelor-core-cs-citadel-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/city/bgz-ref-city-cs-bachelor-core-cs-citadel-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/city/bgz-ref-city-cs-bachelor-core-cs-citadel-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/city/bgz-ref-city-cs-bachelor-core-cs-citadel-card.webp",
+      "status": "accepted",
+      "alt": "Core CS Citadel city card",
+      "fallback": "Dark city silhouette band with city level and XP rendered in HTML",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 272,
+        "display_height": 114,
+        "required_states": [
+          "zero XP",
+          "active city districts"
+        ]
+      },
+      "notes": "Accepted first-batch city card."
+    },
+    {
+      "asset_id": "opponent.cs-bachelor.corvus-ai.banner",
+      "family": "opponent",
+      "usage_surface": "today_right_rail_opponent",
+      "ui_slot": "right rail opponent banner",
+      "target_slots": [
+        "Today right rail opponent"
+      ],
+      "target_width": 768,
+      "target_height": 256,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/opponent/bgz-ref-opponent-cs-bachelor-corvus-ai-banner-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/opponent/bgz-ref-opponent-cs-bachelor-corvus-ai-banner-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/opponent/bgz-ref-opponent-cs-bachelor-corvus-ai-banner-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/opponent/bgz-ref-opponent-cs-bachelor-corvus-ai-banner-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/opponent/bgz-ref-opponent-cs-bachelor-corvus-ai-banner.webp",
+      "status": "accepted",
+      "alt": "Corvus AI opponent banner",
+      "fallback": "Dark opponent silhouette with red status accent and HTML name/progress",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 272,
+        "display_height": 74,
+        "required_states": [
+          "active opponent",
+          "empty opponent slot"
+        ]
+      },
+      "notes": "Accepted first-batch banner; QA recommends later contrast revision."
+    },
+    {
+      "asset_id": "task.cs-bachelor.practice.icon",
+      "family": "task",
+      "usage_surface": "today_daily_run_checks",
+      "ui_slot": "Daily Run practice task cards and Checks rows",
+      "target_slots": [
+        "Today Daily Run task",
+        "Checks task row"
+      ],
+      "target_width": 160,
+      "target_height": 160,
+      "format": "png",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-practice-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-practice-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-practice-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-practice-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-practice-icon.png",
+      "status": "accepted",
+      "alt": "Practice task type icon",
+      "fallback": "Existing task icon plus green status chip",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 22,
+        "display_height": 22,
+        "required_states": [
+          "current task",
+          "practice task"
+        ]
+      },
+      "notes": "Accepted first-batch icon; QA recommends small-size treatment revision."
+    },
+    {
+      "asset_id": "task.cs-bachelor.assessment.icon",
+      "family": "task",
+      "usage_surface": "today_daily_run_checks",
+      "ui_slot": "Daily Run assessment task cards and Checks rows",
+      "target_slots": [
+        "Today Daily Run task",
+        "Checks assessment row"
+      ],
+      "target_width": 160,
+      "target_height": 160,
+      "format": "png",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-assessment-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-assessment-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-assessment-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-assessment-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-assessment-icon.png",
+      "status": "accepted",
+      "alt": "Assessment task type icon",
+      "fallback": "Existing check or scan icon plus cyan status chip",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 22,
+        "display_height": 22,
+        "required_states": [
+          "assessment task"
+        ]
+      },
+      "notes": "Accepted first-batch icon."
+    },
+    {
+      "asset_id": "task.cs-bachelor.recovery.icon",
+      "family": "task",
+      "usage_surface": "today_daily_run_recovery",
+      "ui_slot": "Daily Run recovery task and weak spot rows",
+      "target_slots": [
+        "Today recovery task",
+        "Today weak spot row"
+      ],
+      "target_width": 160,
+      "target_height": 160,
+      "format": "png",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-recovery-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-recovery-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-recovery-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-recovery-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-recovery-icon.png",
+      "status": "accepted",
+      "alt": "Recovery task type icon",
+      "fallback": "Warning or repair icon with amber accent",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 22,
+        "display_height": 22,
+        "required_states": [
+          "recovery task",
+          "weak spot row"
+        ]
+      },
+      "notes": "Accepted first-batch icon; QA recommends small-size treatment revision."
+    },
+    {
+      "asset_id": "task.cs-bachelor.deferred.icon",
+      "family": "task",
+      "usage_surface": "today_daily_run_deferred",
+      "ui_slot": "Daily Run deferred or locked task card",
+      "target_slots": [
+        "Today deferred task",
+        "Today locked task"
+      ],
+      "target_width": 160,
+      "target_height": 160,
+      "format": "png",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-deferred-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-deferred-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-deferred-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-deferred-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/task/bgz-ref-task-cs-bachelor-deferred-icon.png",
+      "status": "accepted",
+      "alt": "Deferred task type icon",
+      "fallback": "Muted lock or deferred icon with steel accent",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 22,
+        "display_height": 22,
+        "required_states": [
+          "deferred task",
+          "locked task",
+          "future task"
+        ]
+      },
+      "notes": "Accepted first-batch icon."
+    },
+    {
+      "asset_id": "mastery.cs-bachelor.seen.icon",
+      "family": "mastery",
+      "usage_surface": "today_mastery_ladder",
+      "ui_slot": "mastery ladder seen state",
+      "target_slots": [
+        "Today mastery ladder"
+      ],
+      "target_width": 128,
       "target_height": 128,
       "format": "png",
       "transparent_background": false,
-      "source_prompt_path": "assets/prompts/city-district-learning-core-v1.md",
-      "raw_variant_paths": [],
-      "selected_variant_path": null,
-      "status": "planned",
-      "ui_check": {
-        "component": "NowView",
-        "display_width": 96,
-        "display_height": 64,
-        "required_states": ["zero XP", "active XP district"]
-      },
-      "notes": "Read-only projection from mastery and XP, not a city-builder resource."
-    },
-    {
-      "asset_id": "opponent_portrait_rival_architect_v1",
-      "family": "opponent_portrait",
-      "usage_surface": "today_pressure_panel",
-      "ui_slot": "compact opponent portrait beside pressure meter",
-      "target_width": 192,
-      "target_height": 192,
-      "format": "png",
-      "transparent_background": true,
-      "source_prompt_path": "assets/prompts/opponent-portrait-rival-architect-v1.md",
-      "raw_variant_paths": [],
-      "selected_variant_path": null,
-      "status": "planned",
-      "ui_check": {
-        "component": "NowView",
-        "display_width": 40,
-        "display_height": 40,
-        "required_states": ["active route", "new specialization reset"]
-      },
-      "notes": "V1 opponent is deterministic pressure projection, not combat simulation."
-    },
-    {
-      "asset_id": "mastery_icon_confirmed_v1",
-      "family": "mastery_icon",
-      "usage_surface": "node_card_route_today",
-      "ui_slot": "small confirmed mastery badge",
-      "target_width": 64,
-      "target_height": 64,
-      "format": "png",
-      "transparent_background": true,
-      "source_prompt_path": "assets/prompts/mastery-icon-confirmed-v1.md",
-      "raw_variant_paths": [],
-      "selected_variant_path": null,
-      "status": "planned",
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-seen-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-seen-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-seen-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-seen-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-seen-icon.png",
+      "status": "accepted",
+      "alt": "Seen mastery level icon",
+      "fallback": "Eye or visibility state icon in blue-cyan",
       "ui_check": {
         "component": "NowView",
         "display_width": 24,
         "display_height": 24,
-        "required_states": ["confirmed route node", "unconfirmed route node"]
+        "required_states": [
+          "seen mastery"
+        ]
       },
-      "notes": "Must remain readable at 20-24px before acceptance."
+      "notes": "Accepted first-batch mastery icon."
+    },
+    {
+      "asset_id": "mastery.cs-bachelor.understood.icon",
+      "family": "mastery",
+      "usage_surface": "today_mastery_ladder",
+      "ui_slot": "mastery ladder understood state",
+      "target_slots": [
+        "Today mastery ladder"
+      ],
+      "target_width": 128,
+      "target_height": 128,
+      "format": "png",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-understood-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-understood-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-understood-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-understood-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-understood-icon.png",
+      "status": "accepted",
+      "alt": "Understood mastery level icon",
+      "fallback": "Insight icon in teal",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 24,
+        "display_height": 24,
+        "required_states": [
+          "understood mastery"
+        ]
+      },
+      "notes": "Accepted first-batch mastery icon."
+    },
+    {
+      "asset_id": "mastery.cs-bachelor.remembered.icon",
+      "family": "mastery",
+      "usage_surface": "today_mastery_ladder",
+      "ui_slot": "mastery ladder remembered state",
+      "target_slots": [
+        "Today mastery ladder"
+      ],
+      "target_width": 128,
+      "target_height": 128,
+      "format": "png",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-remembered-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-remembered-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-remembered-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-remembered-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-remembered-icon.png",
+      "status": "accepted",
+      "alt": "Remembered mastery level icon",
+      "fallback": "Memory state icon in green",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 24,
+        "display_height": 24,
+        "required_states": [
+          "remembered mastery"
+        ]
+      },
+      "notes": "Accepted first-batch mastery icon."
+    },
+    {
+      "asset_id": "mastery.cs-bachelor.applied.icon",
+      "family": "mastery",
+      "usage_surface": "today_mastery_ladder",
+      "ui_slot": "mastery ladder applied state",
+      "target_slots": [
+        "Today mastery ladder"
+      ],
+      "target_width": 128,
+      "target_height": 128,
+      "format": "png",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-applied-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-applied-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-applied-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-applied-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-applied-icon.png",
+      "status": "accepted",
+      "alt": "Applied mastery level icon",
+      "fallback": "Tool or application icon in amber-gold",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 24,
+        "display_height": 24,
+        "required_states": [
+          "applied mastery"
+        ]
+      },
+      "notes": "Accepted first-batch mastery icon."
+    },
+    {
+      "asset_id": "mastery.cs-bachelor.verified.icon",
+      "family": "mastery",
+      "usage_surface": "today_mastery_ladder",
+      "ui_slot": "mastery ladder verified state",
+      "target_slots": [
+        "Today mastery ladder"
+      ],
+      "target_width": 128,
+      "target_height": 128,
+      "format": "png",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-verified-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-verified-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-verified-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-verified-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-verified-icon.png",
+      "status": "accepted",
+      "alt": "Verified mastery level icon",
+      "fallback": "Shield or check state icon in violet",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 24,
+        "display_height": 24,
+        "required_states": [
+          "confirmed or verified mastery"
+        ]
+      },
+      "notes": "Accepted first-batch mastery icon."
+    },
+    {
+      "asset_id": "mastery.cs-bachelor.retained.icon",
+      "family": "mastery",
+      "usage_surface": "today_mastery_ladder",
+      "ui_slot": "mastery ladder retained state",
+      "target_slots": [
+        "Today mastery ladder"
+      ],
+      "target_width": 128,
+      "target_height": 128,
+      "format": "png",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-retained-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-retained-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-retained-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-retained-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/mastery/bgz-ref-mastery-cs-bachelor-retained-icon.png",
+      "status": "accepted",
+      "alt": "Retained mastery level icon",
+      "fallback": "Hourglass or time-retained icon in silver/steel",
+      "ui_check": {
+        "component": "NowView",
+        "display_width": 24,
+        "display_height": 24,
+        "required_states": [
+          "retained mastery"
+        ]
+      },
+      "notes": "Accepted first-batch mastery icon."
+    },
+    {
+      "asset_id": "map.cs-bachelor.programming-fundamentals.landmark",
+      "family": "map",
+      "usage_surface": "today_mini_map_route_overview",
+      "ui_slot": "mini knowledge map and route overview branch thumbnail",
+      "target_slots": [
+        "Today mini map",
+        "Navigation route overview"
+      ],
+      "target_width": 480,
+      "target_height": 360,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-programming-fundamentals-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-programming-fundamentals-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-programming-fundamentals-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-programming-fundamentals-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-programming-fundamentals-landmark.webp",
+      "status": "accepted",
+      "alt": "Programming Fundamentals route landmark",
+      "fallback": "Colored graph-node cluster thumbnail with route label outside image",
+      "ui_check": {
+        "component": "NowView, NavigationView",
+        "display_width": 265,
+        "display_height": 198,
+        "required_states": [
+          "Programming Fundamentals route stage"
+        ]
+      },
+      "notes": "Accepted first-batch route landmark."
+    },
+    {
+      "asset_id": "map.cs-bachelor.discrete-math.landmark",
+      "family": "map",
+      "usage_surface": "today_mini_map_route_overview",
+      "ui_slot": "mini knowledge map and route overview branch thumbnail",
+      "target_slots": [
+        "Today mini map",
+        "Navigation route overview"
+      ],
+      "target_width": 480,
+      "target_height": 360,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-discrete-math-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-discrete-math-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-discrete-math-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-discrete-math-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-discrete-math-landmark.webp",
+      "status": "accepted",
+      "alt": "Discrete Math route landmark",
+      "fallback": "Colored graph-node cluster thumbnail with route label outside image",
+      "ui_check": {
+        "component": "NavigationView",
+        "display_width": 265,
+        "display_height": 198,
+        "required_states": [
+          "Discrete Math route stage"
+        ]
+      },
+      "notes": "Accepted first-batch route landmark."
+    },
+    {
+      "asset_id": "map.cs-bachelor.data-structures.landmark",
+      "family": "map",
+      "usage_surface": "today_mini_map_route_overview",
+      "ui_slot": "mini knowledge map and route overview branch thumbnail",
+      "target_slots": [
+        "Today mini map",
+        "Navigation route overview"
+      ],
+      "target_width": 480,
+      "target_height": 360,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "output/generated-assets/reference-style-first-batch/manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-data-structures-candidate-01.png",
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-data-structures-candidate-02.png",
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-data-structures-candidate-03.png",
+        "output/generated-assets/reference-style-first-batch/route/bgz-ref-route-cs-bachelor-data-structures-candidate-04.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-data-structures-landmark.webp",
+      "status": "accepted",
+      "alt": "Data Structures route landmark",
+      "fallback": "Colored graph-node cluster thumbnail with route label outside image",
+      "ui_check": {
+        "component": "NavigationView",
+        "display_width": 265,
+        "display_height": 198,
+        "required_states": [
+          "Data Structures route stage"
+        ]
+      },
+      "notes": "Accepted first-batch route landmark."
+    },
+    {
+      "asset_id": "map.cs-bachelor.algorithms.landmark",
+      "family": "map",
+      "usage_surface": "route_overview",
+      "ui_slot": "route overview branch thumbnail",
+      "target_slots": [
+        "Navigation route overview"
+      ],
+      "target_width": 480,
+      "target_height": 360,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/14-reference-style-assets/asset-style-bible.md",
+      "raw_variant_paths": [],
+      "selected_variant_path": null,
+      "status": "planned",
+      "alt": "Algorithms route landmark",
+      "fallback": "Colored graph-node cluster thumbnail with route label outside image",
+      "ui_check": {
+        "component": "NavigationView",
+        "display_width": 265,
+        "display_height": 198,
+        "required_states": [
+          "Algorithms route stage"
+        ]
+      },
+      "notes": "Explicit planned gap documented after QA; route overview must use fallback until generated."
     }
   ]
 }

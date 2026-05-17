@@ -7,6 +7,15 @@ const repoRoot = resolve(import.meta.dirname, '..');
 const manifestPath = resolve(repoRoot, 'assets/game/asset-manifest.json');
 const allowedStatuses = new Set(['planned', 'generated', 'selected', 'accepted', 'rejected']);
 const allowedFamilies = new Set([
+  'campaign',
+  'specialization',
+  'race',
+  'city',
+  'opponent',
+  'task',
+  'mastery',
+  'recovery',
+  'map',
   'race_portrait',
   'race_emblem',
   'city_district_tile',
@@ -47,6 +56,9 @@ test('game asset manifest entries are prompt-first and reviewable', () => {
     assert.ok(allowedFamilies.has(asset.family), `unknown family: ${asset.family}`);
     assert.equal(typeof asset.usage_surface, 'string');
     assert.equal(typeof asset.ui_slot, 'string');
+    assert.equal(typeof asset.alt, 'string', `${asset.asset_id} missing alt text`);
+    assert.equal(typeof asset.fallback, 'string', `${asset.asset_id} missing fallback metadata`);
+    assert.ok(Array.isArray(asset.target_slots), `${asset.asset_id} missing target slot list`);
     assert.ok(Number(asset.target_width) > 0);
     assert.ok(Number(asset.target_height) > 0);
     assert.ok(['png', 'svg', 'webp'].includes(asset.format));
@@ -75,10 +87,6 @@ test('game asset manifest entries are prompt-first and reviewable', () => {
     if (asset.status === 'selected' || asset.status === 'accepted') {
       assert.ok(asset.selected_variant_path, `${asset.asset_id} ${asset.status} without selected asset`);
       assertExistingPaths([asset.selected_variant_path], asset.asset_id, 'selected_variant_path');
-      assert.ok(
-        asset.raw_variant_paths.includes(asset.selected_variant_path),
-        `${asset.asset_id} selected asset must come from raw variants`,
-      );
     }
   }
 });

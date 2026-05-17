@@ -226,3 +226,147 @@ Run:
 
 Do not mark the asset slice done if the QA artifact is stale or missing screenshots.
 ```
+
+## Agent F - Repo Hygiene Check
+
+```text
+You are working in C:\Users\Andr3y\projects\javascript_projects\brain-gainz.
+
+Task: verify reference-style generated asset storage hygiene.
+
+Read:
+- tasks/14-reference-style-assets/workstreams/05-repo-hygiene-and-asset-storage.md
+- tasks/14-reference-style-assets/asset-qa.md
+
+Do not delete local files unless explicitly asked.
+
+Verify:
+- raw generated candidates under output/generated-assets/reference-style-first-batch are not tracked by git
+- accepted runtime assets under assets/game/reference-style-first-batch are tracked
+- task QA screenshots under tasks/14-reference-style-assets/qa are tracked
+- asset manifest and source references do not imply raw candidates are runtime dependencies
+
+Run:
+- git status --short
+- git ls-tree -r --long HEAD output/generated-assets
+- git ls-tree -r --long HEAD assets/game/reference-style-first-batch
+- npm run test
+- npm run lint
+- npm run build
+
+Report only findings and whether the repo is safe to push.
+```
+
+## Agent G - Small State Icon Readability
+
+```text
+You are working in C:\Users\Andr3y\projects\javascript_projects\brain-gainz.
+
+Task: improve Daily Run task icon and mastery icon readability at actual UI sizes.
+
+Read:
+- tasks/14-reference-style-assets/workstreams/06-small-state-icon-readability.md
+- tasks/14-reference-style-assets/asset-style-bible.md
+- tasks/14-reference-style-assets/asset-qa.md
+- src/components/NowView.tsx
+- src/assets/referenceStyleAssets.tsx
+- src/index.css
+
+Use generated art only if needed. Prefer first trying layout, sizing, frame, and color-state improvements.
+
+Rules:
+- keep text in HTML
+- do not replace lucide action icons
+- do not redesign unrelated panels
+- preserve mobile 390px layout
+- keep task state distinct from action buttons
+
+Verify:
+- active Daily Run at desktop 1280x900
+- active Daily Run at mobile 390x844
+- mastery ladder desktop and mobile
+- npm run test
+- npm run lint
+- npm run build
+
+Update:
+- tasks/14-reference-style-assets/asset-qa.md with screenshots and decision notes
+```
+
+## Agent H - Algorithms Route Landmark
+
+```text
+You are working in C:\Users\Andr3y\projects\javascript_projects\brain-gainz.
+
+Task: add the missing Algorithms route landmark for the CS Bachelor route overview.
+
+Read:
+- tasks/14-reference-style-assets/workstreams/07-route-landmark-completion.md
+- tasks/14-reference-style-assets/asset-style-bible.md
+- tasks/14-reference-style-assets/asset-selection.md
+- assets/game/asset-manifest.json
+- src/assets/referenceStyleAssets.tsx
+- src/components/NavigationView.tsx
+
+Generate or select one Algorithms landmark that matches the accepted route landmark family.
+
+Rules:
+- no readable text in image
+- no fake UI controls
+- normalize to the same dimensions/format as existing map landmarks
+- keep fallback behavior for unknown route groups
+- update manifest and TypeScript asset map
+
+Verify:
+- route overview desktop 1280x900
+- Today mini-map if it uses route landmarks
+- npm run test
+- npm run lint
+- npm run build
+
+Update:
+- tasks/14-reference-style-assets/asset-selection.md
+- tasks/14-reference-style-assets/asset-qa.md
+```
+
+## Agent I - Daily Run And Route Comprehension QA
+
+```text
+You are working in C:\Users\Andr3y\projects\javascript_projects\brain-gainz.
+
+Task: review and improve Daily Run and route overview comprehension after asset integration.
+
+Read:
+- tasks/14-reference-style-assets/workstreams/08-daily-run-and-route-comprehension.md
+- tasks/14-reference-style-assets/asset-qa.md
+- tasks/13-cs-bachelor-campaign-and-daily-run/cs-campaign-qa.md
+
+Focus on product comprehension, not adding more decorative art.
+
+Check:
+- Start Run
+- Complete
+- Another pass
+- Skip
+- Defer
+- Finish
+- completed run summary
+- route overview active branch/current step
+- mobile 390x844
+
+Fix only tightly scoped UI issues that block comprehension:
+- outcome state clarity
+- current task focus
+- ready-to-finish affordance
+- route active branch/current step highlight
+
+Verify:
+- npm run test
+- npm run lint
+- npm run build
+- browser screenshots desktop and mobile
+- console warnings/errors
+
+Update:
+- tasks/14-reference-style-assets/asset-qa.md or create a focused Daily Run/route QA note under the same task folder
+```

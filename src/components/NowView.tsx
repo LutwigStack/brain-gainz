@@ -20,6 +20,14 @@ import {
 } from 'lucide-react';
 
 import { PixelButton, PixelStack, PixelSurface, PixelText } from './pixel';
+import { ReferenceAssetImage } from '../assets/ReferenceAssetImage';
+import {
+  csBachelorReferenceAssets,
+  isCoreCsFoundations,
+  resolveMasteryAsset,
+  resolveRouteLandmarkAsset,
+  resolveTaskAsset,
+} from '../assets/referenceStyleAssets';
 import {
   buildTodayRightRail,
   buildDailyTaskCards,
@@ -173,6 +181,7 @@ export const NowView = ({
   const canFinishDailyRun = isDailyRunActive && dailyRunTasks.length > 0 && pendingRunTaskCount === 0;
   const today = snapshot?.today ?? null;
   const currentSpecialization = today?.currentSpecialization ?? null;
+  const hasCoreCsAssets = isCoreCsFoundations(currentSpecialization);
   const isVictory = today?.careerStatus === 'victory';
   const routeProgress = today?.route ?? null;
   const routePlanner = today?.planner ?? null;
@@ -212,6 +221,9 @@ export const NowView = ({
     routeItems,
     currentStage: plannerCurrentStage,
   });
+  const miniMapLandmarkAsset = hasCoreCsAssets
+    ? resolveRouteLandmarkAsset(miniMapPreview.routeTitle ?? miniMapPreview.frontTitle)
+    : null;
   const progressPercent = progress?.completionPercent ?? 0;
   const mainProgressPercent = routeProgress ? routeCompletionPercent : progressPercent;
   const mainProgressLabel = routeProgress
@@ -401,7 +413,16 @@ export const NowView = ({
           <PixelSurface frame={isVictory ? 'selected' : 'primary'} padding="xl" className="today-main-goal-card">
             <div className="today-main-goal-layout">
               <div className="today-goal-icon" aria-hidden="true">
-                <Target size={34} />
+                {hasCoreCsAssets ? (
+                  <ReferenceAssetImage
+                    asset={csBachelorReferenceAssets.campaign.crest}
+                    decorative
+                    className="today-goal-icon__asset"
+                    fallback={<Target size={34} />}
+                  />
+                ) : (
+                  <Target size={34} />
+                )}
               </div>
               <div className="min-w-0">
                 <PixelText as="p" size="xs" color="accent" uppercase>
@@ -467,11 +488,19 @@ export const NowView = ({
               {isDailyRunActive ? (
                 <div className="today-run-active">
                   <div className="today-run-task-list">
-                    {dailyRunTasks.map((task) => (
+                    {dailyRunTasks.map((task) => {
+                      const taskAsset = hasCoreCsAssets ? resolveTaskAsset(task.source, task.outcome) : null;
+
+                      return (
                       <div key={task.id} className={`today-run-task today-run-task--${task.outcome}`}>
                         <div className="today-run-task__main">
                           <span className="today-task-card__asset" aria-hidden="true">
-                            <Target size={14} />
+                            <ReferenceAssetImage
+                              asset={taskAsset}
+                              decorative
+                              className="today-task-card__asset-image"
+                              fallback={<Target size={14} />}
+                            />
                             <span>{task.order}</span>
                           </span>
                           <span className="min-w-0">
@@ -511,7 +540,8 @@ export const NowView = ({
                           </div>
                         )}
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                   <div className="today-run-footer">
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -550,6 +580,7 @@ export const NowView = ({
               {dailyTaskCards.length > 0
                 ? dailyTaskCards.map((task) => {
                     const TaskIcon = taskIconByState[task.state];
+                    const taskAsset = hasCoreCsAssets ? resolveTaskAsset(task.state) : null;
                     return (
                     <button
                       key={task.key}
@@ -560,7 +591,12 @@ export const NowView = ({
                     >
                       <span className="today-task-card__topline">
                         <span className="today-task-card__asset" aria-hidden="true">
-                          <TaskIcon size={15} />
+                          <ReferenceAssetImage
+                            asset={taskAsset}
+                            decorative
+                            className="today-task-card__asset-image"
+                            fallback={<TaskIcon size={15} />}
+                          />
                           <span>{task.order}</span>
                         </span>
                         <span className="today-task-card__status">{task.status}</span>
@@ -629,6 +665,7 @@ export const NowView = ({
                 const rank = index + 1;
                 const isDone = routeCurrentRank >= rank;
                 const isRequired = routeRequiredRank === rank;
+                const masteryAsset = hasCoreCsAssets ? resolveMasteryAsset(step.level) : null;
                 return (
                   <div
                     key={step.level}
@@ -636,7 +673,12 @@ export const NowView = ({
                       isRequired ? 'today-mastery-step--required' : ''
                     }`}
                   >
-                    <Icon size={18} />
+                    <ReferenceAssetImage
+                      asset={masteryAsset}
+                      decorative
+                      className="today-mastery-step__asset"
+                      fallback={<Icon size={18} />}
+                    />
                     <PixelText as="span" size="xs" uppercase>
                       {rank}
                     </PixelText>
@@ -673,7 +715,12 @@ export const NowView = ({
                         className="today-weak-row"
                       >
                         <span className="today-weak-row__icon">
-                          <RefreshCw size={14} />
+                          <ReferenceAssetImage
+                            asset={hasCoreCsAssets ? csBachelorReferenceAssets.task.recovery : null}
+                            decorative
+                            className="today-weak-row__asset"
+                            fallback={<RefreshCw size={14} />}
+                          />
                         </span>
                         <span className="min-w-0">
                           <PixelText as="span" readable size="sm" className="today-weak-row__title">
@@ -702,7 +749,12 @@ export const NowView = ({
                         className="today-weak-row"
                       >
                         <span className="today-weak-row__icon">
-                          <RefreshCw size={14} />
+                          <ReferenceAssetImage
+                            asset={hasCoreCsAssets ? csBachelorReferenceAssets.task.recovery : null}
+                            decorative
+                            className="today-weak-row__asset"
+                            fallback={<RefreshCw size={14} />}
+                          />
                         </span>
                         <span className="min-w-0">
                           <PixelText as="span" readable size="sm" className="today-weak-row__title">
@@ -746,6 +798,12 @@ export const NowView = ({
                 aria-label="Превью текущего фронта, маршрута и слабого места"
                 data-mini-map-preview="non-destructive"
               >
+                <ReferenceAssetImage
+                  asset={miniMapLandmarkAsset}
+                  decorative
+                  className="today-mini-map__landmark"
+                  fallback={<span className="today-mini-map__landmark today-mini-map__landmark--fallback" />}
+                />
                 {miniMapPreview.nodes.length > 0 ? (
                   <>
                     <svg className="today-mini-map__edges" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -878,8 +936,17 @@ export const NowView = ({
               </PixelText>
             </div>
             <div className="today-rail-race-portrait" style={{ borderColor: todayRail.race.color }}>
-              <span style={{ color: todayRail.race.color }}>{todayRail.race.emblem}</span>
-              <i aria-hidden="true" />
+              <ReferenceAssetImage
+                asset={hasCoreCsAssets && todayRail.race.hasIdentity ? csBachelorReferenceAssets.race.ravenStrategist : null}
+                decorative
+                className="today-rail-race-portrait__image"
+                fallback={
+                  <>
+                    <span style={{ color: todayRail.race.color }}>{todayRail.race.emblem}</span>
+                    <i aria-hidden="true" />
+                  </>
+                }
+              />
             </div>
             <div className="today-rail-identity">
               <PixelText as="h3" readable size="lg" className="today-rail-title">
@@ -919,23 +986,32 @@ export const NowView = ({
                 {todayRail.city.levelLabel}
               </PixelText>
             </div>
-            <div className="today-city-visual" aria-hidden="true">
-              {todayRail.city.hasDistricts ? (
-                todayRail.city.districts.slice(0, 6).map((district, index) => (
-                  <span
-                    key={district.id}
-                    className={`today-city-tower today-city-tower--${index + 1}`}
-                    style={{ backgroundColor: district.color, height: `${28 + district.level * 8}px` }}
-                    title={district.title}
-                  >
-                    <i>{district.emblem}</i>
-                  </span>
-                ))
-              ) : (
-                <span className="today-city-empty-silhouette">
-                  <Flag size={26} />
-                </span>
-              )}
+            <div className={`today-city-visual ${hasCoreCsAssets ? 'today-city-visual--asset' : ''}`} aria-hidden="true">
+              <ReferenceAssetImage
+                asset={hasCoreCsAssets ? csBachelorReferenceAssets.city.coreCsCitadel : null}
+                decorative
+                className="today-city-visual__image"
+                fallback={
+                  todayRail.city.hasDistricts ? (
+                    <>
+                      {todayRail.city.districts.slice(0, 6).map((district, index) => (
+                        <span
+                          key={district.id}
+                          className={`today-city-tower today-city-tower--${index + 1}`}
+                          style={{ backgroundColor: district.color, height: `${28 + district.level * 8}px` }}
+                          title={district.title}
+                        >
+                          <i>{district.emblem}</i>
+                        </span>
+                      ))}
+                    </>
+                  ) : (
+                    <span className="today-city-empty-silhouette">
+                      <Flag size={26} />
+                    </span>
+                  )
+                }
+              />
             </div>
             <div className="today-rail-split-line">
               <span>
@@ -969,16 +1045,24 @@ export const NowView = ({
               </PixelText>
             </div>
             <div className="today-opponent-banner">
-              <div className="today-opponent-avatar" aria-hidden="true">
-                <Swords size={24} />
-              </div>
-              <div className="min-w-0">
-                <PixelText as="p" readable size="sm" className="today-rail-title">
-                  {todayRail.opponent.title}
-                </PixelText>
-                <PixelText as="p" size="xs" color="textMuted">
-                  {todayRail.opponent.subtitle}
-                </PixelText>
+              <ReferenceAssetImage
+                asset={hasCoreCsAssets && todayRail.opponent.hasOpponent ? csBachelorReferenceAssets.opponent.corvusAi : null}
+                decorative
+                className="today-opponent-banner__image"
+                fallback={<span className="today-opponent-banner__image today-opponent-banner__image--fallback" />}
+              />
+              <div className="today-opponent-banner__content">
+                <div className="today-opponent-avatar" aria-hidden="true">
+                  <Swords size={24} />
+                </div>
+                <div className="min-w-0">
+                  <PixelText as="p" readable size="sm" className="today-rail-title">
+                    {todayRail.opponent.title}
+                  </PixelText>
+                  <PixelText as="p" size="xs" color="textMuted">
+                    {todayRail.opponent.subtitle}
+                  </PixelText>
+                </div>
               </div>
             </div>
             <div className="today-opponent-race-track" aria-label={`Гонка: ${todayRail.opponent.campaignProgressLabel}`}>

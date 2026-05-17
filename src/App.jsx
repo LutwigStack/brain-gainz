@@ -38,6 +38,12 @@ import { createNavigationFollowUpPayload } from './application/navigation-follow
 import { buildMapNodeCreatePayload } from './application/map-node-payloads.ts';
 import { getRuntimeProfile } from './platform/runtime.js';
 import { workspaceModeLabels } from './components/mode-boundary.ts';
+import { ReferenceAssetImage } from './assets/ReferenceAssetImage.tsx';
+import {
+  csBachelorReferenceAssets,
+  isCoreCsFoundations,
+  isCsBachelorCampaign,
+} from './assets/referenceStyleAssets.tsx';
 
 const NowView = lazy(() =>
   import('./components/NowView').then((module) => ({ default: module.NowView })),
@@ -1740,6 +1746,8 @@ export default function App() {
     contextRace?.title ?? (selectedCampaign?.mode === 'career' ? 'Персона не назначена' : selectedCampaign ? 'Архитектор' : 'Нет персоны');
   const raceEmblem = contextRace?.emblem ?? (selectedCampaign?.mode === 'career' ? '♜' : '◆');
   const raceColor = contextRace?.color ?? selectedCampaign?.color ?? 'var(--pixel-accent)';
+  const hasCsCampaignAssets = isCsBachelorCampaign(selectedCampaign);
+  const hasCoreCsAssets = hasCsCampaignAssets && isCoreCsFoundations(contextSpecialization);
   const activeScreenLabel = !selectedCampaign
     ? 'Кампании'
     : normalizedActiveTab === 'map'
@@ -1925,7 +1933,16 @@ export default function App() {
                   <div className="app-context-grid" aria-label="Контекст кампании">
                     <div className="app-context-card app-context-card--campaign">
                       <div className="app-context-card__icon" style={{ borderColor: selectedCampaign?.color ?? undefined }}>
-                        <Flag size={15} />
+                        {hasCsCampaignAssets ? (
+                          <ReferenceAssetImage
+                            asset={csBachelorReferenceAssets.campaign.crest}
+                            decorative
+                            className="app-context-card__asset"
+                            fallback={<Flag size={15} />}
+                          />
+                        ) : (
+                          <Flag size={15} />
+                        )}
                       </div>
                       <div className="min-w-0">
                         <PixelText as="p" size="xs" color="textDim" uppercase>
@@ -1942,7 +1959,16 @@ export default function App() {
 
                     <div className="app-context-card app-context-card--specialization">
                       <div className="app-context-card__icon">
-                        <Compass size={15} />
+                        {hasCoreCsAssets ? (
+                          <ReferenceAssetImage
+                            asset={csBachelorReferenceAssets.specialization.coreCsFoundations}
+                            decorative
+                            className="app-context-card__asset"
+                            fallback={<Compass size={15} />}
+                          />
+                        ) : (
+                          <Compass size={15} />
+                        )}
                       </div>
                       <div className="min-w-0">
                         <PixelText as="p" size="xs" color="textDim" uppercase>
@@ -1959,7 +1985,16 @@ export default function App() {
 
                     <div className="app-context-card app-context-card--race">
                       <div className="app-context-card__icon app-context-card__emblem" style={{ borderColor: raceColor, color: raceColor }}>
-                        {raceEmblem}
+                        {hasCsCampaignAssets && contextRace ? (
+                          <ReferenceAssetImage
+                            asset={csBachelorReferenceAssets.race.ravenStrategist}
+                            decorative
+                            className="app-context-card__asset app-context-card__asset--portrait"
+                            fallback={raceEmblem}
+                          />
+                        ) : (
+                          raceEmblem
+                        )}
                       </div>
                       <div className="min-w-0">
                         <PixelText as="p" size="xs" color="textDim" uppercase>
