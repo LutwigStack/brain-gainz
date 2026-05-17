@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -26,3 +26,9 @@ Make Today answer one question:
 - user can tell why this task is next
 - progress and game stats do not compete with the main action
 - empty state tells the user the safe next step
+
+## Implementation Notes
+
+- Today hero now owns the single dominant primary action, including active daily-run and finish-run states.
+- Daily-run, mini-map, and outcome controls are secondary/ghost actions so they do not compete with the hero CTA.
+- Weak spots render as a separate panel only when the first available task is a recovery action.

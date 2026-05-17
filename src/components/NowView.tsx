@@ -213,7 +213,8 @@ export const NowView = ({
   const isDailyRunFinished = dailyRunState === 'completed' || dailyRunState === 'abandoned';
   const pendingRunTaskCount = dailyRunTasks.filter((task) => task.outcome === 'pending').length;
   const resolvedRunTaskCount = Math.max(0, dailyRunTasks.length - pendingRunTaskCount);
-  const firstPendingRunTaskId = dailyRunTasks.find((task) => task.outcome === 'pending')?.id ?? null;
+  const firstPendingRunTask = dailyRunTasks.find((task) => task.outcome === 'pending') ?? null;
+  const firstPendingRunTaskId = firstPendingRunTask?.id ?? null;
   const canFinishDailyRun = isDailyRunActive && dailyRunTasks.length > 0 && pendingRunTaskCount === 0;
   const dailyRunResolvedPercent =
     dailyRunTasks.length > 0 ? clampPercent((resolvedRunTaskCount / dailyRunTasks.length) * 100) : 0;
@@ -287,10 +288,7 @@ export const NowView = ({
     },
   };
   const hasRouteFocusNode = plannerFocusItem?.node_id != null;
-  const primaryWorkTitle = todayState.title;
-  const primaryWorkDescription = todayState.reason;
-  const primaryActionLabel = todayState.primaryCta.label;
-  const primaryActionIcon = isVictory ? (
+  const defaultPrimaryActionIcon = isVictory ? (
     <Compass size={16} />
   ) : todayState.primaryCta.action === 'complete_route' || todayState.primaryCta.action === 'open_route_node' ? (
     <CheckCircle2 size={16} />
@@ -305,6 +303,44 @@ export const NowView = ({
   const routeRequiredRank = masteryRank(plannerFocusItem?.required_mastery_level);
   const routeCurrentRank = plannerFocusItem?.current_mastery_rank ?? 0;
   const hasNoRoute = todayState.key === 'no_route' || todayState.key === 'free_mode' || todayState.key === 'truly_empty';
+  const bestDailyTaskCard = dailyTaskCards.find((task) => !task.disabled) ?? null;
+  const recoveryIsBestNextAction = bestDailyTaskCard?.state === 'recovery';
+  const showWeakPanel = recoveryIsBestNextAction && (plannerWeakSpots.length > 0 || weakeningItems.length > 0);
+  const singleNextAction = canFinishDailyRun
+    ? {
+        title: 'Задачи дня готовы',
+        description: 'Все задачи в текущем наборе разобраны. Закройте набор, чтобы Today выбрал следующий безопасный шаг.',
+        label: 'Завершить задачи',
+        icon: <Flag size={16} />,
+        disabled: isDailyRunPending,
+      }
+    : isDailyRunActive && firstPendingRunTask
+      ? {
+          title: firstPendingRunTask.title,
+          description: `${firstPendingRunTask.sourceLabel} / ${firstPendingRunTask.subtitle}`,
+          label: firstPendingRunTask.nodeId != null ? 'Открыть занятие' : 'Открыть карту',
+          icon: <ArrowRight size={16} />,
+          disabled: isDailyRunPending,
+        }
+      : recoveryIsBestNextAction && bestDailyTaskCard
+        ? {
+            title: bestDailyTaskCard.title,
+            description: `Повторение / ${bestDailyTaskCard.subtitle}`,
+            label: bestDailyTaskCard.actionLabel,
+            icon: <RefreshCw size={16} />,
+            disabled: bestDailyTaskCard.disabled,
+          }
+      : {
+          title: todayState.title,
+          description: todayState.reason,
+          label: todayState.primaryCta.label,
+          icon: defaultPrimaryActionIcon,
+          disabled:
+            isLoading ||
+            (todayState.primaryCta.action === 'create_starter' && isCreatingStarter) ||
+            (todayState.primaryCta.action === 'open_recommendation_map' && !primaryCandidate) ||
+            (todayState.primaryCta.action === 'open_route_node' && !hasRouteFocusNode),
+        };
 
   const handlePrimaryAction = () => {
     switch (todayState.primaryCta.action) {
@@ -335,7 +371,31 @@ export const NowView = ({
     }
   };
 
-  const handleDailyTaskAction = (task: DailyTaskCardViewModel) => {
+  const handleSingleNextAction = () => {
+    if (canFinishDailyRun) {
+      onFinishDailyRun();
+      return;
+    }
+
+    if (isDailyRunActive && firstPendingRunTask) {
+      if (firstPendingRunTask.nodeId != null) {
+        onOpenRouteNode(firstPendingRunTask.nodeId);
+        return;
+      }
+
+      onOpenRouteMap();
+      return;
+    }
+
+    if (recoveryIsBestNextAction && bestDailyTaskCard) {
+      openDailyTask(bestDailyTaskCard);
+      return;
+    }
+
+    handlePrimaryAction();
+  };
+
+  const openDailyTask = (task: DailyTaskCardViewModel) => {
     if (task.disabled) {
       return;
     }
@@ -408,12 +468,6 @@ export const NowView = ({
     return outcome;
   };
 
-  const isPrimaryActionDisabled =
-    isLoading ||
-    (todayState.primaryCta.action === 'create_starter' && isCreatingStarter) ||
-    (todayState.primaryCta.action === 'open_recommendation_map' && !primaryCandidate) ||
-    (todayState.primaryCta.action === 'open_route_node' && !hasRouteFocusNode);
-
   return (
     <div className="now-view today-dashboard-shell">
       <div className="today-dashboard-header">
@@ -467,10 +521,10 @@ export const NowView = ({
                   Главная цель
                 </PixelText>
                 <PixelText as="h1" readable size="xl" className="today-main-goal-title">
-                  {primaryWorkTitle}
+                  {singleNextAction.title}
                 </PixelText>
                 <PixelText as="p" readable size="sm" color="textMuted" className="today-main-goal-reason">
-                  {primaryWorkDescription}
+                  {singleNextAction.description}
                 </PixelText>
               </div>
               <div className="today-main-goal-action">
@@ -483,8 +537,8 @@ export const NowView = ({
                 <PixelText as="span" size="xs" color="textMuted" uppercase>
                   {mainProgressLabel}
                 </PixelText>
-                <PixelButton tone="accent" onClick={handlePrimaryAction} disabled={isPrimaryActionDisabled} fullWidth>
-                  {primaryActionIcon} {primaryActionLabel}
+                <PixelButton tone="accent" onClick={handleSingleNextAction} disabled={singleNextAction.disabled} fullWidth>
+                  {singleNextAction.icon} {singleNextAction.label}
                 </PixelButton>
               </div>
             </div>
@@ -523,7 +577,7 @@ export const NowView = ({
                       Задачи сохраняются: обновление страницы не сбросит активный набор.
                     </PixelText>
                   </div>
-                  <PixelButton tone="accent" onClick={onStartDailyRun} disabled={isDailyRunPending || dailyTaskCards.length === 0}>
+                  <PixelButton tone="ghost" onClick={onStartDailyRun} disabled={isDailyRunPending || dailyTaskCards.length === 0}>
                     <Activity size={14} /> Начать задачи
                   </PixelButton>
                 </div>
@@ -574,9 +628,9 @@ export const NowView = ({
                             ) : null}
                           </span>
                         </div>
-                        {task.outcome === 'pending' ? (
+                        {task.outcome === 'pending' && isCurrentRunTask ? (
                           <div className="today-run-task__actions">
-                            <PixelButton tone="accent" onClick={() => handleRunTaskOutcome(task, 'completed')} disabled={isDailyRunPending}>
+                            <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'completed')} disabled={isDailyRunPending}>
                               <CheckCircle2 size={13} /> Готово
                             </PixelButton>
                             <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'failed')} disabled={isDailyRunPending}>
@@ -588,6 +642,10 @@ export const NowView = ({
                             <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'deferred')} disabled={isDailyRunPending}>
                               <RefreshCw size={13} /> Отложить
                             </PixelButton>
+                          </div>
+                        ) : task.outcome === 'pending' ? (
+                          <div className="today-run-task__resolved">
+                            <span className="today-run-task__outcome">ожидает</span>
                           </div>
                         ) : (
                           <div className="today-run-task__resolved">
@@ -613,7 +671,7 @@ export const NowView = ({
                       <PixelButton tone="ghost" onClick={onAbandonDailyRun} disabled={isDailyRunPending}>
                         <AlertTriangle size={13} /> Сбросить
                       </PixelButton>
-                      <PixelButton tone="accent" onClick={onFinishDailyRun} disabled={isDailyRunPending || !canFinishDailyRun}>
+                      <PixelButton tone="ghost" onClick={onFinishDailyRun} disabled={isDailyRunPending || !canFinishDailyRun}>
                         <Flag size={13} /> Завершить
                       </PixelButton>
                     </div>
@@ -645,11 +703,9 @@ export const NowView = ({
                     const taskAsset = hasCoreCsAssets ? resolveTaskAsset(task.state) : null;
                     const taskIconState = dailyCardIconState(task.state);
                     return (
-                    <button
+                    <div
                       key={task.key}
-                      type="button"
-                      onClick={() => handleDailyTaskAction(task)}
-                      disabled={task.disabled}
+                      aria-disabled={task.disabled}
                       className={`today-task-card today-task-card--${task.state}`}
                     >
                       <span className="today-task-card__topline">
@@ -681,7 +737,7 @@ export const NowView = ({
                           {task.actionLabel}
                         </span>
                       </span>
-                    </button>
+                    </div>
                   );
                   })
                 : null}
@@ -755,6 +811,7 @@ export const NowView = ({
           </PixelSurface>
 
           <div className="today-lower-grid">
+            {showWeakPanel ? (
             <PixelSurface frame="warning" padding="md" className="today-weak-panel">
               <div className="today-section-heading">
                 <span className="today-section-icon today-section-icon--warning">
@@ -841,6 +898,7 @@ export const NowView = ({
                 ) : null}
               </div>
             </PixelSurface>
+            ) : null}
 
             <PixelSurface frame="secondary" padding="md" className="today-mini-map-panel">
               <div className="today-section-heading">
@@ -917,7 +975,7 @@ export const NowView = ({
                 </span>
               </div>
 
-              <PixelButton tone="accent" onClick={onOpenRouteMap} fullWidth className="today-mini-map__cta">
+              <PixelButton tone="ghost" onClick={onOpenRouteMap} fullWidth className="today-mini-map__cta">
                 <MapIcon size={14} /> Открыть карту
               </PixelButton>
             </PixelSurface>
