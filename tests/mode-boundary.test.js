@@ -9,6 +9,8 @@ import {
   learnerEntryPoints,
   requiresAuthorConfirmation,
   shouldShowPrimaryModeSwitch,
+  shouldShowPriorityShellContextCard,
+  shouldShowShellNavDescriptions,
   workspaceModeLabels,
 } from '../src/components/mode-boundary.ts';
 
@@ -46,6 +48,20 @@ test('learner mode hides author-only surfaces while author mode keeps editing po
 test('author mode entry is not a primary learner-path switch', () => {
   assert.equal(shouldShowPrimaryModeSwitch('learner'), false);
   assert.equal(shouldShowPrimaryModeSwitch('author'), true);
+});
+
+test('learner priority shell keeps only action-relevant top context', () => {
+  assert.equal(shouldShowPriorityShellContextCard('learner', 'campaign'), true);
+  assert.equal(shouldShowPriorityShellContextCard('learner', 'specialization'), true);
+  assert.equal(shouldShowPriorityShellContextCard('learner', 'race'), false);
+  assert.equal(shouldShowPriorityShellContextCard('learner', 'mode'), false);
+  assert.equal(shouldShowPriorityShellContextCard('author', 'race'), true);
+  assert.equal(shouldShowPriorityShellContextCard('author', 'mode'), true);
+});
+
+test('learner shell navigation avoids duplicate descriptions', () => {
+  assert.equal(shouldShowShellNavDescriptions('learner'), false);
+  assert.equal(shouldShowShellNavDescriptions('author'), true);
 });
 
 test('learner mode copy avoids internal authoring terms', () => {

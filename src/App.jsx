@@ -39,7 +39,13 @@ import { buildGraphEdgeCreatePayload } from './application/map-edge-payloads.ts'
 import { createNavigationFollowUpPayload } from './application/navigation-follow-up.ts';
 import { buildMapNodeCreatePayload } from './application/map-node-payloads.ts';
 import { getRuntimeProfile } from './platform/runtime.js';
-import { requiresAuthorConfirmation, shouldShowPrimaryModeSwitch, workspaceModeLabels } from './components/mode-boundary.ts';
+import {
+  requiresAuthorConfirmation,
+  shouldShowPrimaryModeSwitch,
+  shouldShowPriorityShellContextCard,
+  shouldShowShellNavDescriptions,
+  workspaceModeLabels,
+} from './components/mode-boundary.ts';
 import { ReferenceAssetImage } from './assets/ReferenceAssetImage.tsx';
 import {
   csBachelorReferenceAssets,
@@ -1824,6 +1830,8 @@ export default function App() {
   const todayContext = nowSnapshot?.today ?? null;
   const contextSpecialization = todayContext?.currentSpecialization ?? null;
   const contextRace = todayContext?.race ?? null;
+  const usesLearnerPriorityShell = Boolean(selectedCampaign && workspaceMode === 'learner');
+  const showShellNavDescriptions = shouldShowShellNavDescriptions(workspaceMode);
   const campaignKindLabel = !selectedCampaign
     ? 'Кампания не выбрана'
     : selectedCampaign.type === 'developer_main'
@@ -1850,16 +1858,19 @@ export default function App() {
     ? 'Кампании'
     : normalizedActiveTab === 'map'
       ? mapInspectorRequest?.mode === 'assessment'
-        ? 'Проверки'
-        : 'Карта / дерево'
+        ? workspaceModeLabels[workspaceMode].assessmentLabel
+        : workspaceModeLabels[workspaceMode].mapLabel
       : normalizedActiveTab === 'wind'
-        ? 'Роза / статистика'
+        ? workspaceMode === 'learner'
+          ? 'Прогресс'
+          : 'Роза / статистика'
         : 'Сегодня';
   const navItems = [
     {
       key: 'campaigns',
       label: 'Кампании',
       description: 'Меню миров',
+      secondary: true,
       icon: Globe2,
       active: !selectedCampaign,
       disabled: false,
@@ -1900,8 +1911,9 @@ export default function App() {
     },
     {
       key: 'wind',
-      label: 'Роза / статистика',
+      label: workspaceMode === 'learner' ? 'Прогресс' : 'Роза / статистика',
       description: 'Статы кампании',
+      secondary: true,
       icon: BarChart3,
       active: Boolean(selectedCampaign && normalizedActiveTab === 'wind'),
       disabled: !selectedCampaign,
@@ -1925,12 +1937,14 @@ export default function App() {
             aria-label={item.label}
             aria-pressed={item.active}
             aria-current={item.active ? 'page' : undefined}
-            className={`app-nav-button ${item.active ? 'app-nav-button--active' : ''}`}
+            className={`app-nav-button ${item.active ? 'app-nav-button--active' : ''} ${
+              usesLearnerPriorityShell && item.secondary ? 'app-nav-button--secondary' : ''
+            }`}
           >
             <Icon size={16} />
             <span className="app-nav-button__copy">
               <span className="app-nav-button__label">{item.label}</span>
-              {variant === 'desktop' ? <span className="app-nav-button__description">{item.description}</span> : null}
+              {variant === 'desktop' && showShellNavDescriptions ? <span className="app-nav-button__description">{item.description}</span> : null}
             </span>
           </PixelButton>
         );
@@ -1941,12 +1955,14 @@ export default function App() {
         onClick={() => setShowSettings(!showSettings)}
         aria-label="Настройки"
         aria-pressed={showSettings}
-        className={`app-nav-button ${showSettings ? 'app-nav-button--active' : ''}`}
+        className={`app-nav-button ${showSettings ? 'app-nav-button--active' : ''} ${
+          usesLearnerPriorityShell ? 'app-nav-button--secondary' : ''
+        }`}
       >
         <Settings size={16} />
         <span className="app-nav-button__copy">
           <span className="app-nav-button__label">Настройки</span>
-          {variant === 'desktop' ? <span className="app-nav-button__description">Профиль и экспорт</span> : null}
+          {variant === 'desktop' && showShellNavDescriptions ? <span className="app-nav-button__description">Профиль и экспорт</span> : null}
         </span>
       </PixelButton>
     </nav>
@@ -2064,7 +2080,7 @@ export default function App() {
         paddingBottom: runtime.usesSafeAreaInsets ? 'env(safe-area-inset-bottom)' : undefined,
       }}
     >
-      <div className="app-cockpit-shell">
+      <div className={`app-cockpit-shell ${usesLearnerPriorityShell ? 'app-cockpit-shell--learner' : ''}`}>
         <aside
           inert={showSettings ? true : undefined}
           aria-hidden={showSettings ? true : undefined}
@@ -2117,7 +2133,7 @@ export default function App() {
             }}
           >
             <div className="flex w-full flex-col gap-2">
-              <PixelSurface frame="secondary" padding="xs" className="app-topbar">
+              <PixelSurface frame="secondary" padding="xs" className={`app-topbar ${usesLearnerPriorityShell ? 'app-topbar--learner' : ''}`}>
                 <div className="app-topbar__layout">
                   <div className="app-mobile-brand">
                     <PixelSurface frame="secondary" padding="xs" fullWidth={false} className="app-brand-mark">
@@ -2133,7 +2149,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="app-context-grid" aria-label="Контекст кампании">
+                  <div className={`app-context-grid ${usesLearnerPriorityShell ? 'app-context-grid--learner' : ''}`} aria-label="Контекст кампании">
                     <div className="app-context-card app-context-card--campaign">
                       <div className="app-context-card__icon" style={{ borderColor: selectedCampaign?.color ?? undefined }}>
                         {hasCsCampaignAssets ? (
@@ -2186,52 +2202,56 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="app-context-card app-context-card--race">
-                      <div className="app-context-card__icon app-context-card__emblem" style={{ borderColor: raceColor, color: raceColor }}>
-                        {hasCsCampaignAssets && contextRace ? (
-                          <ReferenceAssetImage
-                            asset={csBachelorReferenceAssets.race.ravenStrategist}
-                            decorative
-                            className="app-context-card__asset app-context-card__asset--portrait"
-                            fallback={raceEmblem}
-                          />
-                        ) : (
-                          raceEmblem
-                        )}
+                    {!usesLearnerPriorityShell || shouldShowPriorityShellContextCard(workspaceMode, 'race') ? (
+                      <div className="app-context-card app-context-card--race">
+                        <div className="app-context-card__icon app-context-card__emblem" style={{ borderColor: raceColor, color: raceColor }}>
+                          {hasCsCampaignAssets && contextRace ? (
+                            <ReferenceAssetImage
+                              asset={csBachelorReferenceAssets.race.ravenStrategist}
+                              decorative
+                              className="app-context-card__asset app-context-card__asset--portrait"
+                              fallback={raceEmblem}
+                            />
+                          ) : (
+                            raceEmblem
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <PixelText as="p" size="xs" color="textDim" uppercase>
+                            Раса / персона
+                          </PixelText>
+                          <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
+                            {raceLabel}
+                          </PixelText>
+                          <PixelText as="p" readable size="xs" color="textMuted" className="truncate" style={{ marginTop: 2 }}>
+                            Игровой профиль
+                          </PixelText>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <PixelText as="p" size="xs" color="textDim" uppercase>
-                          Раса / персона
-                        </PixelText>
-                        <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
-                          {raceLabel}
-                        </PixelText>
-                        <PixelText as="p" readable size="xs" color="textMuted" className="truncate" style={{ marginTop: 2 }}>
-                          Игровой профиль
-                        </PixelText>
-                      </div>
-                    </div>
+                    ) : null}
 
-                    <div className="app-context-card app-context-card--mode">
-                      <div className="app-context-card__icon">
-                        {selectedCampaign?.mode === 'career' || contextSpecialization ? (
-                          <BriefcaseBusiness size={15} />
-                        ) : (
-                          <UserRound size={15} />
-                        )}
+                    {!usesLearnerPriorityShell || shouldShowPriorityShellContextCard(workspaceMode, 'mode') ? (
+                      <div className="app-context-card app-context-card--mode">
+                        <div className="app-context-card__icon">
+                          {selectedCampaign?.mode === 'career' || contextSpecialization ? (
+                            <BriefcaseBusiness size={15} />
+                          ) : (
+                            <UserRound size={15} />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <PixelText as="p" size="xs" color="textDim" uppercase>
+                            Режим
+                          </PixelText>
+                          <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
+                            {campaignModeLabel}
+                          </PixelText>
+                          <PixelText as="p" readable size="xs" color="textMuted" className="truncate" style={{ marginTop: 2 }}>
+                            {campaignStatusLabel}
+                          </PixelText>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <PixelText as="p" size="xs" color="textDim" uppercase>
-                          Режим
-                        </PixelText>
-                        <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
-                          {campaignModeLabel}
-                        </PixelText>
-                        <PixelText as="p" readable size="xs" color="textMuted" className="truncate" style={{ marginTop: 2 }}>
-                          {campaignStatusLabel}
-                        </PixelText>
-                      </div>
-                    </div>
+                    ) : null}
                   </div>
 
                   <div className="app-top-actions" title={runtime.dataBoundaryLabel}>

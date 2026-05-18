@@ -1,5 +1,7 @@
 export type WorkspaceMode = 'learner' | 'author';
 
+export type ShellContextCard = 'campaign' | 'specialization' | 'race' | 'mode';
+
 export type LearnerEntryPoint =
   | 'today'
   | 'daily-run'
@@ -155,6 +157,11 @@ export const authorActionPolicies: Record<AuthorAction, AuthorActionPolicy> = {
 export const isAuthorMode = (mode: WorkspaceMode) => mode === 'author';
 
 export const shouldShowPrimaryModeSwitch = (mode: WorkspaceMode) => isAuthorMode(mode);
+
+export const shouldShowShellNavDescriptions = (mode: WorkspaceMode) => isAuthorMode(mode);
+
+export const shouldShowPriorityShellContextCard = (mode: WorkspaceMode, card: ShellContextCard) =>
+  isAuthorMode(mode) || card === 'campaign' || card === 'specialization';
 
 export const canShowAuthorSurface = (mode: WorkspaceMode, surface: AuthorEntryPoint) =>
   isAuthorMode(mode) && authorEntryPoints.includes(surface);

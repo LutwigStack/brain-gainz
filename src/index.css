@@ -110,6 +110,10 @@ textarea:disabled {
   min-height: 100dvh;
 }
 
+.app-cockpit-shell--learner {
+  grid-template-columns: 184px minmax(0, 1fr);
+}
+
 .app-left-nav {
   position: sticky;
   top: 0;
@@ -123,12 +127,20 @@ textarea:disabled {
   backdrop-filter: blur(12px);
 }
 
+.app-cockpit-shell--learner .app-left-nav {
+  padding: 10px 8px;
+}
+
 .app-left-nav__inner {
   display: flex;
   min-height: 100%;
   min-width: 0;
   flex-direction: column;
   gap: 14px;
+}
+
+.app-cockpit-shell--learner .app-left-nav__inner {
+  gap: 10px;
 }
 
 .app-left-nav__brand,
@@ -150,6 +162,12 @@ textarea:disabled {
   margin-top: auto;
 }
 
+.app-cockpit-shell--learner .app-left-nav__screen,
+.app-cockpit-shell--learner .app-left-nav__footer,
+.app-cockpit-shell--learner .app-left-nav__brand .app-runtime-copy {
+  display: none;
+}
+
 .app-shell-main {
   display: flex;
   min-width: 0;
@@ -164,12 +182,22 @@ textarea:disabled {
     var(--pixel-panel) !important;
 }
 
+.app-topbar--learner {
+  background:
+    linear-gradient(180deg, rgba(18, 24, 34, 0.82), rgba(12, 17, 26, 0.82)),
+    var(--pixel-panel) !important;
+}
+
 .app-topbar__layout {
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
   gap: 8px;
+}
+
+.app-topbar--learner .app-topbar__layout {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .app-mobile-brand {
@@ -181,6 +209,10 @@ textarea:disabled {
   min-width: 0;
   grid-template-columns: minmax(180px, 1.28fr) repeat(3, minmax(130px, 1fr));
   gap: 8px;
+}
+
+.app-context-grid--learner {
+  grid-template-columns: minmax(180px, 0.95fr) minmax(220px, 1.2fr);
 }
 
 .app-context-card {
@@ -274,6 +306,10 @@ textarea:disabled {
   white-space: nowrap;
 }
 
+.app-topbar--learner .app-top-actions {
+  display: none;
+}
+
 .app-mode-switch {
   display: inline-flex;
   align-items: center;
@@ -292,6 +328,10 @@ textarea:disabled {
   gap: 7px;
 }
 
+.app-cockpit-shell--learner .app-shell-nav--desktop {
+  gap: 4px;
+}
+
 .app-shell-nav--mobile {
   display: none;
 }
@@ -303,6 +343,11 @@ textarea:disabled {
   padding: 8px 10px !important;
   gap: 9px !important;
   text-align: left !important;
+}
+
+.app-cockpit-shell--learner .app-nav-button {
+  min-height: 38px !important;
+  padding: 7px 8px !important;
 }
 
 .app-nav-button__copy {
@@ -337,6 +382,10 @@ textarea:disabled {
 
 .app-nav-button:not(.app-nav-button--active) {
   opacity: 0.82;
+}
+
+.app-cockpit-shell--learner .app-nav-button--secondary:not(.app-nav-button--active) {
+  opacity: 0.58;
 }
 
 .campaign-card {
@@ -2323,6 +2372,10 @@ textarea:disabled {
     scrollbar-width: none;
   }
 
+  .app-context-grid--learner {
+    grid-template-columns: repeat(2, minmax(158px, 1fr));
+  }
+
   .app-context-grid::-webkit-scrollbar {
     display: none;
   }
@@ -2423,6 +2476,10 @@ textarea:disabled {
   .app-context-grid {
     grid-template-columns: repeat(4, minmax(118px, 1fr));
     gap: 4px;
+  }
+
+  .app-context-grid--learner {
+    grid-template-columns: repeat(2, minmax(118px, 1fr));
   }
 
   .app-context-card {
@@ -2655,6 +2712,10 @@ textarea:disabled {
 
   .app-context-grid {
     grid-template-columns: repeat(4, minmax(104px, 1fr));
+  }
+
+  .app-context-grid--learner {
+    grid-template-columns: repeat(2, minmax(104px, 1fr));
   }
 
   .app-context-card {
