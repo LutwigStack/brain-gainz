@@ -146,19 +146,27 @@ export const getAssessmentAnswerInputCopy = ({
 export const getAssessmentEvidenceHint = ({
   hasVisibleEvidence,
   hasTechnicalResultId,
+  audience = 'learner',
 }: {
   hasVisibleEvidence: boolean;
   hasTechnicalResultId: boolean;
+  audience?: 'learner' | 'author';
 }) => {
   if (hasVisibleEvidence) {
-    return 'Подтверждение заполнено. Попытку можно засчитать.';
+    return audience === 'author'
+      ? 'Подтверждение заполнено. Попытку можно засчитать.'
+      : 'Объяснение заполнено. Попытку можно засчитать.';
   }
 
   if (hasTechnicalResultId) {
-    return 'Технические детали заполнены. Попытку можно засчитать; видимое подтверждение можно оставить пустым.';
+    return audience === 'author'
+      ? 'Служебное подтверждение заполнено. Попытку можно засчитать; объяснение можно оставить пустым.'
+      : 'Можно засчитать, но короткое объяснение поможет понять результат позже.';
   }
 
-  return 'Для зачета добавьте подтверждение проверки. Технические детали можно оставить пустыми.';
+  return audience === 'author'
+    ? 'Для зачета добавьте короткое объяснение. Служебные детали можно оставить пустыми.'
+    : 'Коротко напишите, что именно совпало с критерием или почему ответ можно зачесть.';
 };
 
 export const getAssessmentValidationState = ({

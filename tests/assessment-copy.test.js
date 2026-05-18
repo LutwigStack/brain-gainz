@@ -268,18 +268,33 @@ test('assessment primary and failed-attempt actions describe the real outcome', 
 test('assessment evidence hint distinguishes visible confirmation from technical details', () => {
   assert.equal(
     getAssessmentEvidenceHint({ hasVisibleEvidence: true, hasTechnicalResultId: false }),
-    'Подтверждение заполнено. Попытку можно засчитать.',
+    'Объяснение заполнено. Попытку можно засчитать.',
   );
   assert.equal(
     getAssessmentEvidenceHint({ hasVisibleEvidence: false, hasTechnicalResultId: true }),
-    'Технические детали заполнены. Попытку можно засчитать; видимое подтверждение можно оставить пустым.',
+    'Можно засчитать, но короткое объяснение поможет понять результат позже.',
   );
   assert.equal(
     getAssessmentEvidenceHint({ hasVisibleEvidence: false, hasTechnicalResultId: false }),
-    'Для зачета добавьте подтверждение проверки. Технические детали можно оставить пустыми.',
+    'Коротко напишите, что именно совпало с критерием или почему ответ можно зачесть.',
   );
   assert.doesNotMatch(
     getAssessmentEvidenceHint({ hasVisibleEvidence: false, hasTechnicalResultId: false }),
-    /result ID/i,
+    /result ID|служебн|техническ/i,
+  );
+});
+
+test('assessment evidence hint keeps service detail copy author-only', () => {
+  assert.equal(
+    getAssessmentEvidenceHint({ hasVisibleEvidence: true, hasTechnicalResultId: false, audience: 'author' }),
+    'Подтверждение заполнено. Попытку можно засчитать.',
+  );
+  assert.equal(
+    getAssessmentEvidenceHint({ hasVisibleEvidence: false, hasTechnicalResultId: true, audience: 'author' }),
+    'Служебное подтверждение заполнено. Попытку можно засчитать; объяснение можно оставить пустым.',
+  );
+  assert.equal(
+    getAssessmentEvidenceHint({ hasVisibleEvidence: false, hasTechnicalResultId: false, audience: 'author' }),
+    'Для зачета добавьте короткое объяснение. Служебные детали можно оставить пустыми.',
   );
 });

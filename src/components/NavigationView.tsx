@@ -1657,7 +1657,11 @@ export const NavigationView = ({
       requiredTerms: mastery?.check.requiredTerms,
       resolvedCheckMethod,
     });
-    const verifierEvidenceHint = getAssessmentEvidenceHint({ hasVisibleEvidence, hasTechnicalResultId });
+    const verifierEvidenceHint = getAssessmentEvidenceHint({
+      hasVisibleEvidence,
+      hasTechnicalResultId,
+      audience: canUseAuthorTools ? 'author' : 'learner',
+    });
     const answerInputCopy = getAssessmentAnswerInputCopy({ strictCheckType, resolvedCheckMethod });
     const assessmentValidationState = getAssessmentValidationState({
       pendingAssessment,
@@ -1705,6 +1709,10 @@ export const NavigationView = ({
     const showProgressOverview = !showLearnerFocusedAssessment;
     const showAssessmentMethodControls = showAssessmentControls && canUseAuthorTools;
     const showAssessmentTargetControls = showAssessmentControls && canUseAuthorTools;
+    const hasCriteriaDisclosure =
+      Boolean(mastery?.check.expectedSummary) || (mastery?.check.requiredTerms?.length ?? 0) > 0 || requiresVerifierEvidence;
+    const criteriaDisclosureLabel = canUseAuthorTools ? 'Детали проверки' : 'Почему это зачтется';
+    const evidenceLabel = canUseAuthorTools ? 'Подтверждение проверки' : 'Почему можно зачесть';
 
     return (
       <PixelSurface frame="inset" padding="sm">
@@ -2023,20 +2031,32 @@ export const NavigationView = ({
                   <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: 0 }}>
                     {expectedInputText}
                   </PixelText>
-                  {mastery?.check.expectedSummary ? (
-                    <PixelText as="p" size="xs" color="textMuted" style={{ margin: 0 }}>
-                      Критерий: {mastery.check.expectedSummary}
-                    </PixelText>
-                  ) : null}
-                  {(mastery?.check.requiredTerms?.length ?? 0) > 0 ? (
-                    <PixelText as="p" size="xs" color="textMuted" style={{ margin: 0 }}>
-                      Обязательные элементы: {mastery.check.requiredTerms?.join(', ')}
-                    </PixelText>
-                  ) : null}
                   {requiresVerifierEvidence ? (
                     <PixelText as="p" readable size="xs" color="accent" style={{ margin: 0 }}>
-                      Для проверенного прогресса нужно подтверждение проверки.
+                      Добавьте короткое объяснение, почему результат можно зачесть.
                     </PixelText>
+                  ) : null}
+                  {hasCriteriaDisclosure ? (
+                    <details className="navigation-lesson-disclosure" open={canUseAuthorTools}>
+                      <summary>{criteriaDisclosureLabel}</summary>
+                      <div className="navigation-lesson-disclosure__body">
+                        {mastery?.check.expectedSummary ? (
+                          <PixelText as="p" size="xs" color="textMuted" style={{ margin: 0 }}>
+                            Ожидаемый результат: {mastery.check.expectedSummary}
+                          </PixelText>
+                        ) : null}
+                        {(mastery?.check.requiredTerms?.length ?? 0) > 0 ? (
+                          <PixelText as="p" size="xs" color="textMuted" style={{ margin: 0 }}>
+                            Должно быть в ответе: {mastery.check.requiredTerms?.join(', ')}
+                          </PixelText>
+                        ) : null}
+                        {requiresVerifierEvidence ? (
+                          <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+                            Коротко напишите, что именно совпало с критерием или почему ответ можно засчитать.
+                          </PixelText>
+                        ) : null}
+                      </div>
+                    </details>
                   ) : null}
                 </PixelStack>
               </PixelSurface>
@@ -2091,13 +2111,13 @@ export const NavigationView = ({
               {!isAutoStrictCheck ? (
                 <>
               <PixelTextarea
-                label="Подтверждение проверки"
+                label={evidenceLabel}
                 value={assessmentEvidence}
                 onChange={(event) => setAssessmentEvidence(event.target.value)}
                 placeholder={
                   resolvedCheckMethod === 'strict'
-                    ? 'Например: внешний результат совпал с критерием, ответ подтвержден'
-                    : 'Например: краткий вывод проверки, почему ответ засчитан'
+                    ? 'Например: результат совпал с критерием, ответ можно зачесть'
+                    : 'Например: коротко, почему ответ засчитан'
                 }
                 disabled={pendingAssessment || isEditorArchived}
                 hint={verifierEvidenceHint}

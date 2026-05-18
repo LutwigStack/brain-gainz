@@ -2388,6 +2388,26 @@ textarea:disabled {
   color: var(--pixel-text);
 }
 
+.navigation-lesson-disclosure {
+  margin-top: 2px;
+  border: 1px solid var(--pixel-line-soft);
+  background: color-mix(in srgb, var(--pixel-panel-inset) 86%, transparent);
+}
+
+.navigation-lesson-disclosure summary {
+  cursor: pointer;
+  padding: 7px 9px;
+  color: var(--pixel-text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.navigation-lesson-disclosure__body {
+  display: grid;
+  gap: 6px;
+  padding: 0 9px 9px;
+}
+
 .navigation-lesson-criteria-list {
   display: grid;
   gap: 6px;
