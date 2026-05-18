@@ -1699,8 +1699,8 @@ export const NavigationView = ({
       ? 'Пока не зачтено: условия не выполнены.'
       : trimmedEvidence || trimmedAnswer || 'Попытка сохранена: пока не зачтено.';
     const failedAttemptActionLabel = isChecklistCheck ? 'Не получилось' : 'Сохранить попытку';
-    const criteriaHeading = canUseAuthorTools ? `Критерии · ${checkTypeLabel}` : 'Критерии зачёта';
-    const checklistHeading = canUseAuthorTools ? 'Чек-лист проверки' : 'Условия для зачёта';
+    const criteriaHeading = canUseAuthorTools ? `Критерии · ${checkTypeLabel}` : 'Что считается зачтено';
+    const checklistHeading = canUseAuthorTools ? 'Чек-лист проверки' : 'Критерии';
     const showLearnerFocusedAssessment = !canUseAuthorTools && mode === 'assessment';
     const showProgressOverview = !showLearnerFocusedAssessment;
     const showAssessmentMethodControls = showAssessmentControls && canUseAuthorTools;
@@ -2004,45 +2004,54 @@ export const NavigationView = ({
                 </div>
               ) : null}
 
-              <PixelSurface frame="ghost" padding="sm">
-                <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
-                  {criteriaHeading}
-                </PixelText>
-                <PixelText as="p" readable size="sm" color="textMuted" style={{ marginTop: 6 }}>
-                  {expectedInputText}
-                </PixelText>
-                {requiresVerifierEvidence ? (
-                  <PixelText as="p" readable size="xs" color="accent" style={{ marginTop: 6 }}>
-                    Для проверенного прогресса нужно подтверждение проверки.
+              <PixelSurface frame="ghost" padding="sm" className="navigation-lesson-criteria">
+                <PixelStack gap="xs">
+                  <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                    {criteriaHeading}
                   </PixelText>
-                ) : null}
                   {mastery?.check.prompt ? (
-                    <PixelText as="p" readable size="sm" style={{ marginTop: 8 }}>
+                    <PixelText
+                      as="p"
+                      readable
+                      size="sm"
+                      className="navigation-lesson-criteria__primary"
+                      style={{ margin: 0 }}
+                    >
                       {mastery.check.prompt}
                     </PixelText>
                   ) : null}
+                  <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: 0 }}>
+                    {expectedInputText}
+                  </PixelText>
                   {mastery?.check.expectedSummary ? (
-                    <PixelText as="p" size="xs" color="textMuted" style={{ marginTop: 6 }}>
+                    <PixelText as="p" size="xs" color="textMuted" style={{ margin: 0 }}>
                       Критерий: {mastery.check.expectedSummary}
                     </PixelText>
                   ) : null}
                   {(mastery?.check.requiredTerms?.length ?? 0) > 0 ? (
-                    <PixelText as="p" size="xs" color="textMuted" style={{ marginTop: 6 }}>
+                    <PixelText as="p" size="xs" color="textMuted" style={{ margin: 0 }}>
                       Обязательные элементы: {mastery.check.requiredTerms?.join(', ')}
                     </PixelText>
                   ) : null}
-                </PixelSurface>
+                  {requiresVerifierEvidence ? (
+                    <PixelText as="p" readable size="xs" color="accent" style={{ margin: 0 }}>
+                      Для проверенного прогресса нужно подтверждение проверки.
+                    </PixelText>
+                  ) : null}
+                </PixelStack>
+              </PixelSurface>
 
               {isChecklistCheck ? (
                 <div className="grid gap-2">
                   <PixelText as="p" size="xs" color="textMuted" uppercase style={{ margin: 0 }}>
                     {checklistHeading}
                   </PixelText>
-                  <div className="grid gap-1">
+                  <div className="navigation-lesson-criteria-list">
                     {checklistItems.map((item) => (
                       <label
                         key={item.id}
-                        className="flex items-center gap-2 border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] px-2 py-2"
+                        className="navigation-lesson-criteria-item"
+                        data-required={item.required ? 'true' : 'false'}
                       >
                         <input
                           type="checkbox"
@@ -2059,7 +2068,7 @@ export const NavigationView = ({
                           {item.label}
                         </PixelText>
                         {item.required ? (
-                          <PixelText as="span" size="xs" color="accent" uppercase>
+                          <PixelText as="span" size="xs" color="accent" uppercase className="navigation-lesson-criteria-item__badge">
                             нужно
                           </PixelText>
                         ) : null}
@@ -2312,13 +2321,21 @@ export const NavigationView = ({
             </span>
           }
           title={lessonTitle}
-          description={lessonTask}
           aside={
             <PixelText as="span" size="xs" color={latestAttempt?.passed ? 'success' : 'accent'} uppercase>
               {latestAttempt ? (latestAttempt.passed ? 'результат' : 'повтор') : 'учебный поток'}
             </PixelText>
           }
         />
+
+        <section className="navigation-focused-check-flow__task" aria-label="Что сделать">
+          <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+            Что сделать
+          </PixelText>
+          <PixelText as="p" readable size="md" className="navigation-focused-check-flow__task-text" style={{ margin: 0 }}>
+            {lessonTask}
+          </PixelText>
+        </section>
 
         <div className="navigation-focused-check-flow__context">
           <PixelText as="span" readable size="xs" color="textMuted">
