@@ -515,6 +515,34 @@ test('Daily Run retry adds a visible recovery attempt and completion removes the
   assert.equal(sameWeakSpot, undefined);
 });
 
+test('passed focused assessment completes the matching active Daily Run task', async (t) => {
+  const { database, campaignStore, nowService } = await setupCampaignService();
+  t.after(() => database.close());
+
+  const [template] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor' LIMIT 1");
+  const personal = await campaignStore.forkTemplateCampaign(template.id, { name: 'CS Focused Assessment Run Fixture' });
+
+  const run = await nowService.startTodaySessionFromPrimaryRecommendation(personal.id);
+  const firstTask = run.tasks[0];
+
+  await nowService.submitAssessmentAttempt(personal.id, {
+    node_id: firstTask.nodeId,
+    task_id: `action:${firstTask.actionId}`,
+    check_method: 'strict',
+    target_mastery_level: 'confirmed',
+    checklist_results: { editor: true, run: true, save: true },
+    idempotency_key: `focused-assessment-pass:${personal.id}:${firstTask.actionId}`,
+  });
+
+  const refreshed = await nowService.getDashboard(personal.id);
+  assert.deepEqual(
+    refreshed.todaySession.tasks.slice(0, 2).map((task) => task.outcome),
+    ['completed', 'pending'],
+  );
+  assert.equal(refreshed.todaySession.tasks[0].actionId, firstTask.actionId);
+  assert.notEqual(refreshed.todaySession.tasks.find((task) => task.outcome === 'pending')?.actionId, firstTask.actionId);
+});
+
 test('completed CS bachelor route nodes can return as stale recovery tasks', async (t) => {
   const { database, campaignStore, nowService } = await setupCampaignService();
   t.after(() => database.close());

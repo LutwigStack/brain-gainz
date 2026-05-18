@@ -3239,7 +3239,7 @@ export const NavigationView = ({
                         : 'Показана вся учебная карта без редакторских инструментов.'}
                     </PixelText>
                     <PixelText as="span" size="xs" color="accent">
-                      Редактирование: режим «Настраиваю» в верхней панели.
+                      Нажмите узел, чтобы открыть занятие или проверку.
                     </PixelText>
                   </div>
                   <div className="navigation-learner-map-overview__legend" aria-label="Состояния узлов маршрута">

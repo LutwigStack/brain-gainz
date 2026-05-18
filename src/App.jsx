@@ -744,6 +744,41 @@ export default function App() {
     setActiveTab('map');
   };
 
+  const handleStartTodayRouteLesson = async (nodeId, actionId = null) => {
+    if (!nodeId) {
+      return;
+    }
+
+    if (!actionId) {
+      await handleOpenTodayRouteNode(nodeId, actionId);
+      return;
+    }
+
+    const selection = { nodeId, actionId, skillId: null };
+    setDailyRunPending(true);
+    setNowError(null);
+    setNowSelection(selection);
+    setNavigationSelection(selection);
+    setNavigationBranchFilterId(null);
+    requestMapRouteFilter();
+    requestMapInspectorMode('assessment');
+
+    try {
+      await db.startTodaySessionFromRecommendation(actionId, selectedCampaignId);
+      await loadNowDashboard(selection);
+      if (normalizedActiveTab === 'map') {
+        await loadNavigationSnapshot(selection, { branchFilterId: null });
+        return;
+      }
+      setActiveTab('map');
+    } catch (error) {
+      logUnexpectedActionError('Failed to start Today route lesson', error);
+      setNowError(userActionErrorMessage(error, 'Не удалось открыть занятие.'));
+    } finally {
+      setDailyRunPending(false);
+    }
+  };
+
   const refreshTodayAfterDailyRunMutation = async (result = null) => {
     if (result?.dashboard) {
       setNowSnapshot(result.dashboard);
@@ -2199,7 +2234,7 @@ export default function App() {
                           title={workspaceModeLabels.learner.switchDescription}
                           style={{ minHeight: 30, padding: '5px 8px', gap: 5 }}
                         >
-                          <Eye size={14} /> {workspaceModeLabels.learner.switchLabel}
+                          <Eye size={14} /> {workspaceMode === 'learner' ? workspaceModeLabels.learner.switchLabel : null}
                         </PixelButton>
                         <PixelButton
                           tone={workspaceMode === 'author' ? 'accent' : 'ghost'}
@@ -2208,7 +2243,7 @@ export default function App() {
                           title={workspaceModeLabels.author.switchDescription}
                           style={{ minHeight: 30, padding: '5px 8px', gap: 5 }}
                         >
-                          <PencilLine size={14} /> {workspaceModeLabels.author.switchLabel}
+                          <PencilLine size={14} /> {workspaceMode === 'author' ? workspaceModeLabels.author.switchLabel : null}
                         </PixelButton>
                       </div>
                     ) : null}
@@ -2382,6 +2417,7 @@ export default function App() {
               setActiveTab('map');
             }}
             onOpenRouteNode={handleOpenTodayRouteNode}
+            onStartLesson={handleStartTodayRouteLesson}
             onOpenRouteMap={handleOpenTodayRouteMap}
             onRefresh={loadNowDashboard}
             onCompleteSpecialization={handleCompleteSpecialization}

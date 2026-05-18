@@ -1688,6 +1688,47 @@ const buildDailyRunTasksForSession = async (database, session, events) => {
   });
 };
 
+const assessmentActionIdFromTaskId = (taskId) => {
+  const match = String(taskId ?? '').match(/^action:(\d+)$/);
+  return match ? Number(match[1]) : null;
+};
+
+const completePendingDailyRunTaskFromAssessment = async (
+  database,
+  dailySessionStore,
+  campaignId,
+  nodeId,
+  taskId,
+  timestamp,
+) => {
+  const session = await loadTodaySession(database, dailySessionStore, campaignId);
+
+  if (!session || session.status !== 'active') {
+    return;
+  }
+
+  const assessmentActionId = assessmentActionIdFromTaskId(taskId);
+  const matchingTask = session.tasks.find(
+    (task) =>
+      task.outcome === 'pending' &&
+      sameDatabaseId(task.nodeId, nodeId) &&
+      (assessmentActionId == null || sameDatabaseId(task.actionId, assessmentActionId)),
+  );
+
+  if (!matchingTask) {
+    return;
+  }
+
+  await dailySessionStore.addSessionEvent({
+    session_id: session.id,
+    event_type: 'completed',
+    node_id: matchingTask.nodeId ?? nodeId,
+    action_id: matchingTask.actionId ?? assessmentActionId,
+    note: 'Assessment passed in the focused learner check.',
+    occurred_at: timestamp,
+  });
+};
+
 const loadFirstOpenActionForNode = async (database, nodeId, campaignId) => {
   const rows = await database.select(
     `
@@ -4383,6 +4424,14 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
           timestamp,
         });
         xpGrantResult = await createAssessmentXpGrant(database, node, masteryEvent, attempt, timestamp);
+        await completePendingDailyRunTaskFromAssessment(
+          database,
+          dailySessionStore,
+          resolvedCampaignId,
+          node.id,
+          attempt.task_id,
+          timestamp,
+        );
       }
 
       return {

@@ -157,6 +157,7 @@ interface NowViewProps {
   onSelectRecommendation: (recommendation: RecommendationCandidate) => void;
   onOpenMap: (recommendation: RecommendationCandidate) => void;
   onOpenRouteNode: (nodeId: number, actionId?: number | null) => void;
+  onStartLesson: (nodeId: number, actionId?: number | null) => void;
   onOpenRouteMap: () => void;
   onRefresh: () => void;
   onCompleteSpecialization: () => void;
@@ -184,6 +185,7 @@ export const NowView = ({
   onSelectRecommendation,
   onOpenMap,
   onOpenRouteNode,
+  onStartLesson,
   onOpenRouteMap,
   onRefresh,
   onCompleteSpecialization,
@@ -238,6 +240,12 @@ export const NowView = ({
     ? [primaryRecommendation]
     : queue.filter(isRecommendationCandidate).slice(0, 1);
   const primaryCandidate = primaryRecommendation ?? weakeningItems[0] ?? null;
+  const plannerFocusActionId =
+    primaryCandidate?.nodeId != null &&
+    plannerFocusItem?.node_id != null &&
+    Number(primaryCandidate.nodeId) === Number(plannerFocusItem.node_id)
+      ? primaryCandidate.actionId
+      : null;
   const optionalItems = queue
     .filter((item) => item.actionId !== weakeningItems[0]?.actionId)
     .slice(0, 4);
@@ -352,6 +360,11 @@ export const NowView = ({
         return;
       case 'open_route_node':
         if (plannerFocusItem?.node_id != null) {
+          if (plannerFocusActionId != null) {
+            onStartLesson(plannerFocusItem.node_id as number, plannerFocusActionId);
+            return;
+          }
+
           onOpenRouteNode(plannerFocusItem.node_id as number);
         }
         return;
