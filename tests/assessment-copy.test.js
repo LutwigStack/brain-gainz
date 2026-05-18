@@ -27,7 +27,7 @@ test('assessment check type labels stay user-facing across supported states', ()
   );
   assert.equal(
     getAssessmentCheckTypeLabel({ strictCheckType: 'checklist', resolvedCheckMethod: 'strict' }),
-    'Список условий',
+    'Список пунктов',
   );
   assert.equal(
     getAssessmentCheckTypeLabel({ strictCheckType: 'manual_strict', resolvedCheckMethod: 'strict' }),
@@ -50,7 +50,7 @@ test('assessment expectation copy describes criteria without raw verifier terms'
       strictCheckType: 'checklist',
       resolvedCheckMethod: 'strict',
     }),
-    'Отметьте, что уже выполнено: обязательно 1/2.',
+    'Отметьте пункты, которые уже получились. Нужно 1 из 2.',
   );
 
   const manualCopy = getAssessmentExpectedInputText({
@@ -60,7 +60,7 @@ test('assessment expectation copy describes criteria without raw verifier terms'
     resolvedCheckMethod: 'strict',
   });
 
-  assert.match(manualCopy, /результат внешней проверки/);
+  assert.match(manualCopy, /работа готова/);
   assert.doesNotMatch(manualCopy, /verifier|verdict|evidence/i);
 });
 
@@ -96,7 +96,7 @@ test('assessment validation state gives one actionable reason near the action', 
       hasVerifierEvidence: false,
       resolvedCheckMethod: 'llm_assisted',
     }).message,
-    'Добавьте подтверждение, чтобы засчитать.',
+    'Добавьте короткое объяснение, чтобы сохранить результат.',
   );
 
   assert.deepEqual(
@@ -113,7 +113,7 @@ test('assessment validation state gives one actionable reason near the action', 
     {
       tone: 'success',
       ready: true,
-      message: 'Готово. Можно засчитать.',
+      message: 'Готово. Можно сохранить результат.',
     },
   );
 
@@ -149,7 +149,7 @@ test('assessment answer input copy explains what learners should enter', () => {
     {
       label: 'Ответ или объяснение',
       placeholder: 'Коротко: ответ, ход решения или ссылка на работу',
-      helperText: 'Зачет появится после вывода ИИ-проверки или вашего подтверждения.',
+      helperText: 'Когда ответ готов, сохраните результат.',
     },
   );
 });
@@ -178,7 +178,7 @@ test('assessment primary and failed-attempt actions describe the real outcome', 
   );
   assert.equal(
     getAssessmentPrimaryActionLabel({ pendingAssessment: false, isAutoStrictCheck: false }),
-    'Засчитать прогресс',
+    'Сохранить результат',
   );
   assert.equal(
     getAssessmentPrimaryActionLabel({ pendingAssessment: true, isAutoStrictCheck: true }),
@@ -213,7 +213,7 @@ test('assessment primary and failed-attempt actions describe the real outcome', 
     {
       visible: true,
       disabled: false,
-      message: 'Сохранить как не зачтено. Отмеченных условий нет, XP не изменится.',
+      message: 'Сохранить как не зачтено. Отмеченных пунктов нет, XP не изменится.',
     },
   );
 
@@ -230,7 +230,7 @@ test('assessment primary and failed-attempt actions describe the real outcome', 
     {
       visible: true,
       disabled: false,
-      message: 'Сохранить как не зачтено. Отмеченные условия останутся в попытке, XP не изменится.',
+      message: 'Сохранить как не зачтено. Отмеченные пункты останутся в попытке, XP не изменится.',
     },
   );
 
@@ -268,15 +268,15 @@ test('assessment primary and failed-attempt actions describe the real outcome', 
 test('assessment evidence hint distinguishes visible confirmation from technical details', () => {
   assert.equal(
     getAssessmentEvidenceHint({ hasVisibleEvidence: true, hasTechnicalResultId: false }),
-    'Объяснение заполнено. Попытку можно засчитать.',
+    'Объяснение добавлено. Теперь можно сохранить результат.',
   );
   assert.equal(
     getAssessmentEvidenceHint({ hasVisibleEvidence: false, hasTechnicalResultId: true }),
-    'Можно засчитать, но короткое объяснение поможет понять результат позже.',
+    'Можно сохранить результат. Короткое объяснение поможет понять его позже.',
   );
   assert.equal(
     getAssessmentEvidenceHint({ hasVisibleEvidence: false, hasTechnicalResultId: false }),
-    'Коротко напишите, что именно совпало с критерием или почему ответ можно зачесть.',
+    'Коротко напишите, что получилось и почему этого достаточно.',
   );
   assert.doesNotMatch(
     getAssessmentEvidenceHint({ hasVisibleEvidence: false, hasTechnicalResultId: false }),

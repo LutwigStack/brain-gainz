@@ -113,13 +113,13 @@ test('passed assessment result puts progress XP and next step first', () => {
 test('failed assessment result puts reason and retry first', () => {
   assert.deepEqual(
     getFailedAssessmentResultState({
-      feedbackSummary: 'Не отмечены условия: Файл сохранен.',
+      feedbackSummary: 'Не отмечены пункты: Файл сохранен.',
     }),
     {
       statusLabel: 'Не зачтено',
       message: 'Прогресс и XP не изменились.',
-      reasonLabel: 'Что не выполнено',
-      reasonValue: 'Не отмечены условия: Файл сохранен.',
+      reasonLabel: 'Что осталось',
+      reasonValue: 'Не отмечены пункты: Файл сохранен.',
       primaryActionLabel: 'Попробовать еще раз',
       secondaryActionLabel: 'Отметить для себя',
     },

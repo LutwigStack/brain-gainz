@@ -1294,7 +1294,7 @@ test('strict assessment metadata runs local checks and creates verifier evidence
     idempotency_key: 'auto-checklist-pass',
   });
   assert.equal(passedChecklist.attempt.passed, 1);
-  assert.equal(passedChecklist.attempt.feedback_summary, 'Все обязательные условия отмечены.');
+  assert.equal(passedChecklist.attempt.feedback_summary, 'Все нужные пункты отмечены.');
   assert.match(passedChecklist.attempt.evidence_payload, /"strict_check_type":"checklist"/);
 });
 

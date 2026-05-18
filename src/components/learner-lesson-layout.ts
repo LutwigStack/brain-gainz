@@ -62,8 +62,8 @@ export const getFailedAssessmentResultState = ({
 }: FailedAssessmentResultStateInput) => ({
   statusLabel: 'Не зачтено',
   message: 'Прогресс и XP не изменились.',
-  reasonLabel: 'Что не выполнено',
-  reasonValue: feedbackSummary?.trim() || 'Условия пока не выполнены.',
+  reasonLabel: 'Что осталось',
+  reasonValue: feedbackSummary?.trim() || 'Пока не все пункты готовы.',
   primaryActionLabel: 'Попробовать еще раз',
   secondaryActionLabel: 'Отметить для себя',
 });

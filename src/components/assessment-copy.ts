@@ -63,7 +63,7 @@ export const getAssessmentCheckTypeLabel = ({ strictCheckType, resolvedCheckMeth
   if (strictCheckType === 'exact') return 'Точный ответ';
   if (strictCheckType === 'number') return 'Число';
   if (strictCheckType === 'contains') return 'Текст с обязательными терминами';
-  if (strictCheckType === 'checklist') return 'Список условий';
+  if (strictCheckType === 'checklist') return 'Список пунктов';
   if (resolvedCheckMethod === 'strict') return 'Подтверждение результата';
   return 'ИИ-проверка';
 };
@@ -78,7 +78,7 @@ export const getAssessmentExpectedInputText = ({
 }: ExpectationInput) => {
   if (isChecklistCheck) {
     const requiredCount = checklistItems.filter((item) => item.required).length;
-    return `Отметьте, что уже выполнено: обязательно ${requiredCount}/${checklistItems.length}.`;
+    return `Отметьте пункты, которые уже получились. Нужно ${requiredCount} из ${checklistItems.length}.`;
   }
 
   if (strictCheckType === 'exact') {
@@ -94,10 +94,10 @@ export const getAssessmentExpectedInputText = ({
   }
 
   if (resolvedCheckMethod === 'strict') {
-    return 'Приложите результат внешней проверки, который подтверждает, что критерии пройдены.';
+    return 'Добавьте результат, по которому видно, что работа готова.';
   }
 
-  return 'Приложите результат ИИ-проверки или краткое обоснование, почему ответ засчитан.';
+  return 'Добавьте ответ или коротко объясните, почему работа готова.';
 };
 
 export const getAssessmentAnswerInputCopy = ({
@@ -132,14 +132,14 @@ export const getAssessmentAnswerInputCopy = ({
     return {
       label: 'Ответ или артефакт',
       placeholder: 'Коротко: ссылка, решение, формула или результат внешней проверки',
-      helperText: 'Зачет появится после подтверждения проверки.',
+      helperText: 'Когда все готово, сохраните результат.',
     };
   }
 
   return {
     label: 'Ответ или объяснение',
     placeholder: 'Коротко: ответ, ход решения или ссылка на работу',
-    helperText: 'Зачет появится после вывода ИИ-проверки или вашего подтверждения.',
+    helperText: 'Когда ответ готов, сохраните результат.',
   };
 };
 
@@ -155,18 +155,18 @@ export const getAssessmentEvidenceHint = ({
   if (hasVisibleEvidence) {
     return audience === 'author'
       ? 'Подтверждение заполнено. Попытку можно засчитать.'
-      : 'Объяснение заполнено. Попытку можно засчитать.';
+      : 'Объяснение добавлено. Теперь можно сохранить результат.';
   }
 
   if (hasTechnicalResultId) {
     return audience === 'author'
       ? 'Служебное подтверждение заполнено. Попытку можно засчитать; объяснение можно оставить пустым.'
-      : 'Можно засчитать, но короткое объяснение поможет понять результат позже.';
+      : 'Можно сохранить результат. Короткое объяснение поможет понять его позже.';
   }
 
   return audience === 'author'
     ? 'Для зачета добавьте короткое объяснение. Служебные детали можно оставить пустыми.'
-    : 'Коротко напишите, что именно совпало с критерием или почему ответ можно зачесть.';
+    : 'Коротко напишите, что получилось и почему этого достаточно.';
 };
 
 export const getAssessmentValidationState = ({
@@ -218,7 +218,7 @@ export const getAssessmentValidationState = ({
       tone: 'accent' as const,
       ready: false,
       message: isChecklistCheck
-        ? 'Отметьте выполненное условие.'
+        ? 'Отметьте хотя бы один пункт.'
         : `Введите ответ: ${checkTypeLabel.toLocaleLowerCase()}.`,
     };
   }
@@ -227,7 +227,7 @@ export const getAssessmentValidationState = ({
     return {
       tone: 'success' as const,
       ready: true,
-      message: 'Готово. Можно засчитать.',
+      message: 'Готово. Можно сохранить результат.',
     };
   }
 
@@ -235,9 +235,9 @@ export const getAssessmentValidationState = ({
     tone: 'accent' as const,
     ready: false,
     message: hasAnswer
-      ? 'Добавьте подтверждение, чтобы засчитать.'
+      ? 'Добавьте короткое объяснение, чтобы сохранить результат.'
       : resolvedCheckMethod === 'strict'
-        ? 'Добавьте ответ или подтверждение.'
+        ? 'Добавьте ответ или результат работы.'
         : 'Добавьте ответ или вывод ИИ-проверки.',
   };
 };
@@ -254,7 +254,7 @@ export const getAssessmentPrimaryActionLabel = ({
   isAutoStrictCheck,
 }: PrimaryActionCopyInput) => {
   if (pendingAssessment) return 'Проверяю…';
-  return isAutoStrictCheck ? 'Проверить ответ' : 'Засчитать прогресс';
+  return isAutoStrictCheck ? 'Проверить ответ' : 'Сохранить результат';
 };
 
 export const getAssessmentFailedAttemptState = ({
@@ -297,8 +297,8 @@ export const getAssessmentFailedAttemptState = ({
       visible: true,
       disabled: false,
       message: hasChecklistSelection
-        ? 'Сохранить как не зачтено. Отмеченные условия останутся в попытке, XP не изменится.'
-        : 'Сохранить как не зачтено. Отмеченных условий нет, XP не изменится.',
+        ? 'Сохранить как не зачтено. Отмеченные пункты останутся в попытке, XP не изменится.'
+        : 'Сохранить как не зачтено. Отмеченных пунктов нет, XP не изменится.',
     };
   }
 

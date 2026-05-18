@@ -1753,11 +1753,11 @@ export const NavigationView = ({
     });
     const failedAttemptSubmittedAnswer = isChecklistCheck ? assessmentSubmittedAnswer : trimmedAnswer || trimmedEvidence;
     const failedAttemptFeedbackSummary = isChecklistCheck
-      ? 'Пока не зачтено: условия не выполнены.'
+      ? 'Пока не зачтено: не все пункты готовы.'
       : trimmedEvidence || trimmedAnswer || 'Попытка сохранена: пока не зачтено.';
     const failedAttemptActionLabel = isChecklistCheck ? 'Не получилось' : 'Сохранить попытку';
-    const criteriaHeading = canUseAuthorTools ? `Критерии · ${checkTypeLabel}` : 'Что считается зачтено';
-    const checklistHeading = canUseAuthorTools ? 'Чек-лист проверки' : 'Критерии';
+    const criteriaHeading = canUseAuthorTools ? `Критерии · ${checkTypeLabel}` : 'Что должно получиться';
+    const checklistHeading = canUseAuthorTools ? 'Чек-лист проверки' : 'Проверьте себя';
     const showLearnerFocusedAssessment = !canUseAuthorTools && mode === 'assessment';
     const showProgressOverview = !showLearnerFocusedAssessment;
     const showAssessmentMethodControls = showAssessmentControls && canUseAuthorTools;
@@ -1765,8 +1765,8 @@ export const NavigationView = ({
     const selfMarkCopy = getSelfMarkedAssessmentCopy();
     const hasCriteriaDisclosure =
       Boolean(mastery?.check.expectedSummary) || (mastery?.check.requiredTerms?.length ?? 0) > 0 || requiresVerifierEvidence;
-    const criteriaDisclosureLabel = canUseAuthorTools ? 'Детали проверки' : 'Почему это зачтется';
-    const evidenceLabel = canUseAuthorTools ? 'Подтверждение проверки' : 'Почему можно зачесть';
+    const criteriaDisclosureLabel = canUseAuthorTools ? 'Детали проверки' : 'Почему этого достаточно';
+    const evidenceLabel = canUseAuthorTools ? 'Подтверждение проверки' : 'Почему получилось';
 
     return (
       <PixelSurface frame="inset" padding="sm">
@@ -2087,7 +2087,7 @@ export const NavigationView = ({
                   </PixelText>
                   {requiresVerifierEvidence ? (
                     <PixelText as="p" readable size="xs" color="accent" style={{ margin: 0 }}>
-                      Добавьте короткое объяснение, почему результат можно зачесть.
+                      Коротко напишите, что получилось.
                     </PixelText>
                   ) : null}
                   {hasCriteriaDisclosure ? (
@@ -2106,7 +2106,7 @@ export const NavigationView = ({
                         ) : null}
                         {requiresVerifierEvidence ? (
                           <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
-                            Коротко напишите, что именно совпало с критерием или почему ответ можно засчитать.
+                            Коротко напишите, что получилось и почему этого достаточно.
                           </PixelText>
                         ) : null}
                       </div>
@@ -2143,7 +2143,7 @@ export const NavigationView = ({
                         </PixelText>
                         {item.required ? (
                           <PixelText as="span" size="xs" color="accent" uppercase className="navigation-lesson-criteria-item__badge">
-                            нужно
+                            важно
                           </PixelText>
                         ) : null}
                       </label>
@@ -2170,8 +2170,8 @@ export const NavigationView = ({
                 onChange={(event) => setAssessmentEvidence(event.target.value)}
                 placeholder={
                   resolvedCheckMethod === 'strict'
-                    ? 'Например: результат совпал с критерием, ответ можно зачесть'
-                    : 'Например: коротко, почему ответ засчитан'
+                    ? 'Например: что получилось и где это видно'
+                    : 'Например: коротко, почему ответ готов'
                 }
                 disabled={assessmentInputsDisabled}
                 hint={verifierEvidenceHint}
@@ -2206,7 +2206,7 @@ export const NavigationView = ({
                   className="navigation-assessment-autosave-note"
                   style={{ margin: 0 }}
                 >
-                  Ответ сохранится здесь же и сразу покажет результат.
+                  Отмечайте пункты здесь. Итог появится сразу.
                 </PixelText>
               )}
 
@@ -2227,7 +2227,7 @@ export const NavigationView = ({
                   )}
                   <div>
                     <PixelText as="p" size="xs" color="textMuted" uppercase style={{ margin: 0 }}>
-                      Готовность к действию
+                      Можно продолжать?
                     </PixelText>
                     <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
                       {assessmentReadinessMessage}
@@ -2499,11 +2499,11 @@ export const NavigationView = ({
     const lessonTask =
       focusAction?.details ??
       nodeFocus.node.summary ??
-      'Ответьте на задание, проверьте результат и посмотрите, как изменится подтвержденный прогресс.';
+      'Сделайте шаг по теме, проверьте себя и переходите дальше.';
     const routeContext = routeRequirement
       ? `Маршрут: ${routeRequirement.specialization_name} · нужно ${masteryLabel(routeRequirement.required_mastery_level)}`
       : 'Маршрут: текущий учебный шаг';
-    const resultContext = latestAttempt ? (latestAttempt.passed ? 'Зачтено' : 'Не зачтено') : 'Результат появится после ответа';
+    const resultContext = latestAttempt ? (latestAttempt.passed ? 'Зачтено' : 'Не зачтено') : 'Пока без результата';
 
     return (
       <PixelSurface
@@ -2532,9 +2532,9 @@ export const NavigationView = ({
           }
         />
 
-        <section className="navigation-focused-check-flow__task" aria-label="Что сделать">
+        <section className="navigation-focused-check-flow__task" aria-label="Что делаем">
           <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
-            Что сделать
+            Что делаем
           </PixelText>
           <PixelText as="p" readable size="md" className="navigation-focused-check-flow__task-text" style={{ margin: 0 }}>
             {lessonTask}

@@ -81,7 +81,7 @@ const llmAssessment = (extra = {}) => ({
 
 const NODE_CHECKS = {
   'pf-01-programming-environment': assessment('checklist', {
-    prompt: 'Подтвердите, что можете открыть редактор, запустить программу и сохранить первый файл.',
+    prompt: 'Откройте редактор, запустите программу и сохраните первый файл.',
     items: [
       { id: 'editor', label: 'Редактор открывается', required: true },
       { id: 'run', label: 'Программа запускается', required: true },
@@ -117,7 +117,7 @@ const NODE_CHECKS = {
     check_method: 'strict',
     strict_check_type: 'manual_strict',
     prompt: 'Соберите небольшую консольную программу с вводом, ветвлениями, циклами и функциями.',
-    expected_summary: 'Проверяющий подтверждает, что программа проходит чек-лист.',
+    expected_summary: 'Видно, что программа проходит все пункты.',
   },
   'dm-01-sets-and-membership': assessment('exact', {
     prompt: 'Какой символ обычно читается как "принадлежит множеству"?',
@@ -216,7 +216,7 @@ const NODE_CHECKS = {
     check_method: 'strict',
     strict_check_type: 'manual_strict',
     prompt: 'Решите небольшую задачу с пересекающимися подзадачами через таблицу или мемоизированную рекурсию.',
-    expected_summary: 'Проверяющий подтверждает, что в решении указаны состояние, переход и базовые случаи.',
+    expected_summary: 'В решении есть состояние, переход и базовые случаи.',
   },
   'al-09-graph-traversal': assessment('checklist', {
     prompt: 'Разберите обход графа в ширину.',
@@ -375,7 +375,7 @@ const NODE_CHECKS = {
     check_method: 'strict',
     strict_check_type: 'manual_strict',
     prompt: 'Спроектируйте маленькую функцию на базе данных: схема, запросы и тесты.',
-    expected_summary: 'Проверяющий подтверждает, что проект включает таблицы, ограничения, минимум три запроса и план тестирования.',
+    expected_summary: 'В проекте есть таблицы, ограничения, минимум три запроса и план тестирования.',
   },
   'dt-02-tracing-state-by-hand': assessment('checklist', {
     prompt: 'Проследите состояние переменных в короткой программе.',
@@ -396,7 +396,7 @@ const NODE_CHECKS = {
     check_method: 'strict',
     strict_check_type: 'manual_strict',
     prompt: 'Напишите базовые модульные тесты для нормального, граничного и ошибочного ввода.',
-    expected_summary: 'Проверяющий подтверждает, что тесты покрывают успешный путь и минимум два крайних случая.',
+    expected_summary: 'Тесты покрывают успешный путь и минимум два крайних случая.',
   },
   'ms-01-reading-symbols': assessment('exact', {
     prompt: 'Что обычно означает символ forall?',
@@ -559,7 +559,7 @@ const nodeCompletionCriteria = (node) =>
     : 'Выполните практику по понятию и свяжите его минимум с одним предварительным или следующим примером.';
 const nodeActionTitle = (node) => {
   if (node.check?.strict_check_type === 'manual_strict') {
-    return `Собрать подтверждение: ${node.title}`;
+    return `Показать результат: ${node.title}`;
   }
   if (node.check?.check_method === 'llm_assisted') {
     return `Объяснить: ${node.title}`;
@@ -568,7 +568,7 @@ const nodeActionTitle = (node) => {
 };
 const nodeActionDetails = (node) =>
   node.check
-    ? 'Выполните короткое учебное задание, затем подтвердите результат по понятным критериям.'
+    ? 'Сделайте небольшой шаг по теме и отметьте, что уже получилось.'
     : `Создайте небольшой пример или заметку, которая показывает, что вы умеете применять "${node.title}" в базовом маршруте.`;
 const nodePosition = (node, branchIndex) => {
   const config = NODE_POSITIONS[node.branchId] ?? { x: 0, y: 0, dx: 180 };
