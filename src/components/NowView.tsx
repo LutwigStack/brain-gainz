@@ -34,6 +34,7 @@ import {
   buildMiniMapPreview,
   clampPercent,
   masteryRank,
+  resolveDirectLessonAction,
   type DailyTaskCardViewModel,
 } from './today-dashboard-model';
 import type {
@@ -240,12 +241,11 @@ export const NowView = ({
     ? [primaryRecommendation]
     : queue.filter(isRecommendationCandidate).slice(0, 1);
   const primaryCandidate = primaryRecommendation ?? weakeningItems[0] ?? null;
-  const plannerFocusActionId =
-    primaryCandidate?.nodeId != null &&
-    plannerFocusItem?.node_id != null &&
-    Number(primaryCandidate.nodeId) === Number(plannerFocusItem.node_id)
-      ? primaryCandidate.actionId
-      : null;
+  const directFocusLessonAction = resolveDirectLessonAction({
+    focusItem: plannerFocusItem,
+    primaryRecommendation,
+    queue,
+  });
   const optionalItems = queue
     .filter((item) => item.actionId !== weakeningItems[0]?.actionId)
     .slice(0, 4);
@@ -360,8 +360,8 @@ export const NowView = ({
         return;
       case 'open_route_node':
         if (plannerFocusItem?.node_id != null) {
-          if (plannerFocusActionId != null) {
-            onStartLesson(plannerFocusItem.node_id as number, plannerFocusActionId);
+          if (directFocusLessonAction) {
+            onStartLesson(directFocusLessonAction.nodeId, directFocusLessonAction.actionId);
             return;
           }
 
@@ -392,6 +392,11 @@ export const NowView = ({
 
     if (isDailyRunActive && firstPendingRunTask) {
       if (firstPendingRunTask.nodeId != null) {
+        if (firstPendingRunTask.actionId != null) {
+          onStartLesson(firstPendingRunTask.nodeId, firstPendingRunTask.actionId);
+          return;
+        }
+
         onOpenRouteNode(firstPendingRunTask.nodeId, firstPendingRunTask.actionId ?? null);
         return;
       }

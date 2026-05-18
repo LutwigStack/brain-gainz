@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildDailyTaskCards, buildMiniMapPreview, buildTodayRightRail } from '../src/components/today-dashboard-model.ts';
+import {
+  buildDailyTaskCards,
+  buildMiniMapPreview,
+  buildTodayRightRail,
+  resolveDirectLessonAction,
+} from '../src/components/today-dashboard-model.ts';
 
 const routeItem = (overrides = {}) => ({
   id: overrides.id ?? 1,
@@ -80,6 +85,64 @@ test('daily recommendation cards keep null action candidates distinct by node id
 
   assert.deepEqual(cards.slice(0, 2).map((card) => card.nodeId), [10, 11]);
   assert.deepEqual(cards.slice(0, 2).map((card) => card.key), ['recommendation-node-10', 'recommendation-node-11']);
+});
+
+test('direct lesson action resolves the route focus check even when it is queued', () => {
+  const focus = routeItem({ id: 42, title: 'Focused lesson' });
+  const primaryRecommendation = {
+    nodeId: 10,
+    actionId: 100,
+    actionTitle: 'Recover a weak spot',
+    sphereName: 'Work',
+    directionName: 'Graph',
+    skillName: 'Route',
+    nodeTitle: 'Weak node',
+    whyNow: [],
+    whatDegrades: '',
+  };
+  const queuedFocusRecommendation = {
+    nodeId: 42,
+    actionId: 420,
+    actionTitle: 'Start focused lesson',
+    sphereName: 'Work',
+    directionName: 'Graph',
+    skillName: 'Route',
+    nodeTitle: 'Focused lesson',
+    whyNow: [],
+    whatDegrades: '',
+  };
+
+  assert.deepEqual(
+    resolveDirectLessonAction({
+      focusItem: focus,
+      primaryRecommendation,
+      queue: [queuedFocusRecommendation],
+    }),
+    { nodeId: 42, actionId: 420 },
+  );
+});
+
+test('direct lesson action falls back when the route focus has no check action', () => {
+  const focus = routeItem({ id: 42, title: 'Focused lesson' });
+
+  assert.equal(
+    resolveDirectLessonAction({
+      focusItem: focus,
+      primaryRecommendation: {
+        nodeId: 42,
+        actionId: null,
+        actionTitle: 'Open overview',
+        sphereName: 'Work',
+        directionName: 'Graph',
+        skillName: 'Route',
+        nodeTitle: 'Focused lesson',
+        whyNow: [],
+        whatDegrades: '',
+      },
+      queue: [],
+    }),
+    null,
+  );
 });
 
 test('daily task cards surface weak spots as recovery opportunities', () => {

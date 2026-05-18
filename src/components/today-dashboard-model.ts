@@ -17,6 +17,11 @@ export interface DailyTaskCardViewModel {
   disabled: boolean;
 }
 
+export interface DirectLessonActionViewModel {
+  nodeId: number;
+  actionId: number;
+}
+
 export type MiniMapNodeKind = 'front' | 'route' | 'weak' | 'complete' | 'future';
 export type MiniMapEdgeKind = 'route' | 'weak';
 
@@ -360,6 +365,33 @@ const recommendationToTaskCard = (
   actionId: candidate.actionId,
   disabled: false,
 });
+
+export const resolveDirectLessonAction = ({
+  focusItem,
+  primaryRecommendation,
+  queue,
+}: {
+  focusItem: RouteProgressItem | null;
+  primaryRecommendation: RecommendationCandidate | null;
+  queue: RecommendationCandidate[];
+}): DirectLessonActionViewModel | null => {
+  if (focusItem?.node_id == null) {
+    return null;
+  }
+
+  const candidate = uniqueRecommendations([primaryRecommendation, ...queue]).find(
+    (item) => item.actionId != null && Number(item.nodeId) === Number(focusItem.node_id),
+  );
+
+  if (candidate?.actionId == null) {
+    return null;
+  }
+
+  return {
+    nodeId: focusItem.node_id,
+    actionId: candidate.actionId,
+  };
+};
 
 export const buildDailyTaskCards = ({
   focusItem,
