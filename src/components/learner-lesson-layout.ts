@@ -13,6 +13,10 @@ export type PassedAssessmentResultStateInput = {
   targetMasteryLabel: string;
 };
 
+export type FailedAssessmentResultStateInput = {
+  feedbackSummary?: string | null;
+};
+
 const singleColumnMapShellClassName = 'navigation-map-shell grid min-w-0 items-start gap-3 xl:grid-cols-1';
 
 const splitMapShellClassName =
@@ -45,4 +49,22 @@ export const getPassedAssessmentResultState = ({
   xpLabel: 'XP обновлены',
   xpValue: 'XP обновлены',
   primaryActionLabel: 'Следующий шаг',
+});
+
+export const getFailedAssessmentResultState = ({
+  feedbackSummary,
+}: FailedAssessmentResultStateInput) => ({
+  statusLabel: 'Не зачтено',
+  message: 'Прогресс и XP не изменились.',
+  reasonLabel: 'Что не выполнено',
+  reasonValue: feedbackSummary?.trim() || 'Условия пока не выполнены.',
+  primaryActionLabel: 'Попробовать еще раз',
+  secondaryActionLabel: 'Отметить для себя',
+});
+
+export const getSelfMarkedAssessmentCopy = () => ({
+  primaryActionLabel: 'Отметить для себя',
+  helperText: 'Без зачета и XP.',
+  resultMessage: 'Сохранено как личная отметка.',
+  noticeText: 'Сохранено как личная отметка. Без зачета и XP.',
 });

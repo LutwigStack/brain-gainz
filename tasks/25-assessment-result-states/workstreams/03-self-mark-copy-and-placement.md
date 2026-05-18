@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -30,3 +30,11 @@ Rename and reposition self-mark so it reads like a learner choice, not a technic
 - learner can tell self-mark is not verified mastery
 - wording is short enough for mobile
 - tests cover copy if existing copy tests apply
+
+## Notes
+
+- Self-mark action copy is centralized as `Отметить для себя`.
+- The helper is now short: `Без зачета и XP.`
+- The saved notice now uses centralized `noticeText`: `Сохранено как личная отметка. Без зачета и XP.`
+- Failed result state keeps self-mark as the secondary action.
+- Covered by `tests/learner-lesson-layout.test.js`.

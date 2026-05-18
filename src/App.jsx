@@ -47,6 +47,7 @@ import {
   workspaceModeLabels,
 } from './components/mode-boundary.ts';
 import { getMobileNavigationPriorityClass } from './components/mobile-navigation-priority.ts';
+import { getSelfMarkedAssessmentCopy } from './components/learner-lesson-layout.ts';
 import { ReferenceAssetImage } from './assets/ReferenceAssetImage.tsx';
 import {
   csBachelorReferenceAssets,
@@ -1582,7 +1583,7 @@ export default function App() {
 
     try {
       await db.markSelfMastery(navigationFocus.node.id, masteryLevel, selectedCampaignId);
-      await refreshNavigationMasterySurfaces('Отмечено без проверки: XP и завершение маршрута не начислены.');
+      await refreshNavigationMasterySurfaces(getSelfMarkedAssessmentCopy().noticeText);
     } catch (error) {
       logUnexpectedActionError('Failed to mark self mastery', error);
       setNavigationError(userActionErrorMessage(error, 'Не удалось отметить прогресс узла.'));

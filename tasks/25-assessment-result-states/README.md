@@ -65,7 +65,7 @@ Excludes:
 ## Workstreams
 
 - `done` - [workstreams/01-passed-result-first-state.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/25-assessment-result-states/workstreams/01-passed-result-first-state.md)
-- `planned` - [workstreams/02-failed-result-retry-state.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/25-assessment-result-states/workstreams/02-failed-result-retry-state.md)
-- `planned` - [workstreams/03-self-mark-copy-and-placement.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/25-assessment-result-states/workstreams/03-self-mark-copy-and-placement.md)
+- `done` - [workstreams/02-failed-result-retry-state.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/25-assessment-result-states/workstreams/02-failed-result-retry-state.md)
+- `done` - [workstreams/03-self-mark-copy-and-placement.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/25-assessment-result-states/workstreams/03-self-mark-copy-and-placement.md)
 - `planned` - [workstreams/04-mobile-result-compactness.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/25-assessment-result-states/workstreams/04-mobile-result-compactness.md)
 - `planned` - [workstreams/05-browser-qa-result-states.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/25-assessment-result-states/workstreams/05-browser-qa-result-states.md)

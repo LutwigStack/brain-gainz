@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  getFailedAssessmentResultState,
   getNavigationMapShellClassName,
   getPassedAssessmentResultState,
+  getSelfMarkedAssessmentCopy,
   shouldShowNavigationInspectorRail,
   shouldUseFocusedLearnerLessonScreen,
 } from '../src/components/learner-lesson-layout.ts';
@@ -105,4 +107,29 @@ test('passed assessment result puts progress XP and next step first', () => {
       primaryActionLabel: 'Следующий шаг',
     },
   );
+});
+
+test('failed assessment result puts reason and retry first', () => {
+  assert.deepEqual(
+    getFailedAssessmentResultState({
+      feedbackSummary: 'Не отмечены условия: Файл сохранен.',
+    }),
+    {
+      statusLabel: 'Не зачтено',
+      message: 'Прогресс и XP не изменились.',
+      reasonLabel: 'Что не выполнено',
+      reasonValue: 'Не отмечены условия: Файл сохранен.',
+      primaryActionLabel: 'Попробовать еще раз',
+      secondaryActionLabel: 'Отметить для себя',
+    },
+  );
+});
+
+test('self mark copy stays human and secondary', () => {
+  assert.deepEqual(getSelfMarkedAssessmentCopy(), {
+    primaryActionLabel: 'Отметить для себя',
+    helperText: 'Без зачета и XP.',
+    resultMessage: 'Сохранено как личная отметка.',
+    noticeText: 'Сохранено как личная отметка. Без зачета и XP.',
+  });
 });

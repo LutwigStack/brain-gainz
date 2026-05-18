@@ -89,7 +89,9 @@ import {
   type WorkspaceMode,
 } from './mode-boundary';
 import {
+  getFailedAssessmentResultState,
   getPassedAssessmentResultState,
+  getSelfMarkedAssessmentCopy,
   getNavigationMapShellClassName,
   shouldShowNavigationInspectorRail,
   shouldUseFocusedLearnerLessonScreen,
@@ -459,6 +461,7 @@ export const NavigationView = ({
   const [assessmentResultId, setAssessmentResultId] = useState('');
   const [assessmentEvidence, setAssessmentEvidence] = useState('');
   const [assessmentChecklistValues, setAssessmentChecklistValues] = useState<Record<string, boolean>>({});
+  const [retryingAssessmentAttemptId, setRetryingAssessmentAttemptId] = useState<number | null>(null);
   const [routeRequiredLevel, setRouteRequiredLevel] = useState<MasteryLevel>('confirmed');
   const [routeStageDrafts, setRouteStageDrafts] = useState<Record<number, string>>({});
   const [isRouteFilterEnabled, setIsRouteFilterEnabled] = useState(workspaceMode !== 'author');
@@ -742,6 +745,7 @@ export const NavigationView = ({
     setAssessmentResultId('');
     setAssessmentEvidence('');
     setAssessmentChecklistValues(parseChecklistSelectionFromEvidence(focus?.mastery?.latestAttempt?.evidence_payload));
+    setRetryingAssessmentAttemptId(null);
   }, [focus?.mastery?.latestAttempt?.evidence_payload, focus?.mastery?.latestAttempt?.id]);
 
   const navigationNodeIndex = new globalThis.Map<number, NavigationNodeSummary>();
@@ -1702,10 +1706,20 @@ export const NavigationView = ({
         })
       : null;
     const latestAttemptPassed = Boolean(mastery?.latestAttempt?.passed);
+    const latestAttemptFailed = Boolean(mastery?.latestAttempt && !mastery.latestAttempt.passed);
+    const isRetryingFailedAttempt =
+      latestAttemptFailed && retryingAssessmentAttemptId === mastery?.latestAttempt?.id;
+    const showFailedResultState = latestAttemptFailed && !isRetryingFailedAttempt;
     const passedResultState =
       latestAttemptPassed && mastery?.latestAttempt
         ? getPassedAssessmentResultState({
             targetMasteryLabel: masteryLabel(mastery.latestAttempt.target_mastery_level),
+          })
+        : null;
+    const failedResultState =
+      showFailedResultState && mastery?.latestAttempt
+        ? getFailedAssessmentResultState({
+            feedbackSummary: mastery.latestAttempt.feedback_summary,
           })
         : null;
     const assessmentInputsDisabled = pendingAssessment || isEditorArchived || latestAttemptPassed;
@@ -1739,6 +1753,7 @@ export const NavigationView = ({
     const showProgressOverview = !showLearnerFocusedAssessment;
     const showAssessmentMethodControls = showAssessmentControls && canUseAuthorTools;
     const showAssessmentTargetControls = showAssessmentControls && canUseAuthorTools;
+    const selfMarkCopy = getSelfMarkedAssessmentCopy();
     const hasCriteriaDisclosure =
       Boolean(mastery?.check.expectedSummary) || (mastery?.check.requiredTerms?.length ?? 0) > 0 || requiresVerifierEvidence;
     const criteriaDisclosureLabel = canUseAuthorTools ? 'Детали проверки' : 'Почему это зачтется';
@@ -2254,6 +2269,52 @@ export const NavigationView = ({
                     </PixelButton>
                   </PixelStack>
                 </PixelSurface>
+              ) : showFailedResultState && failedResultState && mastery?.latestAttempt ? (
+                <PixelSurface
+                  frame="ghost"
+                  padding="sm"
+                  className="inspector-primary-action"
+                  style={{ borderColor: 'var(--pixel-accent)' }}
+                >
+                  <PixelStack gap="xs">
+                    <PixelText as="p" size="xs" color="accent" uppercase style={{ margin: 0 }}>
+                      {failedResultState.statusLabel}
+                    </PixelText>
+                    <PixelText as="p" readable size="sm" style={{ margin: 0 }}>
+                      {failedResultState.message}
+                    </PixelText>
+                    <PixelSurface frame="inset" padding="xs">
+                      <PixelStack gap="xs">
+                        <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                          {failedResultState.reasonLabel}
+                        </PixelText>
+                        <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: 0 }}>
+                          {failedResultState.reasonValue}
+                        </PixelText>
+                      </PixelStack>
+                    </PixelSurface>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <PixelButton
+                        tone="accent"
+                        onClick={() => setRetryingAssessmentAttemptId(mastery.latestAttempt?.id ?? null)}
+                        disabled={pendingAssessment || pendingSelfMark || isEditorArchived}
+                        fullWidth
+                        style={{ minHeight: 36, padding: '8px 10px', gap: 6 }}
+                      >
+                        <RotateCcw size={15} /> {failedResultState.primaryActionLabel}
+                      </PixelButton>
+                      <PixelButton
+                        tone="ghost"
+                        onClick={() => void onMarkSelfMastery('seen')}
+                        disabled={pendingSelfMark || pendingAssessment || isEditorArchived}
+                        className="inspector-self-mark-button"
+                        style={{ minHeight: 36, padding: '8px 10px', gap: 6 }}
+                      >
+                        <Eye size={14} /> {failedResultState.secondaryActionLabel}
+                      </PixelButton>
+                    </div>
+                  </PixelStack>
+                </PixelSurface>
               ) : (
                 <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
                   <PixelStack gap="xs">
@@ -2284,7 +2345,7 @@ export const NavigationView = ({
                 </PixelSurface>
               )}
 
-              {!latestAttemptPassed ? (
+              {!latestAttemptPassed && !showFailedResultState ? (
                 <div className="grid gap-2 sm:grid-cols-2">
                   <PixelButton
                     tone="ghost"
@@ -2293,7 +2354,7 @@ export const NavigationView = ({
                     className="inspector-self-mark-button"
                     style={{ minHeight: 30, padding: '6px 8px', gap: 6 }}
                   >
-                    <Eye size={14} /> Отметить для себя
+                    <Eye size={14} /> {selfMarkCopy.primaryActionLabel}
                   </PixelButton>
                   {failedAttemptState.visible ? (
                     <PixelButton
@@ -2318,13 +2379,13 @@ export const NavigationView = ({
                   ) : null}
                 </div>
               ) : null}
-              {failedAttemptState.visible && !latestAttemptPassed ? (
+              {failedAttemptState.visible && !latestAttemptPassed && !showFailedResultState ? (
                 <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
                   {failedAttemptState.message}
                 </PixelText>
               ) : null}
 
-              {mastery?.latestAttempt && !latestAttemptPassed ? (
+              {mastery?.latestAttempt && !latestAttemptPassed && !showFailedResultState ? (
                 <PixelSurface
                   frame="ghost"
                   padding="xs"
@@ -2392,9 +2453,11 @@ export const NavigationView = ({
                   </div>
                 </PixelSurface>
               ) : null}
-              <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
-                Самооценка нужна для памяти. XP, маршрут и подтвержденное освоение обновляет только проверенный прогресс.
-              </PixelText>
+              {!latestAttemptPassed ? (
+                <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+                  {selfMarkCopy.helperText}
+                </PixelText>
+              ) : null}
             </div>
           ) : null}
         </PixelStack>
