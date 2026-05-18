@@ -63,8 +63,8 @@ export const getAssessmentCheckTypeLabel = ({ strictCheckType, resolvedCheckMeth
   if (strictCheckType === 'exact') return 'Точный ответ';
   if (strictCheckType === 'number') return 'Число';
   if (strictCheckType === 'contains') return 'Текст с обязательными терминами';
-  if (strictCheckType === 'checklist') return 'Чек-лист';
-  if (resolvedCheckMethod === 'strict') return 'Ручная строгая проверка';
+  if (strictCheckType === 'checklist') return 'Список условий';
+  if (resolvedCheckMethod === 'strict') return 'Подтверждение результата';
   return 'ИИ-проверка';
 };
 
@@ -78,7 +78,7 @@ export const getAssessmentExpectedInputText = ({
 }: ExpectationInput) => {
   if (isChecklistCheck) {
     const requiredCount = checklistItems.filter((item) => item.required).length;
-    return `Отметьте выполненные пункты: обязательно ${requiredCount}/${checklistItems.length}.`;
+    return `Отметьте, что уже выполнено: обязательно ${requiredCount}/${checklistItems.length}.`;
   }
 
   if (strictCheckType === 'exact') {
@@ -210,7 +210,7 @@ export const getAssessmentValidationState = ({
       tone: 'accent' as const,
       ready: false,
       message: isChecklistCheck
-        ? 'Отметьте пункт чек-листа.'
+        ? 'Отметьте выполненное условие.'
         : `Введите ответ: ${checkTypeLabel.toLocaleLowerCase()}.`,
     };
   }
@@ -289,8 +289,8 @@ export const getAssessmentFailedAttemptState = ({
       visible: true,
       disabled: false,
       message: hasChecklistSelection
-        ? 'Сохранить как не зачтено. Отмеченные пункты останутся в попытке, XP не изменится.'
-        : 'Сохранить как не зачтено. Отмеченных пунктов нет, XP не изменится.',
+        ? 'Сохранить как не зачтено. Отмеченные условия останутся в попытке, XP не изменится.'
+        : 'Сохранить как не зачтено. Отмеченных условий нет, XP не изменится.',
     };
   }
 

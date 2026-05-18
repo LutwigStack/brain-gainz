@@ -568,7 +568,7 @@ const nodeActionTitle = (node) => {
 };
 const nodeActionDetails = (node) =>
   node.check
-    ? `Выполните короткое учебное задание, затем пройдите встроенную проверку типа ${node.check.check_method === 'llm_assisted' ? 'проверка с ИИ' : node.check.strict_check_type}.`
+    ? 'Выполните короткое учебное задание, затем подтвердите результат по понятным критериям.'
     : `Создайте небольшой пример или заметку, которая показывает, что вы умеете применять "${node.title}" в базовом маршруте.`;
 const nodePosition = (node, branchIndex) => {
   const config = NODE_POSITIONS[node.branchId] ?? { x: 0, y: 0, dx: 180 };

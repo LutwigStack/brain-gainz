@@ -27,11 +27,11 @@ test('assessment check type labels stay user-facing across supported states', ()
   );
   assert.equal(
     getAssessmentCheckTypeLabel({ strictCheckType: 'checklist', resolvedCheckMethod: 'strict' }),
-    'Чек-лист',
+    'Список условий',
   );
   assert.equal(
     getAssessmentCheckTypeLabel({ strictCheckType: 'manual_strict', resolvedCheckMethod: 'strict' }),
-    'Ручная строгая проверка',
+    'Подтверждение результата',
   );
   assert.equal(
     getAssessmentCheckTypeLabel({ strictCheckType: null, resolvedCheckMethod: 'llm_assisted' }),
@@ -50,7 +50,7 @@ test('assessment expectation copy describes criteria without raw verifier terms'
       strictCheckType: 'checklist',
       resolvedCheckMethod: 'strict',
     }),
-    'Отметьте выполненные пункты: обязательно 1/2.',
+    'Отметьте, что уже выполнено: обязательно 1/2.',
   );
 
   const manualCopy = getAssessmentExpectedInputText({
@@ -213,7 +213,7 @@ test('assessment primary and failed-attempt actions describe the real outcome', 
     {
       visible: true,
       disabled: false,
-      message: 'Сохранить как не зачтено. Отмеченных пунктов нет, XP не изменится.',
+      message: 'Сохранить как не зачтено. Отмеченных условий нет, XP не изменится.',
     },
   );
 
@@ -230,7 +230,7 @@ test('assessment primary and failed-attempt actions describe the real outcome', 
     {
       visible: true,
       disabled: false,
-      message: 'Сохранить как не зачтено. Отмеченные пункты останутся в попытке, XP не изменится.',
+      message: 'Сохранить как не зачтено. Отмеченные условия останутся в попытке, XP не изменится.',
     },
   );
 

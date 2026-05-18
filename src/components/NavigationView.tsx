@@ -1696,9 +1696,12 @@ export const NavigationView = ({
     });
     const failedAttemptSubmittedAnswer = isChecklistCheck ? assessmentSubmittedAnswer : trimmedAnswer || trimmedEvidence;
     const failedAttemptFeedbackSummary = isChecklistCheck
-      ? 'Пока не зачтено: чек-лист не выполнен.'
+      ? 'Пока не зачтено: условия не выполнены.'
       : trimmedEvidence || trimmedAnswer || 'Попытка сохранена: пока не зачтено.';
     const failedAttemptActionLabel = isChecklistCheck ? 'Не получилось' : 'Сохранить попытку';
+    const criteriaHeading = canUseAuthorTools ? `Критерии · ${checkTypeLabel}` : 'Критерии зачёта';
+    const checklistHeading = canUseAuthorTools ? 'Чек-лист проверки' : 'Условия для зачёта';
+    const showAssessmentMethodControls = showAssessmentControls && canUseAuthorTools;
 
     return (
       <PixelSurface frame="inset" padding="sm">
@@ -1850,12 +1853,11 @@ export const NavigationView = ({
                 Освоение
               </PixelText>
               <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
-                {masteryLabel(mastery?.currentLevel)}
                 {mastery?.isVerified
-                  ? ' · подтверждено проверкой'
+                  ? `${masteryLabel(mastery.currentLevel)} · подтверждено проверкой`
                   : mastery?.isSelfMarkedOnly
-                    ? ' · самооценка'
-                    : ' · нет проверки'}
+                    ? `${masteryLabel(mastery.currentLevel)} · самооценка`
+                    : 'Пока нет результата'}
               </PixelText>
             </div>
             <div
@@ -1976,22 +1978,24 @@ export const NavigationView = ({
                     ))}
                 </PixelSelect>
 
-                <PixelSelect
-                  label="Способ проверки"
-                  value={resolvedCheckMethod}
-                  onChange={(event) => setAssessmentCheckMethod(event.target.value as 'strict' | 'llm_assisted')}
-                  disabled={pendingAssessment || strictLocked}
-                  style={{ minHeight: 34, padding: '4px 8px' }}
-                  hint={strictLocked ? `Задан в критериях: ${checkTypeLabel}` : null}
-                >
-                  <option value="strict">Строгая</option>
-                  <option value="llm_assisted">ИИ-проверка</option>
-                </PixelSelect>
+                {showAssessmentMethodControls ? (
+                  <PixelSelect
+                    label="Способ проверки"
+                    value={resolvedCheckMethod}
+                    onChange={(event) => setAssessmentCheckMethod(event.target.value as 'strict' | 'llm_assisted')}
+                    disabled={pendingAssessment || strictLocked}
+                    style={{ minHeight: 34, padding: '4px 8px' }}
+                    hint={strictLocked ? `Задан в критериях: ${checkTypeLabel}` : null}
+                  >
+                    <option value="strict">Строгая</option>
+                    <option value="llm_assisted">ИИ-проверка</option>
+                  </PixelSelect>
+                ) : null}
               </div>
 
               <PixelSurface frame="ghost" padding="sm">
                 <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
-                  Критерии · {checkTypeLabel}
+                  {criteriaHeading}
                 </PixelText>
                 <PixelText as="p" readable size="sm" color="textMuted" style={{ marginTop: 6 }}>
                   {expectedInputText}
@@ -2021,7 +2025,7 @@ export const NavigationView = ({
               {isChecklistCheck ? (
                 <div className="grid gap-2">
                   <PixelText as="p" size="xs" color="textMuted" uppercase style={{ margin: 0 }}>
-                    Чек-лист проверки
+                    {checklistHeading}
                   </PixelText>
                   <div className="grid gap-1">
                     {checklistItems.map((item) => (
@@ -2101,7 +2105,7 @@ export const NavigationView = ({
                 </>
               ) : (
                 <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
-                  Локальная строгая проверка сама сохранит попытку и подтверждение проверки.
+                  Ответ сохранится здесь же и сразу покажет результат.
                 </PixelText>
               )}
 
@@ -2322,7 +2326,7 @@ export const NavigationView = ({
               3 · Результат
             </PixelText>
             <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
-              {latestAttempt ? (latestAttempt.passed ? 'Зачтено' : 'Не зачтено') : 'Появится после проверки'}
+              {latestAttempt ? (latestAttempt.passed ? 'Зачтено' : 'Не зачтено') : 'Появится после ответа'}
             </PixelText>
           </PixelSurface>
         </div>
