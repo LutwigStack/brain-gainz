@@ -1701,7 +1701,10 @@ export const NavigationView = ({
     const failedAttemptActionLabel = isChecklistCheck ? 'Не получилось' : 'Сохранить попытку';
     const criteriaHeading = canUseAuthorTools ? `Критерии · ${checkTypeLabel}` : 'Критерии зачёта';
     const checklistHeading = canUseAuthorTools ? 'Чек-лист проверки' : 'Условия для зачёта';
+    const showLearnerFocusedAssessment = !canUseAuthorTools && mode === 'assessment';
+    const showProgressOverview = !showLearnerFocusedAssessment;
     const showAssessmentMethodControls = showAssessmentControls && canUseAuthorTools;
+    const showAssessmentTargetControls = showAssessmentControls && canUseAuthorTools;
 
     return (
       <PixelSurface frame="inset" padding="sm">
@@ -1847,151 +1850,159 @@ export const NavigationView = ({
             </PixelSurface>
           ) : null}
 
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
-                Освоение
-              </PixelText>
-              <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
-                {mastery?.isVerified
-                  ? `${masteryLabel(mastery.currentLevel)} · подтверждено проверкой`
-                  : mastery?.isSelfMarkedOnly
-                    ? `${masteryLabel(mastery.currentLevel)} · самооценка`
-                    : 'Пока нет результата'}
-              </PixelText>
-            </div>
-            <div
-              className="inline-flex h-9 w-9 items-center justify-center border-2 text-xs font-bold"
-              style={{
-                borderColor: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-line-soft)',
-                color: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-text-muted)',
-                background: 'var(--pixel-panel-inset)',
-              }}
-            >
-              {currentRank || '-'}
-            </div>
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div
-              className="inspector-mastery-status inspector-mastery-status--verified flex items-center justify-between gap-2 border p-2"
-              style={{
-                borderColor: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-line-soft)',
-                background: mastery?.isVerified ? 'rgba(110, 231, 183, 0.08)' : 'var(--pixel-panel-inset)',
-              }}
-            >
-              <span className="flex items-center gap-2">
-                <ShieldCheck size={14} style={{ color: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-text-dim)' }} />
-                <PixelText as="span" size="xs" color="textMuted" uppercase>
-                  подтверждено
-                </PixelText>
-              </span>
-              <PixelText as="span" size="xs" color={mastery?.isVerified ? 'success' : 'textDim'} uppercase>
-                {verifiedRank || '-'} · XP
-              </PixelText>
-            </div>
-            <div
-              className="inspector-mastery-status inspector-mastery-status--self flex items-center justify-between gap-2 border p-2"
-              style={{
-                borderColor: mastery?.isSelfMarkedOnly ? 'var(--pixel-accent)' : 'var(--pixel-line-soft)',
-                background: mastery?.isSelfMarkedOnly ? 'rgba(247, 201, 72, 0.045)' : 'var(--pixel-panel-inset)',
-              }}
-            >
-              <span className="flex items-center gap-2">
-                <Eye size={14} style={{ color: mastery?.isSelfMarkedOnly ? 'var(--pixel-accent)' : 'var(--pixel-text-dim)' }} />
-                <PixelText as="span" size="xs" color="textMuted" uppercase>
-                  самооценка
-                </PixelText>
-              </span>
-              <PixelText as="span" size="xs" color={mastery?.isSelfMarkedOnly ? 'accent' : 'textDim'} uppercase>
-                {selfMarkedRank || '-'} · без XP
-              </PixelText>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-6 gap-1">
-            {masteryLevelItems.map((item, index) => {
-              const isReached = currentRank >= index + 1;
-              const isVerifiedReached = Boolean(mastery?.isVerified && isReached);
-              const isSelfReached = Boolean(mastery?.isSelfMarkedOnly && isReached);
-              const isRequired = routeRequirement?.required_mastery_level === item.value;
-              return (
+          {showProgressOverview ? (
+            <>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                    Освоение
+                  </PixelText>
+                  <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
+                    {mastery?.isVerified
+                      ? `${masteryLabel(mastery.currentLevel)} · подтверждено проверкой`
+                      : mastery?.isSelfMarkedOnly
+                        ? `${masteryLabel(mastery.currentLevel)} · самооценка`
+                        : 'Пока нет результата'}
+                  </PixelText>
+                </div>
                 <div
-                  key={item.value}
-                  title={item.label}
-                  className="flex h-8 items-center justify-center border text-[10px] font-bold"
+                  className="inline-flex h-9 w-9 items-center justify-center border-2 text-xs font-bold"
                   style={{
-                    borderColor: isRequired
-                      ? 'var(--pixel-accent)'
-                      : isVerifiedReached
-                        ? 'var(--pixel-success)'
-                        : isSelfReached
-                          ? 'var(--pixel-accent-muted)'
-                        : 'var(--pixel-line-soft)',
-                    background: isVerifiedReached
-                      ? 'rgba(45, 212, 191, 0.14)'
-                      : isSelfReached
-                        ? 'rgba(247, 201, 72, 0.12)'
-                        : 'var(--pixel-panel-inset)',
-                    color: isRequired
-                      ? 'var(--pixel-accent-glow)'
-                      : isVerifiedReached
-                        ? 'var(--pixel-success)'
-                        : isSelfReached
-                          ? 'var(--pixel-accent)'
-                        : 'var(--pixel-text-dim)',
+                    borderColor: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-line-soft)',
+                    color: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-text-muted)',
+                    background: 'var(--pixel-panel-inset)',
                   }}
                 >
-                  {item.short}
+                  {currentRank || '-'}
                 </div>
-              );
-            })}
-          </div>
+              </div>
 
-          {routeRequirement ? (
-            <div className="flex items-center justify-between gap-2">
-              <PixelText as="span" size="xs" color="textMuted">
-                Маршрут: {routeRequirement.specialization_name}
-              </PixelText>
-              <PixelText as="span" size="xs" color="accent" uppercase>
-                нужно {masteryLabel(routeRequirement.required_mastery_level)}
-              </PixelText>
-            </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div
+                  className="inspector-mastery-status inspector-mastery-status--verified flex items-center justify-between gap-2 border p-2"
+                  style={{
+                    borderColor: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-line-soft)',
+                    background: mastery?.isVerified ? 'rgba(110, 231, 183, 0.08)' : 'var(--pixel-panel-inset)',
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <ShieldCheck size={14} style={{ color: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-text-dim)' }} />
+                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                      подтверждено
+                    </PixelText>
+                  </span>
+                  <PixelText as="span" size="xs" color={mastery?.isVerified ? 'success' : 'textDim'} uppercase>
+                    {verifiedRank || '-'} · XP
+                  </PixelText>
+                </div>
+                <div
+                  className="inspector-mastery-status inspector-mastery-status--self flex items-center justify-between gap-2 border p-2"
+                  style={{
+                    borderColor: mastery?.isSelfMarkedOnly ? 'var(--pixel-accent)' : 'var(--pixel-line-soft)',
+                    background: mastery?.isSelfMarkedOnly ? 'rgba(247, 201, 72, 0.045)' : 'var(--pixel-panel-inset)',
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <Eye size={14} style={{ color: mastery?.isSelfMarkedOnly ? 'var(--pixel-accent)' : 'var(--pixel-text-dim)' }} />
+                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                      самооценка
+                    </PixelText>
+                  </span>
+                  <PixelText as="span" size="xs" color={mastery?.isSelfMarkedOnly ? 'accent' : 'textDim'} uppercase>
+                    {selfMarkedRank || '-'} · без XP
+                  </PixelText>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-6 gap-1">
+                {masteryLevelItems.map((item, index) => {
+                  const isReached = currentRank >= index + 1;
+                  const isVerifiedReached = Boolean(mastery?.isVerified && isReached);
+                  const isSelfReached = Boolean(mastery?.isSelfMarkedOnly && isReached);
+                  const isRequired = routeRequirement?.required_mastery_level === item.value;
+                  return (
+                    <div
+                      key={item.value}
+                      title={item.label}
+                      className="flex h-8 items-center justify-center border text-[10px] font-bold"
+                      style={{
+                        borderColor: isRequired
+                          ? 'var(--pixel-accent)'
+                          : isVerifiedReached
+                            ? 'var(--pixel-success)'
+                            : isSelfReached
+                              ? 'var(--pixel-accent-muted)'
+                              : 'var(--pixel-line-soft)',
+                        background: isVerifiedReached
+                          ? 'rgba(45, 212, 191, 0.14)'
+                          : isSelfReached
+                            ? 'rgba(247, 201, 72, 0.12)'
+                            : 'var(--pixel-panel-inset)',
+                        color: isRequired
+                          ? 'var(--pixel-accent-glow)'
+                          : isVerifiedReached
+                            ? 'var(--pixel-success)'
+                            : isSelfReached
+                              ? 'var(--pixel-accent)'
+                              : 'var(--pixel-text-dim)',
+                      }}
+                    >
+                      {item.short}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {routeRequirement ? (
+                <div className="flex items-center justify-between gap-2">
+                  <PixelText as="span" size="xs" color="textMuted">
+                    Маршрут: {routeRequirement.specialization_name}
+                  </PixelText>
+                  <PixelText as="span" size="xs" color="accent" uppercase>
+                    нужно {masteryLabel(routeRequirement.required_mastery_level)}
+                  </PixelText>
+                </div>
+              ) : null}
+            </>
           ) : null}
 
           {showAssessmentControls ? (
             <div className="grid gap-2">
-              <div className="grid gap-2 sm:grid-cols-2">
-                <PixelSelect
-                  label="Проверенный уровень"
-                  value={assessmentTargetLevel}
-                  onChange={(event) => setAssessmentTargetLevel(event.target.value as MasteryLevel)}
-                  disabled={pendingAssessment}
-                  style={{ minHeight: 34, padding: '4px 8px' }}
-                >
-                  {masteryLevelItems
-                    .filter((item) => item.value !== 'seen')
-                    .map((item) => (
-                      <option key={item.value} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                </PixelSelect>
+              {showAssessmentTargetControls || showAssessmentMethodControls ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {showAssessmentTargetControls ? (
+                    <PixelSelect
+                      label="Проверенный уровень"
+                      value={assessmentTargetLevel}
+                      onChange={(event) => setAssessmentTargetLevel(event.target.value as MasteryLevel)}
+                      disabled={pendingAssessment}
+                      style={{ minHeight: 34, padding: '4px 8px' }}
+                    >
+                      {masteryLevelItems
+                        .filter((item) => item.value !== 'seen')
+                        .map((item) => (
+                          <option key={item.value} value={item.value}>
+                            {item.label}
+                          </option>
+                        ))}
+                    </PixelSelect>
+                  ) : null}
 
-                {showAssessmentMethodControls ? (
-                  <PixelSelect
-                    label="Способ проверки"
-                    value={resolvedCheckMethod}
-                    onChange={(event) => setAssessmentCheckMethod(event.target.value as 'strict' | 'llm_assisted')}
-                    disabled={pendingAssessment || strictLocked}
-                    style={{ minHeight: 34, padding: '4px 8px' }}
-                    hint={strictLocked ? `Задан в критериях: ${checkTypeLabel}` : null}
-                  >
-                    <option value="strict">Строгая</option>
-                    <option value="llm_assisted">ИИ-проверка</option>
-                  </PixelSelect>
-                ) : null}
-              </div>
+                  {showAssessmentMethodControls ? (
+                    <PixelSelect
+                      label="Способ проверки"
+                      value={resolvedCheckMethod}
+                      onChange={(event) => setAssessmentCheckMethod(event.target.value as 'strict' | 'llm_assisted')}
+                      disabled={pendingAssessment || strictLocked}
+                      style={{ minHeight: 34, padding: '4px 8px' }}
+                      hint={strictLocked ? `Задан в критериях: ${checkTypeLabel}` : null}
+                    >
+                      <option value="strict">Строгая</option>
+                      <option value="llm_assisted">ИИ-проверка</option>
+                    </PixelSelect>
+                  ) : null}
+                </div>
+              ) : null}
 
               <PixelSurface frame="ghost" padding="sm">
                 <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
@@ -2282,6 +2293,15 @@ export const NavigationView = ({
     const latestAttempt = nodeFocus.mastery?.latestAttempt ?? null;
     const routeRequirement = nodeFocus.mastery?.routeRequirement ?? null;
     const focusAction = nodeFocus.selectedAction ?? null;
+    const lessonTitle = focusAction?.title ?? nodeFocus.node.title;
+    const lessonTask =
+      focusAction?.details ??
+      nodeFocus.node.summary ??
+      'Ответьте на задание, проверьте результат и посмотрите, как изменится подтвержденный прогресс.';
+    const routeContext = routeRequirement
+      ? `Маршрут: ${routeRequirement.specialization_name} · нужно ${masteryLabel(routeRequirement.required_mastery_level)}`
+      : 'Маршрут: текущий учебный шаг';
+    const resultContext = latestAttempt ? (latestAttempt.passed ? 'Зачтено' : 'Не зачтено') : 'Результат появится после ответа';
 
     return (
       <PixelSurface frame="selected" padding="md" className="navigation-focused-check-flow">
@@ -2291,12 +2311,8 @@ export const NavigationView = ({
               <ShieldCheck size={14} className="text-[var(--pixel-accent)]" /> Проверка
             </span>
           }
-          title={focusAction?.title ?? nodeFocus.node.title}
-          description={
-            focusAction?.details ??
-            nodeFocus.node.summary ??
-            'Ответьте на задание, проверьте результат и посмотрите, как изменится подтвержденный прогресс.'
-          }
+          title={lessonTitle}
+          description={lessonTask}
           aside={
             <PixelText as="span" size="xs" color={latestAttempt?.passed ? 'success' : 'accent'} uppercase>
               {latestAttempt ? (latestAttempt.passed ? 'результат' : 'повтор') : 'учебный поток'}
@@ -2304,31 +2320,13 @@ export const NavigationView = ({
           }
         />
 
-        <div className="navigation-focused-check-flow__meta">
-          <PixelSurface frame="ghost" padding="xs">
-            <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
-              1 · Задание
-            </PixelText>
-            <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
-              {focusAction?.title ?? nodeFocus.node.title}
-            </PixelText>
-          </PixelSurface>
-          <PixelSurface frame="ghost" padding="xs">
-            <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
-              2 · Цель
-            </PixelText>
-            <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
-              {routeRequirement ? `Подтвердить: ${masteryLabel(routeRequirement.required_mastery_level)}` : 'Засчитать прогресс'}
-            </PixelText>
-          </PixelSurface>
-          <PixelSurface frame="ghost" padding="xs">
-            <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
-              3 · Результат
-            </PixelText>
-            <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
-              {latestAttempt ? (latestAttempt.passed ? 'Зачтено' : 'Не зачтено') : 'Появится после ответа'}
-            </PixelText>
-          </PixelSurface>
+        <div className="navigation-focused-check-flow__context">
+          <PixelText as="span" readable size="xs" color="textMuted">
+            {routeContext}
+          </PixelText>
+          <PixelText as="span" readable size="xs" color={latestAttempt?.passed ? 'success' : 'textMuted'}>
+            {resultContext}
+          </PixelText>
         </div>
 
         <div className="navigation-focused-check-flow__actions">

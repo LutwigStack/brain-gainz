@@ -2338,19 +2338,22 @@ textarea:disabled {
     color-mix(in srgb, var(--pixel-panel) 94%, transparent) !important;
 }
 
-.navigation-focused-check-flow__meta {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
-}
-
 .navigation-focused-check-flow__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   margin-top: 10px;
+}
+
+.navigation-focused-check-flow__context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--pixel-line-soft);
 }
 
 .navigation-focused-check-flow__body {
@@ -2837,10 +2840,6 @@ textarea:disabled {
 
   .navigation-focused-check-flow {
     min-height: auto;
-  }
-
-  .navigation-focused-check-flow__meta {
-    grid-template-columns: 1fr;
   }
 
   .navigation-focused-check-flow__actions {
