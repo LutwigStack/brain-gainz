@@ -263,7 +263,7 @@ export const buildTodayRightRail = ({
         : 'нет активного соперника',
     },
     route: {
-      title: planner?.currentStage ?? (route?.isComplete ? 'Маршрут закрыт' : 'Текущий фронт'),
+      title: planner?.currentStage ?? (route?.isComplete ? 'Маршрут закрыт' : 'Следующий шаг'),
       nodeLabel: `${formatCount(route?.routeNodeCount ?? today?.state.content.routeNodeCount ?? 0)} узл.`,
       stageLabel:
         (planner?.currentStageItems.length ?? 0) > 0

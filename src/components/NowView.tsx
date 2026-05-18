@@ -589,7 +589,7 @@ export const NowView = ({
                 <div className="today-run-start">
                   <div className="min-w-0">
                     <PixelText as="p" readable size="sm" className="today-secondary-title">
-                      Начните короткий набор из 3-5 задач: маршрут, слабые места, проверки и текущий фронт.
+                      Начните короткий набор из 3-5 задач: следующий шаг, повторение и проверки.
                     </PixelText>
                     <PixelText as="p" readable size="xs" color="textMuted">
                       Задачи сохраняются: обновление страницы не сбросит активный набор.
@@ -901,7 +901,7 @@ export const NowView = ({
                           <span className="today-weak-row__chips">{renderReasons(item.whyNow)}</span>
                         </span>
                         <PixelText as="span" size="xs" color="accent" uppercase>
-                          Фокус
+                          Повторить
                         </PixelText>
                       </button>
                     ))
@@ -927,14 +927,14 @@ export const NowView = ({
                   Мини-карта
                 </PixelText>
                 <PixelText as="span" size="xs" color="textMuted" uppercase>
-                  фронт маршрута
+                  следующий шаг
                 </PixelText>
               </div>
 
               <div
                 className="today-mini-map"
                 role="img"
-                aria-label="Превью текущего фронта, маршрута и слабого места"
+                aria-label="Превью следующего шага, маршрута и повторения"
                 data-mini-map-preview="non-destructive"
               >
                 <ReferenceAssetImage
@@ -973,7 +973,7 @@ export const NowView = ({
                       />
                     ))}
                     <span className="today-mini-map__front-label">
-                      <Target size={13} /> {miniMapPreview.frontTitle ?? 'Фронт'}
+                      <Target size={13} /> {miniMapPreview.frontTitle ?? 'Следующий шаг'}
                     </span>
                   </>
                 ) : (
@@ -984,7 +984,7 @@ export const NowView = ({
               </div>
 
               <div className="today-mini-map__meta">
-                <span className="today-mini-map__chip today-mini-map__chip--front">Фронт</span>
+                <span className="today-mini-map__chip today-mini-map__chip--front">Следующий шаг</span>
                 <span className="today-mini-map__chip today-mini-map__chip--route">
                   {miniMapPreview.routeTitle ?? 'Маршрут'}
                 </span>
@@ -1019,7 +1019,7 @@ export const NowView = ({
                 {focusedNode && focusedAction && progress ? (
                   <div className="min-w-0">
                     <PixelText as="p" size="xs" color="textMuted" uppercase>
-                      Текущий фокус
+                      Текущее занятие
                     </PixelText>
                     <PixelText as="p" readable size="sm" className="today-secondary-title">
                       {focusedAction.title}

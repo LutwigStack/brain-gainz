@@ -35,6 +35,7 @@ test('learner mode hides author-only surfaces while author mode keeps editing po
   assert.equal(workspaceModeLabels.learner.switchLabel, 'Учусь');
   assert.equal(workspaceModeLabels.author.switchLabel, 'Настраиваю');
   assert.equal(workspaceModeLabels.learner.mapLabel, 'Обзор карты');
+  assert.equal(workspaceModeLabels.learner.assessmentLabel, 'Проверка');
   assert.equal(workspaceModeLabels.author.mapLabel, 'Карта автора');
   assert.equal(canShowAuthorSurface('learner', 'check-metadata'), false);
   assert.equal(canShowAuthorSurface('learner', 'route-authoring'), false);
@@ -45,6 +46,15 @@ test('learner mode hides author-only surfaces while author mode keeps editing po
 test('author mode entry is not a primary learner-path switch', () => {
   assert.equal(shouldShowPrimaryModeSwitch('learner'), false);
   assert.equal(shouldShowPrimaryModeSwitch('author'), true);
+});
+
+test('learner mode copy avoids internal authoring terms', () => {
+  const learnerCopy = Object.values(workspaceModeLabels.learner).join(' ').toLowerCase();
+
+  assert.equal(learnerCopy.includes('инспектор'), false);
+  assert.equal(learnerCopy.includes('фокус'), false);
+  assert.equal(learnerCopy.includes('фронт'), false);
+  assert.equal(learnerCopy.includes('попытки'), false);
 });
 
 test('author action policies keep learner mode read-only for editing and destructive operations', () => {

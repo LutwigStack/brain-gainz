@@ -324,3 +324,60 @@ test('today right rail presents missing data as intentional empty state', () => 
   assert.equal(rail.opponent.title, 'Соперник не назначен');
   assert.equal(rail.opponent.campaignProgressLabel, 'гонка не активна');
 });
+
+test('today state fallback uses learner-facing route language', () => {
+  const rail = buildTodayRightRail({
+    today: {
+      currentSpecialization: null,
+      careerStatus: 'active',
+      mastery: {
+        activeNodeCount: 0,
+        confirmedOrBetterNodeCount: 0,
+        verifiedNodeCount: 0,
+        selfMarkedOnlyNodeCount: 0,
+      },
+      state: {
+        key: 'active_route',
+        label: 'Next',
+        title: 'Start',
+        reason: '',
+        primaryCta: { action: 'open_route_node', label: 'Start' },
+        content: {
+          hasContent: true,
+          nodeCount: 1,
+          openActionCount: 1,
+          totalXp: 0,
+          verifiedNodeCount: 0,
+          selfMarkedOnlyNodeCount: 0,
+          routeNodeCount: 1,
+        },
+      },
+      race: { key: 'learner', title: 'Learner', emblem: 'L', color: '#58f0d0' },
+      route: {
+        routeNodeCount: 1,
+        requiredNodeCount: 1,
+        completedRequiredNodeCount: 0,
+        completionPercent: 0,
+        isComplete: false,
+        items: [],
+        nextItem: null,
+      },
+      planner: {
+        focusItem: null,
+        currentStage: null,
+        currentStageItems: [],
+        nextItems: [],
+        weakSpots: [],
+        readyToVerify: [],
+        hasRouteItems: true,
+      },
+      city: null,
+      activity: null,
+      opponent: null,
+    },
+    todaySession: null,
+  });
+
+  assert.equal(rail.route.title, 'Следующий шаг');
+  assert.equal(rail.route.title.includes('фронт'), false);
+});

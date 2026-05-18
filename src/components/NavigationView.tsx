@@ -3078,7 +3078,7 @@ export const NavigationView = ({
         <div className="navigation-map-workspace min-w-0 space-y-4">
           <PixelSurface frame="secondary" padding="md" className="navigation-map-panel">
             <PixelPanelHeader
-              eyebrow="Граф"
+              eyebrow={canUseAuthorTools ? 'Граф' : 'Карта'}
               title={
                 <span className="flex flex-wrap items-center gap-2">
                   <MapIcon size={20} className="text-[var(--pixel-accent)]" /> Карта задач
@@ -3094,7 +3094,14 @@ export const NavigationView = ({
                     aria-controls="navigation-inspector-rail"
                     style={{ minHeight: 32, padding: '6px 12px', gap: 6 }}
                   >
-                    <Eye size={16} /> {isInspectorCollapsed ? 'Показать инспектор' : 'Скрыть инспектор'}
+                    <Eye size={16} />{' '}
+                    {canUseAuthorTools
+                      ? isInspectorCollapsed
+                        ? 'Показать инспектор'
+                        : 'Скрыть инспектор'
+                      : isInspectorCollapsed
+                        ? 'Показать детали'
+                        : 'Скрыть детали'}
                   </PixelButton>
                   <PixelButton
                     onClick={onRefresh}
@@ -3299,7 +3306,7 @@ export const NavigationView = ({
                       Обзор маршрута
                     </PixelText>
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
-                      {routeItems.length} узл. / {activeRouteTargetIndex >= 0 ? `фронт #${activeRouteTargetIndex + 1}` : 'нет фронта'}
+                      {routeItems.length} узл. / {activeRouteTargetIndex >= 0 ? `шаг #${activeRouteTargetIndex + 1}` : 'нет текущего шага'}
                     </PixelText>
                   </div>
                   <div className="navigation-route-overview__stages">
@@ -3617,7 +3624,7 @@ export const NavigationView = ({
                 <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
                   <div className="flex max-w-full flex-wrap items-center gap-2">
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
-                      Фокус
+                      {canUseAuthorTools ? 'Фокус' : 'Текущий шаг'}
                     </PixelText>
                     <PixelText as="span" readable size="sm">
                       {focusChipNode}
@@ -3654,7 +3661,7 @@ export const NavigationView = ({
                     style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                     title="Показать текущий узел без смены масштаба"
                   >
-                    <Target size={14} /> Фокус
+                    <Target size={14} /> {canUseAuthorTools ? 'Фокус' : 'К текущему'}
                   </PixelButton>
                 ) : null}
                 {mapMutationPendingAction === 'create-node' ? (
@@ -4147,7 +4154,7 @@ export const NavigationView = ({
                   <PixelPanelHeader
                     eyebrow={
                       <span className="inline-flex items-center gap-2">
-                        Инспектор
+                        {canUseAuthorTools ? 'Инспектор' : 'Занятие'}
                         {isFocusLoading ? (
                           <span className="text-[10px] uppercase text-[var(--pixel-text-dim)]">обновляю</span>
                         ) : null}
@@ -4192,7 +4199,7 @@ export const NavigationView = ({
                     </div>
                   </PixelSurface>
 
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label="Режим инспектора">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label={canUseAuthorTools ? 'Режим инспектора' : 'Разделы занятия'}>
                     {([
                       { id: 'overview', label: 'Обзор' },
                       { id: 'route', label: 'Маршрут' },

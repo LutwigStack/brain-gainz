@@ -1521,7 +1521,7 @@ const loadActionRecord = async (database, actionId, campaignId = null) => {
 const DAILY_RUN_OUTCOME_EVENTS = new Set(['completed', 'failed', 'skipped', 'deferred', 'blocked', 'shrunk']);
 
 const dailyRunSourceLabels = {
-  route_front: 'Текущий фронт',
+  route_front: 'Следующий шаг',
   route_next: 'Маршрут',
   weak_spot: 'Повторение',
   recovery_retry: 'Повтор',
