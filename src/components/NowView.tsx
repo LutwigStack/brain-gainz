@@ -37,6 +37,7 @@ import {
   resolveDirectLessonAction,
   type DailyTaskCardViewModel,
 } from './today-dashboard-model';
+import { shouldOpenQuietDailyTasks, shouldShowQuietWeakPanel } from './today-priority-layout';
 import type {
   DailyRunTaskOutcome,
   NodeFocusSnapshot,
@@ -313,7 +314,13 @@ export const NowView = ({
   const hasNoRoute = todayState.key === 'no_route' || todayState.key === 'free_mode' || todayState.key === 'truly_empty';
   const bestDailyTaskCard = dailyTaskCards.find((task) => !task.disabled) ?? null;
   const recoveryIsBestNextAction = bestDailyTaskCard?.state === 'recovery';
-  const showWeakPanel = recoveryIsBestNextAction && (plannerWeakSpots.length > 0 || weakeningItems.length > 0);
+  const weakItemCount = plannerWeakSpots.length + weakeningItems.length;
+  const showWeakPanel = shouldShowQuietWeakPanel({ recoveryIsBestNextAction, weakItemCount });
+  const openDailyTaskDetails = shouldOpenQuietDailyTasks({
+    isDailyRunActive,
+    isDailyRunFinished,
+    dailyTaskCount: dailyTaskCards.length,
+  });
   const singleNextAction = canFinishDailyRun
       ? {
         title: 'Набор готов',
@@ -566,17 +573,13 @@ export const NowView = ({
           </PixelSurface>
 
           <section className="today-daily-tasks">
-            <div className="today-section-heading">
-              <span className="today-section-icon">
-                <ListChecks size={16} />
-              </span>
-              <PixelText as="h3" size="sm" uppercase>
-                Задачи дня
-              </PixelText>
-              <PixelText as="span" size="xs" color="textMuted" uppercase>
-                {activeDailyTaskCount} активных
-              </PixelText>
-            </div>
+            <details className="today-quiet-details today-task-details" open={openDailyTaskDetails}>
+              <summary className="today-quiet-summary">
+                <span>
+                  <ListChecks size={14} /> Задачи дня
+                </span>
+                <span>{activeDailyTaskCount} активных</span>
+              </summary>
 
             <PixelSurface
               frame={isDailyRunActive ? 'selected' : isDailyRunFinished ? 'secondary' : 'ghost'}
@@ -781,9 +784,18 @@ export const NowView = ({
                 </PixelSurface>
               ) : null}
             </div>
+            </details>
           </section>
 
-          <PixelSurface frame="secondary" padding="md" className="today-mastery-panel">
+          <details className="today-quiet-details today-mastery-details">
+            <summary className="today-quiet-summary">
+              <span>
+                <ShieldCheck size={14} /> Уровни освоения
+              </span>
+              <span>{routeCurrentRank || 0}/{masterySteps.length}</span>
+            </summary>
+
+          <PixelSurface frame="secondary" padding="md" className="today-mastery-panel today-quiet-details__content">
             <div className="today-section-heading">
               <span className="today-section-icon">
                 <ShieldCheck size={16} />
@@ -827,6 +839,7 @@ export const NowView = ({
               })}
             </div>
           </PixelSurface>
+          </details>
 
           <div className="today-lower-grid">
             {showWeakPanel ? (
@@ -918,7 +931,15 @@ export const NowView = ({
             </PixelSurface>
             ) : null}
 
-            <PixelSurface frame="secondary" padding="md" className="today-mini-map-panel">
+            <details className="today-quiet-details today-mini-map-details">
+              <summary className="today-quiet-summary">
+                <span>
+                  <MapIcon size={14} /> Мини-карта
+                </span>
+                <span>{miniMapPreview.frontTitle ?? 'маршрут'}</span>
+              </summary>
+
+            <PixelSurface frame="secondary" padding="md" className="today-mini-map-panel today-quiet-details__content">
               <div className="today-section-heading">
                 <span className="today-section-icon">
                   <MapIcon size={16} />
@@ -997,10 +1018,19 @@ export const NowView = ({
                 <MapIcon size={14} /> Открыть карту
               </PixelButton>
             </PixelSurface>
+            </details>
           </div>
 
           {primaryCandidate || focusedNode || optionalItems.length > 0 || remainingNodeActions.length > 0 ? (
-            <PixelSurface frame="secondary" padding="md" className="today-secondary-panel">
+            <details className="today-quiet-details today-secondary-details">
+              <summary className="today-quiet-summary">
+                <span>
+                  <Compass size={14} /> Подробности
+                </span>
+                <span>{extraOptionsCount > 0 ? `${extraOptionsCount} еще` : 'очередь'}</span>
+              </summary>
+
+            <PixelSurface frame="secondary" padding="md" className="today-secondary-panel today-quiet-details__content">
               <div className="today-secondary-grid">
                 {primaryCandidate ? (
                   <div className="min-w-0">
@@ -1058,10 +1088,19 @@ export const NowView = ({
                 </div>
               ) : null}
             </PixelSurface>
+            </details>
           ) : null}
         </main>
 
         <aside className="today-meta-rail" aria-label="Статус гонки, города и соперника">
+          <details className="today-quiet-details today-meta-rail__details">
+            <summary className="today-quiet-summary">
+              <span>
+                <Trophy size={14} /> Прогресс и мир
+              </span>
+              <span>{todayRail.race.xpLabel}</span>
+            </summary>
+            <div className="today-meta-rail__content">
           <PixelSurface
             frame="secondary"
             padding="md"
@@ -1253,6 +1292,8 @@ export const NowView = ({
               </PixelText>
             </PixelSurface>
           ) : null}
+            </div>
+          </details>
         </aside>
       </div>
     </div>

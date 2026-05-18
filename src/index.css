@@ -529,7 +529,7 @@ textarea:disabled {
 .today-dashboard-grid {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
   gap: 12px;
   align-items: start;
 }
@@ -546,7 +546,16 @@ textarea:disabled {
   top: 104px;
 }
 
+.today-meta-rail__content {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  margin-top: 8px;
+}
+
 .today-main-goal-card {
+  position: relative;
+  z-index: 1;
   overflow: hidden;
   border-color: color-mix(in srgb, var(--pixel-accent-muted) 66%, var(--pixel-line)) !important;
   background:
@@ -656,10 +665,81 @@ textarea:disabled {
   min-width: 0;
   grid-template-columns: repeat(5, minmax(130px, 1fr));
   gap: 9px;
+  margin-top: 8px;
+}
+
+.today-quiet-details {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--pixel-line-soft) 72%, transparent);
+  background: rgba(9, 14, 24, 0.28);
+  padding: 8px;
+}
+
+.today-quiet-details[open] {
+  background: rgba(9, 14, 24, 0.36);
+}
+
+.today-quiet-details:not([open]) {
+  opacity: 0.78;
+}
+
+.today-quiet-summary {
+  display: flex;
+  min-width: 0;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--pixel-text-muted);
+  font-family: var(--pixel-font-display);
+  font-size: 10px;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.today-quiet-summary::-webkit-details-marker {
+  display: none;
+}
+
+.today-quiet-summary::after {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
+  transform: rotate(45deg) translateY(-2px);
+}
+
+.today-quiet-details[open] > .today-quiet-summary::after {
+  transform: rotate(225deg) translateY(-2px);
+}
+
+.today-quiet-summary > span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.today-quiet-summary > span:first-child {
+  color: var(--pixel-text);
+}
+
+.today-quiet-summary > span:last-child {
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.today-quiet-details__content {
+  margin-top: 8px;
 }
 
 .today-run-panel {
-  margin-bottom: 12px;
+  margin-top: 8px;
+  margin-bottom: 8px;
 }
 
 .today-run-panel--active {
@@ -1111,14 +1191,14 @@ textarea:disabled {
 .today-task-card {
   display: grid;
   min-width: 0;
-  min-height: 122px;
+  min-height: 106px;
   grid-template-rows: auto 1fr auto;
   gap: 9px;
   border: 1px solid color-mix(in srgb, var(--pixel-line-soft) 84%, transparent);
   background:
-    linear-gradient(180deg, rgba(125, 211, 252, 0.065), transparent 74%),
-    rgba(18, 23, 32, 0.82);
-  padding: 10px;
+    linear-gradient(180deg, rgba(125, 211, 252, 0.04), transparent 74%),
+    rgba(18, 23, 32, 0.68);
+  padding: 9px;
   color: var(--pixel-text);
   text-align: left;
   transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
@@ -1139,8 +1219,8 @@ textarea:disabled {
 .today-task-card--current {
   border-color: color-mix(in srgb, var(--pixel-accent) 74%, var(--pixel-line-soft));
   background:
-    linear-gradient(180deg, rgba(247, 201, 72, 0.11), transparent 72%),
-    rgba(18, 23, 32, 0.9);
+    linear-gradient(180deg, rgba(247, 201, 72, 0.08), transparent 72%),
+    rgba(18, 23, 32, 0.74);
 }
 
 .today-task-card--next {
@@ -1450,8 +1530,8 @@ textarea:disabled {
 
 .today-mastery-panel {
   background:
-    linear-gradient(180deg, rgba(125, 211, 252, 0.05), transparent 78%),
-    var(--pixel-panel) !important;
+    linear-gradient(180deg, rgba(125, 211, 252, 0.03), transparent 78%),
+    rgba(9, 14, 24, 0.42) !important;
 }
 
 .today-mastery-row {
@@ -1621,6 +1701,7 @@ textarea:disabled {
 
 .today-mini-map-panel {
   min-height: 246px;
+  background: rgba(9, 14, 24, 0.42) !important;
 }
 
 .today-mini-map {
@@ -1842,6 +1923,7 @@ textarea:disabled {
 
 .today-rail-card {
   overflow: hidden;
+  background-color: rgba(9, 14, 24, 0.44) !important;
 }
 
 .today-rail-card--empty {
@@ -1849,25 +1931,25 @@ textarea:disabled {
 }
 
 .today-rail-card--race {
-  min-height: 286px;
+  min-height: 228px;
   background:
-    radial-gradient(circle at 50% 16%, rgba(125, 211, 252, 0.18), transparent 38%),
-    linear-gradient(180deg, rgba(15, 23, 42, 0.2), rgba(8, 12, 20, 0.36)),
-    var(--pixel-panel) !important;
+    radial-gradient(circle at 50% 16%, rgba(125, 211, 252, 0.1), transparent 38%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.12), rgba(8, 12, 20, 0.3)),
+    rgba(9, 14, 24, 0.48) !important;
 }
 
 .today-rail-card--city {
   background:
-    radial-gradient(circle at 50% 44%, rgba(125, 211, 252, 0.12), transparent 48%),
+    radial-gradient(circle at 50% 44%, rgba(125, 211, 252, 0.07), transparent 48%),
     linear-gradient(180deg, rgba(16, 185, 129, 0.045), transparent 70%),
-    var(--pixel-panel) !important;
+    rgba(9, 14, 24, 0.48) !important;
 }
 
 .today-rail-card--opponent {
   background:
-    radial-gradient(circle at 18% 34%, rgba(255, 122, 144, 0.13), transparent 34%),
+    radial-gradient(circle at 18% 34%, rgba(255, 122, 144, 0.08), transparent 34%),
     linear-gradient(180deg, rgba(255, 122, 144, 0.035), transparent 72%),
-    var(--pixel-panel) !important;
+    rgba(9, 14, 24, 0.48) !important;
 }
 
 .today-rail-card--empty .today-rail-race-portrait,
@@ -1880,7 +1962,7 @@ textarea:disabled {
 .today-rail-race-portrait {
   position: relative;
   display: grid;
-  height: 142px;
+  height: 104px;
   margin: 12px 0;
   place-items: center;
   border: 2px solid var(--pixel-accent);
@@ -2010,7 +2092,7 @@ textarea:disabled {
 .today-city-visual {
   position: relative;
   display: flex;
-  height: 116px;
+  height: 88px;
   align-items: end;
   justify-content: center;
   gap: 5px;
@@ -2137,7 +2219,7 @@ textarea:disabled {
   position: relative;
   display: flex;
   min-width: 0;
-  min-height: 76px;
+  min-height: 62px;
   align-items: center;
   gap: 10px;
   margin: 12px 0;
