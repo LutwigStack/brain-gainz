@@ -94,6 +94,7 @@ import {
   getSelfMarkedAssessmentCopy,
   getNavigationMapShellClassName,
   shouldShowNavigationInspectorRail,
+  shouldUseCompactAssessmentResultLayout,
   shouldUseFocusedLearnerLessonScreen,
 } from './learner-lesson-layout';
 import type {
@@ -1399,8 +1400,16 @@ export const NavigationView = ({
       );
     }
 
+    const assessmentPanelClassName = [
+      'navigation-assessment-panel',
+      latestAttemptPassed ? 'navigation-assessment-panel--passed' : null,
+      showFailedResultState ? 'navigation-assessment-panel--failed' : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
     return (
-      <PixelSurface frame="inset" padding="sm">
+      <PixelSurface frame="inset" padding="sm" className={assessmentPanelClassName}>
         <PixelStack gap="sm">
           <PixelSurface frame="ghost" padding="xs">
             <PixelText as="p" size="xs" color="textDim" uppercase>
@@ -2020,7 +2029,7 @@ export const NavigationView = ({
           ) : null}
 
           {showAssessmentControls ? (
-            <div className="grid gap-2">
+            <div className="navigation-assessment-controls grid gap-2">
               {showAssessmentTargetControls || showAssessmentMethodControls ? (
                 <div className="grid gap-2 sm:grid-cols-2">
                   {showAssessmentTargetControls ? (
@@ -2189,7 +2198,14 @@ export const NavigationView = ({
               ) : null}
                 </>
               ) : (
-                <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+                <PixelText
+                  as="p"
+                  readable
+                  size="xs"
+                  color="textMuted"
+                  className="navigation-assessment-autosave-note"
+                  style={{ margin: 0 }}
+                >
                   Ответ сохранится здесь же и сразу покажет результат.
                 </PixelText>
               )}
@@ -2197,6 +2213,7 @@ export const NavigationView = ({
               <PixelSurface
                 frame="ghost"
                 padding="xs"
+                className="navigation-assessment-readiness"
                 style={{
                   borderColor: assessmentValidationTone,
                   boxShadow: `inset 2px 2px 0 var(--pixel-line), inset -2px -2px 0 ${assessmentValidationTone}`,
@@ -2223,7 +2240,7 @@ export const NavigationView = ({
                 <PixelSurface
                   frame="ghost"
                   padding="sm"
-                  className="inspector-primary-action"
+                  className="inspector-primary-action navigation-result-card navigation-result-card--passed"
                   style={{ borderColor: 'var(--pixel-success)' }}
                 >
                   <PixelStack gap="xs">
@@ -2273,7 +2290,7 @@ export const NavigationView = ({
                 <PixelSurface
                   frame="ghost"
                   padding="sm"
-                  className="inspector-primary-action"
+                  className="inspector-primary-action navigation-result-card navigation-result-card--failed"
                   style={{ borderColor: 'var(--pixel-accent)' }}
                 >
                   <PixelStack gap="xs">
@@ -2469,6 +2486,15 @@ export const NavigationView = ({
     const latestAttempt = nodeFocus.mastery?.latestAttempt ?? null;
     const routeRequirement = nodeFocus.mastery?.routeRequirement ?? null;
     const focusAction = nodeFocus.selectedAction ?? null;
+    const latestAttemptPassed = Boolean(latestAttempt?.passed);
+    const latestAttemptFailed = Boolean(latestAttempt && !latestAttempt.passed);
+    const isRetryingFailedAttempt =
+      latestAttemptFailed && retryingAssessmentAttemptId === latestAttempt?.id;
+    const useCompactResultLayout = shouldUseCompactAssessmentResultLayout({
+      hasPassedAttempt: latestAttemptPassed,
+      hasFailedAttempt: latestAttemptFailed,
+      isRetryingFailedAttempt,
+    });
     const lessonTitle = focusAction?.title ?? nodeFocus.node.title;
     const lessonTask =
       focusAction?.details ??
@@ -2480,7 +2506,18 @@ export const NavigationView = ({
     const resultContext = latestAttempt ? (latestAttempt.passed ? 'Зачтено' : 'Не зачтено') : 'Результат появится после ответа';
 
     return (
-      <PixelSurface frame="selected" padding="md" className="navigation-focused-check-flow">
+      <PixelSurface
+        frame="selected"
+        padding="md"
+        className={[
+          'navigation-focused-check-flow',
+          useCompactResultLayout ? 'navigation-focused-check-flow--result' : null,
+          latestAttemptPassed ? 'navigation-focused-check-flow--passed' : null,
+          useCompactResultLayout && latestAttemptFailed ? 'navigation-focused-check-flow--failed' : null,
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
         <PixelPanelHeader
           eyebrow={
             <span className="flex items-center gap-2">

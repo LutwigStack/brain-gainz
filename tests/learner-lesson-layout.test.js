@@ -7,6 +7,7 @@ import {
   getPassedAssessmentResultState,
   getSelfMarkedAssessmentCopy,
   shouldShowNavigationInspectorRail,
+  shouldUseCompactAssessmentResultLayout,
   shouldUseFocusedLearnerLessonScreen,
 } from '../src/components/learner-lesson-layout.ts';
 
@@ -132,4 +133,31 @@ test('self mark copy stays human and secondary', () => {
     resultMessage: 'Сохранено как личная отметка.',
     noticeText: 'Сохранено как личная отметка. Без зачета и XP.',
   });
+});
+
+test('compact result layout turns off while retrying a failed attempt', () => {
+  assert.equal(
+    shouldUseCompactAssessmentResultLayout({
+      hasPassedAttempt: true,
+      hasFailedAttempt: false,
+      isRetryingFailedAttempt: false,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldUseCompactAssessmentResultLayout({
+      hasPassedAttempt: false,
+      hasFailedAttempt: true,
+      isRetryingFailedAttempt: false,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldUseCompactAssessmentResultLayout({
+      hasPassedAttempt: false,
+      hasFailedAttempt: true,
+      isRetryingFailedAttempt: true,
+    }),
+    false,
+  );
 });

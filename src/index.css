@@ -3082,6 +3082,40 @@ textarea:disabled {
     padding: 8px !important;
   }
 
+  .navigation-focused-check-flow--result .navigation-assessment-controls {
+    gap: 6px;
+  }
+
+  .navigation-focused-check-flow--result .navigation-result-card {
+    order: -4;
+  }
+
+  .navigation-focused-check-flow--result .navigation-assessment-readiness,
+  .navigation-focused-check-flow--result .navigation-assessment-autosave-note {
+    display: none;
+  }
+
+  .navigation-focused-check-flow--result .navigation-lesson-criteria {
+    order: 2;
+  }
+
+  .navigation-focused-check-flow--result .navigation-lesson-criteria-list,
+  .navigation-focused-check-flow--result textarea {
+    order: 3;
+  }
+
+  .navigation-focused-check-flow--result .navigation-result-card > div {
+    gap: 6px !important;
+  }
+
+  .navigation-focused-check-flow--result .navigation-result-card .grid.gap-2.sm\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .navigation-focused-check-flow--result .navigation-result-card p {
+    margin-top: 0 !important;
+  }
+
   .navigation-focused-check-flow__body .navigation-lesson-criteria-item {
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 6px;

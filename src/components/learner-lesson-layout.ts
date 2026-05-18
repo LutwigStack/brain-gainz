@@ -17,6 +17,12 @@ export type FailedAssessmentResultStateInput = {
   feedbackSummary?: string | null;
 };
 
+export type CompactAssessmentResultLayoutInput = {
+  hasPassedAttempt: boolean;
+  hasFailedAttempt: boolean;
+  isRetryingFailedAttempt: boolean;
+};
+
 const singleColumnMapShellClassName = 'navigation-map-shell grid min-w-0 items-start gap-3 xl:grid-cols-1';
 
 const splitMapShellClassName =
@@ -68,3 +74,9 @@ export const getSelfMarkedAssessmentCopy = () => ({
   resultMessage: 'Сохранено как личная отметка.',
   noticeText: 'Сохранено как личная отметка. Без зачета и XP.',
 });
+
+export const shouldUseCompactAssessmentResultLayout = ({
+  hasPassedAttempt,
+  hasFailedAttempt,
+  isRetryingFailedAttempt,
+}: CompactAssessmentResultLayoutInput) => hasPassedAttempt || (hasFailedAttempt && !isRetryingFailedAttempt);
