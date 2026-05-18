@@ -89,6 +89,7 @@ import {
   type WorkspaceMode,
 } from './mode-boundary';
 import {
+  getPassedAssessmentResultState,
   getNavigationMapShellClassName,
   shouldShowNavigationInspectorRail,
   shouldUseFocusedLearnerLessonScreen,
@@ -1701,6 +1702,12 @@ export const NavigationView = ({
         })
       : null;
     const latestAttemptPassed = Boolean(mastery?.latestAttempt?.passed);
+    const passedResultState =
+      latestAttemptPassed && mastery?.latestAttempt
+        ? getPassedAssessmentResultState({
+            targetMasteryLabel: masteryLabel(mastery.latestAttempt.target_mastery_level),
+          })
+        : null;
     const assessmentInputsDisabled = pendingAssessment || isEditorArchived || latestAttemptPassed;
     const assessmentReadinessMessage = latestAttemptPassed
       ? 'Результат сохранен. Переходите к следующему шагу.'
@@ -2206,11 +2213,31 @@ export const NavigationView = ({
                 >
                   <PixelStack gap="xs">
                     <PixelText as="p" size="xs" color="success" uppercase style={{ margin: 0 }}>
-                      Зачтено
+                      {passedResultState?.statusLabel ?? 'Зачтено'}
                     </PixelText>
                     <PixelText as="p" readable size="sm" style={{ margin: 0 }}>
                       {latestAttemptResultCopy?.message ?? 'Прогресс сохранен.'}
                     </PixelText>
+                    {passedResultState ? (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] p-2">
+                          <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                            {passedResultState.progressLabel}
+                          </PixelText>
+                          <PixelText as="p" readable size="sm" color="success" style={{ marginTop: 4 }}>
+                            {passedResultState.progressValue}
+                          </PixelText>
+                        </div>
+                        <div className="border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] p-2">
+                          <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                            {passedResultState.xpLabel}
+                          </PixelText>
+                          <PixelText as="p" readable size="sm" color="success" style={{ marginTop: 4 }}>
+                            {passedResultState.xpValue}
+                          </PixelText>
+                        </div>
+                      </div>
+                    ) : null}
                     {mastery.latestAttempt?.feedback_summary ? (
                       <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
                         {mastery.latestAttempt.feedback_summary}
@@ -2223,7 +2250,7 @@ export const NavigationView = ({
                       fullWidth
                       style={{ minHeight: 36, padding: '8px 10px', gap: 6 }}
                     >
-                      <ChevronRight size={15} /> Следующий шаг
+                      <ChevronRight size={15} /> {passedResultState?.primaryActionLabel ?? 'Следующий шаг'}
                     </PixelButton>
                   </PixelStack>
                 </PixelSurface>

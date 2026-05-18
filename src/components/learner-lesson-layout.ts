@@ -9,6 +9,10 @@ export type NavigationLessonLayoutInput = {
   isInspectorCollapsed: boolean;
 };
 
+export type PassedAssessmentResultStateInput = {
+  targetMasteryLabel: string;
+};
+
 const singleColumnMapShellClassName = 'navigation-map-shell grid min-w-0 items-start gap-3 xl:grid-cols-1';
 
 const splitMapShellClassName =
@@ -31,3 +35,14 @@ export const shouldShowNavigationInspectorRail = ({
   isFocusedLearnerLessonScreen,
   isInspectorCollapsed,
 }: NavigationLessonLayoutInput) => !isFocusedLearnerLessonScreen && !isInspectorCollapsed;
+
+export const getPassedAssessmentResultState = ({
+  targetMasteryLabel,
+}: PassedAssessmentResultStateInput) => ({
+  statusLabel: 'Зачтено',
+  progressLabel: 'Прогресс обновлен',
+  progressValue: targetMasteryLabel,
+  xpLabel: 'XP обновлены',
+  xpValue: 'XP обновлены',
+  primaryActionLabel: 'Следующий шаг',
+});

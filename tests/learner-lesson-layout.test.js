@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   getNavigationMapShellClassName,
+  getPassedAssessmentResultState,
   shouldShowNavigationInspectorRail,
   shouldUseFocusedLearnerLessonScreen,
 } from '../src/components/learner-lesson-layout.ts';
@@ -87,5 +88,21 @@ test('focused lesson layout keeps the map shell single-column', () => {
       isInspectorCollapsed: false,
     }),
     /380px/,
+  );
+});
+
+test('passed assessment result puts progress XP and next step first', () => {
+  assert.deepEqual(
+    getPassedAssessmentResultState({
+      targetMasteryLabel: 'Подтвердил',
+    }),
+    {
+      statusLabel: 'Зачтено',
+      progressLabel: 'Прогресс обновлен',
+      progressValue: 'Подтвердил',
+      xpLabel: 'XP обновлены',
+      xpValue: 'XP обновлены',
+      primaryActionLabel: 'Следующий шаг',
+    },
   );
 });
