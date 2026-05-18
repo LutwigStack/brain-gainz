@@ -740,12 +740,29 @@ export default function App() {
     setActiveTab('map');
   };
 
+  const getTodayRouteFocusSelection = () => {
+    const routeFocusItem = nowSnapshot?.today?.planner?.focusItem ?? nowSnapshot?.today?.route?.nextItem ?? null;
+
+    if (routeFocusItem?.node_id != null) {
+      return {
+        nodeId: routeFocusItem.node_id,
+        actionId: null,
+        skillId: null,
+      };
+    }
+
+    return navigationSelection;
+  };
+
   const handleOpenTodayRouteMap = async () => {
+    const selection = workspaceMode === 'learner' ? getTodayRouteFocusSelection() : navigationSelection;
+
     requestMapInspectorMode('overview');
     setNavigationBranchFilterId(null);
+    setNavigationSelection(selection);
     requestMapRouteFilter();
     if (normalizedActiveTab === 'map') {
-      await loadNavigationSnapshot(navigationSelection, { branchFilterId: null });
+      await loadNavigationSnapshot(selection, { branchFilterId: null });
       return;
     }
     setActiveTab('map');
@@ -1893,10 +1910,7 @@ export default function App() {
       icon: TreePine,
       active: Boolean(selectedCampaign && normalizedActiveTab === 'map' && mapInspectorRequest?.mode !== 'assessment'),
       disabled: !selectedCampaign,
-      onClick: () => {
-        requestMapInspectorMode('overview');
-        setActiveTab('map');
-      },
+      onClick: handleOpenTodayRouteMap,
     },
     {
       key: 'assessment',

@@ -10,7 +10,7 @@ The first learner loop is understandable: choose CS campaign template, land on T
 
 ## Flow Covered
 
-- Opened clean browser origin on `http://127.0.0.1:5207/`.
+- Opened a clean browser origin on a local Vite dev server.
 - Chose "Бакалавриат по информатике" template.
 - Started the first lesson from Today.
 - Saved an incomplete checklist as a failed attempt with "Не получилось" and verified it recorded "Не зачтено" without XP/progress.

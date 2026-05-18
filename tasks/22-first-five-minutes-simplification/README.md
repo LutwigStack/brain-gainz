@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -56,3 +56,8 @@ Excludes:
 - `done` - [workstreams/04-top-shell-priority-pass.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/04-top-shell-priority-pass.md)
 - `done` - [workstreams/05-mobile-first-screen-pass.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/05-mobile-first-screen-pass.md)
 - `done` - [workstreams/06-browser-qa-first-five-minutes.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/06-browser-qa-first-five-minutes.md)
+
+## QA Artifacts
+
+- [first-five-minutes-qa.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/first-five-minutes-qa.md)
+- [qa/](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/qa/)

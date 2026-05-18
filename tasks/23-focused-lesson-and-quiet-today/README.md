@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -64,5 +64,10 @@ Excludes:
 - `done` - [workstreams/01-focused-lesson-screen.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/23-focused-lesson-and-quiet-today/workstreams/01-focused-lesson-screen.md)
 - `done` - [workstreams/02-quiet-today-priority-pass.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/23-focused-lesson-and-quiet-today/workstreams/02-quiet-today-priority-pass.md)
 - `done` - [workstreams/03-mobile-navigation-clarity.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/23-focused-lesson-and-quiet-today/workstreams/03-mobile-navigation-clarity.md)
-- `planned` - [workstreams/04-documentation-status-cleanup.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/23-focused-lesson-and-quiet-today/workstreams/04-documentation-status-cleanup.md)
-- `planned` - [workstreams/05-browser-qa-lesson-focus.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/23-focused-lesson-and-quiet-today/workstreams/05-browser-qa-lesson-focus.md)
+- `done` - [workstreams/04-documentation-status-cleanup.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/23-focused-lesson-and-quiet-today/workstreams/04-documentation-status-cleanup.md)
+- `done` - [workstreams/05-browser-qa-lesson-focus.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/23-focused-lesson-and-quiet-today/workstreams/05-browser-qa-lesson-focus.md)
+
+## QA Artifacts
+
+- [lesson-focus-qa.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/23-focused-lesson-and-quiet-today/lesson-focus-qa.md)
+- [qa/](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/23-focused-lesson-and-quiet-today/qa/)

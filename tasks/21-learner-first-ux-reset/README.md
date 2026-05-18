@@ -2,7 +2,7 @@
 
 ## Status
 
-`active`
+`done`
 
 ## Goal
 
@@ -53,9 +53,14 @@ Excludes:
 ## Workstreams
 
 - `done` - [workstreams/01-learner-author-mode-boundary.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/21-learner-first-ux-reset/workstreams/01-learner-author-mode-boundary.md)
-- `planned` - [workstreams/02-first-session-funnel.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/21-learner-first-ux-reset/workstreams/02-first-session-funnel.md)
-- `planned` - [workstreams/03-today-single-next-action.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/21-learner-first-ux-reset/workstreams/03-today-single-next-action.md)
+- `done` - [workstreams/02-first-session-funnel.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/21-learner-first-ux-reset/workstreams/02-first-session-funnel.md)
+- `done` - [workstreams/03-today-single-next-action.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/21-learner-first-ux-reset/workstreams/03-today-single-next-action.md)
 - `done` - [workstreams/04-check-as-focused-flow.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/21-learner-first-ux-reset/workstreams/04-check-as-focused-flow.md)
 - `done` - [workstreams/05-map-read-only-learning-overview.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/21-learner-first-ux-reset/workstreams/05-map-read-only-learning-overview.md)
 - `done` - [workstreams/06-ux-copy-and-empty-states.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/21-learner-first-ux-reset/workstreams/06-ux-copy-and-empty-states.md)
 - `done` - [workstreams/07-browser-qa-first-10-minutes.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/21-learner-first-ux-reset/workstreams/07-browser-qa-first-10-minutes.md)
+
+## QA Artifacts
+
+- [first-10-minutes-qa.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/21-learner-first-ux-reset/first-10-minutes-qa.md)
+- [qa/](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/21-learner-first-ux-reset/qa/)
