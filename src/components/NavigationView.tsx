@@ -3114,7 +3114,11 @@ export const NavigationView = ({
               }
             />
 
-            <div className="navigation-map-body mt-3 min-w-0 space-y-3">
+            <div
+              className={`navigation-map-body mt-3 min-w-0 space-y-3${
+                showFocusedLearnerCheckFlow ? ' navigation-map-body--focused-check' : ''
+              }`}
+            >
               {canUseAuthorTools || canEditGraph ? (
               <PixelSurface frame="secondary" padding="sm" className="navigation-map-controls navigation-map-structure-controls">
                 <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(220px,360px)_minmax(0,1fr)] md:items-end">
