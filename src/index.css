@@ -2623,6 +2623,10 @@ textarea:disabled {
     height: 13px;
   }
 
+  .app-shell-nav--mobile .app-nav-button__description {
+    display: none;
+  }
+
   main {
     padding-top: 0 !important;
   }
@@ -2891,14 +2895,43 @@ textarea:disabled {
   }
 
   .app-shell-nav--mobile .app-nav-button {
-    flex: 0 0 34px;
-    width: 34px;
+    flex: 0 0 auto;
+    min-width: 58px;
+    width: auto;
     justify-content: center !important;
+    padding: 4px 6px !important;
+    gap: 4px !important;
     font-size: 8.5px !important;
   }
 
   .app-shell-nav--mobile .app-nav-button__copy {
-    display: none;
+    display: block;
+    max-width: 58px;
+  }
+
+  .app-shell-nav--mobile .app-nav-button__label {
+    display: block;
+    max-width: 58px;
+    font-size: 8.5px;
+    line-height: 1;
+  }
+
+  .app-shell-nav--mobile .app-nav-button--mobile-current {
+    min-width: 72px;
+  }
+
+  .app-shell-nav--mobile .app-nav-button--mobile-current .app-nav-button__copy,
+  .app-shell-nav--mobile .app-nav-button--mobile-current .app-nav-button__label {
+    max-width: 72px;
+  }
+
+  .app-cockpit-shell--learner .app-shell-nav--mobile .app-nav-button--mobile-secondary:not(.app-nav-button--active) {
+    min-width: 52px;
+    opacity: 0.62;
+  }
+
+  .app-cockpit-shell--learner .app-shell-nav--mobile .app-nav-button--mobile-primary:not(.app-nav-button--active) {
+    min-width: 64px;
   }
 
   .campaign-card__title {

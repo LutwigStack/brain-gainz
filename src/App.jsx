@@ -46,6 +46,7 @@ import {
   shouldShowShellNavDescriptions,
   workspaceModeLabels,
 } from './components/mode-boundary.ts';
+import { getMobileNavigationPriorityClass } from './components/mobile-navigation-priority.ts';
 import { ReferenceAssetImage } from './assets/ReferenceAssetImage.tsx';
 import {
   csBachelorReferenceAssets,
@@ -1939,7 +1940,7 @@ export default function App() {
             aria-current={item.active ? 'page' : undefined}
             className={`app-nav-button ${item.active ? 'app-nav-button--active' : ''} ${
               usesLearnerPriorityShell && item.secondary ? 'app-nav-button--secondary' : ''
-            }`}
+            } ${variant === 'mobile' ? getMobileNavigationPriorityClass(item) : ''}`}
           >
             <Icon size={16} />
             <span className="app-nav-button__copy">
@@ -1957,7 +1958,7 @@ export default function App() {
         aria-pressed={showSettings}
         className={`app-nav-button ${showSettings ? 'app-nav-button--active' : ''} ${
           usesLearnerPriorityShell ? 'app-nav-button--secondary' : ''
-        }`}
+        } ${variant === 'mobile' ? getMobileNavigationPriorityClass({ active: showSettings, secondary: usesLearnerPriorityShell }) : ''}`}
       >
         <Settings size={16} />
         <span className="app-nav-button__copy">
