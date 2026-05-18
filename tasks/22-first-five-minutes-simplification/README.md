@@ -51,7 +51,7 @@ Excludes:
 ## Workstreams
 
 - `done` - [workstreams/01-direct-start-lesson-flow.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/01-direct-start-lesson-flow.md)
-- `planned` - [workstreams/02-hide-author-mode-from-learner-path.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/02-hide-author-mode-from-learner-path.md)
+- `done` - [workstreams/02-hide-author-mode-from-learner-path.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/02-hide-author-mode-from-learner-path.md)
 - `planned` - [workstreams/03-learner-language-cleanup.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/03-learner-language-cleanup.md)
 - `planned` - [workstreams/04-top-shell-priority-pass.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/04-top-shell-priority-pass.md)
 - `planned` - [workstreams/05-mobile-first-screen-pass.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/05-mobile-first-screen-pass.md)

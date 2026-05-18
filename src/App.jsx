@@ -39,7 +39,7 @@ import { buildGraphEdgeCreatePayload } from './application/map-edge-payloads.ts'
 import { createNavigationFollowUpPayload } from './application/navigation-follow-up.ts';
 import { buildMapNodeCreatePayload } from './application/map-node-payloads.ts';
 import { getRuntimeProfile } from './platform/runtime.js';
-import { requiresAuthorConfirmation, workspaceModeLabels } from './components/mode-boundary.ts';
+import { requiresAuthorConfirmation, shouldShowPrimaryModeSwitch, workspaceModeLabels } from './components/mode-boundary.ts';
 import { ReferenceAssetImage } from './assets/ReferenceAssetImage.tsx';
 import {
   csBachelorReferenceAssets,
@@ -1811,6 +1811,16 @@ export default function App() {
     }
   };
 
+  const activateAuthorModeFromSettings = () => {
+    setShowSettings(false);
+    activateAuthorMode();
+  };
+
+  const activateLearnerModeFromSettings = () => {
+    setShowSettings(false);
+    activateLearnerMode();
+  };
+
   const todayContext = nowSnapshot?.today ?? null;
   const contextSpecialization = todayContext?.currentSpecialization ?? null;
   const contextRace = todayContext?.race ?? null;
@@ -2225,7 +2235,7 @@ export default function App() {
                   </div>
 
                   <div className="app-top-actions" title={runtime.dataBoundaryLabel}>
-                    {selectedCampaign ? (
+                    {selectedCampaign && shouldShowPrimaryModeSwitch(workspaceMode) ? (
                       <div className="app-mode-switch" role="group" aria-label="Режим работы">
                         <PixelButton
                           tone={workspaceMode === 'learner' ? 'accent' : 'ghost'}
@@ -2310,6 +2320,28 @@ export default function App() {
                   </PixelText>
                 </div>
               </PixelSurface>
+
+              {selectedCampaign ? (
+                <PixelSurface frame="ghost" padding="sm">
+                  <PixelStack gap="xs">
+                    <PixelText as="p" size="xs" color="textMuted" uppercase>
+                      Кампания
+                    </PixelText>
+                    <PixelText as="p" readable size="sm" color="textMuted">
+                      Учебный путь остается основным. Настройку кампании открывайте только когда нужно менять узлы, проверки или маршрут.
+                    </PixelText>
+                    {workspaceMode === 'author' ? (
+                      <PixelButton tone="accent" onClick={activateLearnerModeFromSettings} fullWidth>
+                        <Eye size={16} /> Вернуться к учебе
+                      </PixelButton>
+                    ) : (
+                      <PixelButton tone="ghost" onClick={activateAuthorModeFromSettings} fullWidth>
+                        <PencilLine size={16} /> Открыть настройку кампании
+                      </PixelButton>
+                    )}
+                  </PixelStack>
+                </PixelSurface>
+              ) : null}
 
               <PixelSelect
                 id="source-language"

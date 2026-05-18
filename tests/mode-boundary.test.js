@@ -8,6 +8,7 @@ import {
   isAuthorDestructiveAction,
   learnerEntryPoints,
   requiresAuthorConfirmation,
+  shouldShowPrimaryModeSwitch,
   workspaceModeLabels,
 } from '../src/components/mode-boundary.ts';
 
@@ -39,6 +40,11 @@ test('learner mode hides author-only surfaces while author mode keeps editing po
   assert.equal(canShowAuthorSurface('learner', 'route-authoring'), false);
   assert.equal(canShowAuthorSurface('author', 'check-metadata'), true);
   assert.equal(canShowAuthorSurface('author', 'graph-editing'), true);
+});
+
+test('author mode entry is not a primary learner-path switch', () => {
+  assert.equal(shouldShowPrimaryModeSwitch('learner'), false);
+  assert.equal(shouldShowPrimaryModeSwitch('author'), true);
 });
 
 test('author action policies keep learner mode read-only for editing and destructive operations', () => {
