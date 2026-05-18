@@ -36,6 +36,8 @@ type PrimaryActionCopyInput = {
 
 type FailedAttemptStateInput = {
   isAutoStrictCheck: boolean;
+  isChecklistCheck?: boolean;
+  hasChecklistSelection?: boolean;
   pendingAssessment: boolean;
   pendingSelfMark?: boolean;
   isEditorArchived?: boolean;
@@ -249,6 +251,8 @@ export const getAssessmentPrimaryActionLabel = ({
 
 export const getAssessmentFailedAttemptState = ({
   isAutoStrictCheck,
+  isChecklistCheck = false,
+  hasChecklistSelection = false,
   pendingAssessment,
   pendingSelfMark = false,
   isEditorArchived = false,
@@ -256,7 +260,7 @@ export const getAssessmentFailedAttemptState = ({
   hasVerifierEvidence,
   resolvedCheckMethod,
 }: FailedAttemptStateInput) => {
-  if (isAutoStrictCheck) {
+  if (isAutoStrictCheck && !isChecklistCheck) {
     return {
       visible: false,
       disabled: true,
@@ -277,6 +281,16 @@ export const getAssessmentFailedAttemptState = ({
       visible: true,
       disabled: true,
       message: 'Сохраняю текущее действие…',
+    };
+  }
+
+  if (isAutoStrictCheck && isChecklistCheck) {
+    return {
+      visible: true,
+      disabled: false,
+      message: hasChecklistSelection
+        ? 'Сохранить как не зачтено. Отмеченные пункты останутся в попытке, XP не изменится.'
+        : 'Сохранить как не зачтено. Отмеченных пунктов нет, XP не изменится.',
     };
   }
 

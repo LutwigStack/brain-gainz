@@ -202,6 +202,40 @@ test('assessment primary and failed-attempt actions describe the real outcome', 
 
   assert.deepEqual(
     getAssessmentFailedAttemptState({
+      isAutoStrictCheck: true,
+      isChecklistCheck: true,
+      hasChecklistSelection: false,
+      pendingAssessment: false,
+      hasAnswer: false,
+      hasVerifierEvidence: false,
+      resolvedCheckMethod: 'strict',
+    }),
+    {
+      visible: true,
+      disabled: false,
+      message: 'Сохранить как не зачтено. Отмеченных пунктов нет, XP не изменится.',
+    },
+  );
+
+  assert.deepEqual(
+    getAssessmentFailedAttemptState({
+      isAutoStrictCheck: true,
+      isChecklistCheck: true,
+      hasChecklistSelection: true,
+      pendingAssessment: false,
+      hasAnswer: false,
+      hasVerifierEvidence: false,
+      resolvedCheckMethod: 'strict',
+    }),
+    {
+      visible: true,
+      disabled: false,
+      message: 'Сохранить как не зачтено. Отмеченные пункты останутся в попытке, XP не изменится.',
+    },
+  );
+
+  assert.deepEqual(
+    getAssessmentFailedAttemptState({
       isAutoStrictCheck: false,
       pendingAssessment: false,
       hasAnswer: false,

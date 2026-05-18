@@ -1680,6 +1680,8 @@ export const NavigationView = ({
     });
     const failedAttemptState = getAssessmentFailedAttemptState({
       isAutoStrictCheck,
+      isChecklistCheck,
+      hasChecklistSelection,
       pendingAssessment,
       pendingSelfMark,
       isEditorArchived,
@@ -1687,6 +1689,11 @@ export const NavigationView = ({
       hasVerifierEvidence,
       resolvedCheckMethod,
     });
+    const failedAttemptSubmittedAnswer = isChecklistCheck ? assessmentSubmittedAnswer : trimmedAnswer || trimmedEvidence;
+    const failedAttemptFeedbackSummary = isChecklistCheck
+      ? 'Пока не зачтено: чек-лист не выполнен.'
+      : trimmedEvidence || trimmedAnswer || 'Попытка сохранена: пока не зачтено.';
+    const failedAttemptActionLabel = isChecklistCheck ? 'Не получилось' : 'Сохранить попытку';
 
     return (
       <PixelSurface frame="inset" padding="sm">
@@ -2164,15 +2171,17 @@ export const NavigationView = ({
                         targetMasteryLevel: assessmentTargetLevel,
                         checkMethod: resolvedCheckMethod,
                         passed: false,
-                        submittedAnswer: trimmedAnswer || trimmedEvidence,
-                        feedbackSummary: trimmedEvidence || trimmedAnswer || 'Попытка сохранена: пока не зачтено.',
+                        submittedAnswer: failedAttemptSubmittedAnswer,
+                        feedbackSummary: failedAttemptFeedbackSummary,
                         evidencePayload: null,
+                        checklistResults: isChecklistCheck ? assessmentChecklistValues : null,
+                        usesAutomaticStrictCheck: isChecklistCheck,
                       })
                     }
                     disabled={failedAttemptState.disabled}
                     style={{ minHeight: 30, padding: '6px 8px', gap: 6 }}
                   >
-                    <X size={14} /> Сохранить попытку
+                    <X size={14} /> {failedAttemptActionLabel}
                   </PixelButton>
                 ) : null}
               </div>

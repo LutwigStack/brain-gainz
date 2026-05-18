@@ -55,4 +55,4 @@ Excludes:
 - `done` - [workstreams/03-learner-language-cleanup.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/03-learner-language-cleanup.md)
 - `done` - [workstreams/04-top-shell-priority-pass.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/04-top-shell-priority-pass.md)
 - `done` - [workstreams/05-mobile-first-screen-pass.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/05-mobile-first-screen-pass.md)
-- `planned` - [workstreams/06-browser-qa-first-five-minutes.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/06-browser-qa-first-five-minutes.md)
+- `done` - [workstreams/06-browser-qa-first-five-minutes.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/22-first-five-minutes-simplification/workstreams/06-browser-qa-first-five-minutes.md)
