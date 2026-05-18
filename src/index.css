@@ -2263,6 +2263,14 @@ textarea:disabled {
   margin-top: 12px;
 }
 
+.navigation-focused-check-flow__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
 .navigation-focused-check-flow__body {
   margin-top: 12px;
 }
@@ -2746,6 +2754,11 @@ textarea:disabled {
   }
 
   .navigation-focused-check-flow__meta {
+    grid-template-columns: 1fr;
+  }
+
+  .navigation-focused-check-flow__actions {
+    display: grid;
     grid-template-columns: 1fr;
   }
 

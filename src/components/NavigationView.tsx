@@ -88,6 +88,11 @@ import {
   type AuthorAction,
   type WorkspaceMode,
 } from './mode-boundary';
+import {
+  getNavigationMapShellClassName,
+  shouldShowNavigationInspectorRail,
+  shouldUseFocusedLearnerLessonScreen,
+} from './learner-lesson-layout';
 import type {
   BarrierType,
   GraphEdgeType,
@@ -2322,6 +2327,23 @@ export const NavigationView = ({
           </PixelSurface>
         </div>
 
+        <div className="navigation-focused-check-flow__actions">
+          <PixelButton
+            tone="ghost"
+            onClick={() => handleInspectorModeChange('overview')}
+            style={{ minHeight: 32, padding: '6px 10px', gap: 6 }}
+          >
+            <MapIcon size={14} /> Обзор карты
+          </PixelButton>
+          <PixelButton
+            tone="ghost"
+            onClick={onOpenToday}
+            style={{ minHeight: 32, padding: '6px 10px', gap: 6 }}
+          >
+            <ChevronRight size={14} /> Сегодня
+          </PixelButton>
+        </div>
+
         <div className="navigation-focused-check-flow__body">
           {renderMasteryPanel(nodeFocus, 'assessment')}
         </div>
@@ -3063,15 +3085,24 @@ export const NavigationView = ({
     );
   };
 
-  const mapShellClassName = isInspectorCollapsed
-    ? 'navigation-map-shell grid min-w-0 items-start gap-3 xl:grid-cols-1'
-    : 'navigation-map-shell grid min-w-0 items-start gap-3 xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]';
+  const showFocusedLearnerCheckFlow = shouldUseFocusedLearnerLessonScreen({
+    canUseAuthorTools,
+    inspectorMode,
+    hasFocusedNode: Boolean(focus?.node),
+  });
+  const mapShellClassName = getNavigationMapShellClassName({
+    isFocusedLearnerLessonScreen: showFocusedLearnerCheckFlow,
+    isInspectorCollapsed,
+  });
+  const showNavigationInspectorRail = shouldShowNavigationInspectorRail({
+    isFocusedLearnerLessonScreen: showFocusedLearnerCheckFlow,
+    isInspectorCollapsed,
+  });
   const inspectorRailClassName =
     'navigation-inspector-rail min-w-0 max-w-full self-start xl:sticky xl:top-3 xl:justify-self-end xl:w-[380px] 2xl:w-[420px]';
   const mapCanvasClassName = `${
     focus?.node && !isInspectorCollapsed ? 'h-[340px]' : 'h-[420px]'
   } navigation-map-canvas min-w-0 max-w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] sm:h-[clamp(680px,calc(100dvh-220px),1040px)]`;
-  const showFocusedLearnerCheckFlow = Boolean(!canUseAuthorTools && inspectorMode === 'assessment' && focus?.node);
 
   return (
     <div className="space-y-3">
@@ -3085,6 +3116,11 @@ export const NavigationView = ({
 
       <section className={mapShellClassName}>
         <div className="navigation-map-workspace min-w-0 space-y-4">
+          {showFocusedLearnerCheckFlow && focus?.node ? (
+            <div className="navigation-focused-lesson-screen">
+              {renderLearnerFocusedCheckFlow(focus)}
+            </div>
+          ) : (
           <PixelSurface frame="secondary" padding="md" className="navigation-map-panel">
             <PixelPanelHeader
               eyebrow={canUseAuthorTools ? 'Граф' : 'Карта'}
@@ -4134,10 +4170,11 @@ export const NavigationView = ({
 
             </div>
           </PixelSurface>
+          )}
 
         </div>
 
-        {!isInspectorCollapsed ? (
+        {showNavigationInspectorRail ? (
         <div id="navigation-inspector-rail" className={inspectorRailClassName}>
           <PixelStack gap="md">
             <PixelSurface frame="secondary" padding="md" className="navigation-inspector-panel">
