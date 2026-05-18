@@ -690,8 +690,8 @@ const evaluateStrictAssessmentCheck = ({ strictCheckType, config, input, timesta
       passed,
       score: requiredItems.length === 0 ? 0 : (requiredItems.length - missingItems.length) / requiredItems.length,
       feedbackSummary: passed
-        ? 'Все обязательные пункты чек-листа отмечены.'
-        : `Не отмечены пункты чек-листа: ${missingItems.map((item) => item.label ?? item.id ?? item.key).join(', ')}.`,
+        ? 'Все обязательные условия отмечены.'
+        : `Не отмечены условия: ${missingItems.map((item) => item.label ?? item.id ?? item.key).join(', ')}.`,
       evidenceExtra: {
         expected_summary: `${requiredItems.length} required checklist items`,
         selected_items: Array.from(selected),

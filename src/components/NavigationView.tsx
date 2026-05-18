@@ -185,6 +185,23 @@ const masteryLevelItems: Array<{ value: MasteryLevel; label: string; short: stri
 const masteryLabel = (value: string | null | undefined) =>
   masteryLevelItems.find((item) => item.value === value)?.label ?? 'Нет';
 
+const parseChecklistSelectionFromEvidence = (evidencePayload?: string | null): Record<string, boolean> => {
+  if (!evidencePayload) {
+    return {};
+  }
+
+  try {
+    const evidence = JSON.parse(evidencePayload) as { selected_items?: unknown };
+    if (!Array.isArray(evidence.selected_items)) {
+      return {};
+    }
+
+    return Object.fromEntries(evidence.selected_items.map((item) => [String(item), true]));
+  } catch {
+    return {};
+  }
+};
+
 const linearAlgebraTemplateValue = 'template:linear-algebra';
 type MapCanvasMode = 'free' | 'layers';
 type MapEditTool = 'select' | 'create' | 'connect';
@@ -723,8 +740,8 @@ export const NavigationView = ({
     setAssessmentAnswer('');
     setAssessmentResultId('');
     setAssessmentEvidence('');
-    setAssessmentChecklistValues({});
-  }, [focus?.mastery?.latestAttempt?.id]);
+    setAssessmentChecklistValues(parseChecklistSelectionFromEvidence(focus?.mastery?.latestAttempt?.evidence_payload));
+  }, [focus?.mastery?.latestAttempt?.evidence_payload, focus?.mastery?.latestAttempt?.id]);
 
   const navigationNodeIndex = new globalThis.Map<number, NavigationNodeSummary>();
 
@@ -1683,6 +1700,12 @@ export const NavigationView = ({
           targetMasteryLabel: masteryLabel(mastery.latestAttempt.target_mastery_level),
         })
       : null;
+    const latestAttemptPassed = Boolean(mastery?.latestAttempt?.passed);
+    const assessmentInputsDisabled = pendingAssessment || isEditorArchived || latestAttemptPassed;
+    const assessmentReadinessMessage = latestAttemptPassed
+      ? 'Результат сохранен. Переходите к следующему шагу.'
+      : assessmentValidationState.message;
+    const assessmentReadinessTone = latestAttemptPassed ? 'var(--pixel-success)' : assessmentValidationTone;
     const primaryAssessmentActionLabel = getAssessmentPrimaryActionLabel({
       pendingAssessment,
       isAutoStrictCheck,
@@ -2082,7 +2105,7 @@ export const NavigationView = ({
                               [item.id]: event.target.checked,
                             }))
                           }
-                          disabled={pendingAssessment || isEditorArchived}
+                          disabled={assessmentInputsDisabled}
                         />
                         <PixelText as="span" readable size="sm">
                           {item.label}
@@ -2102,7 +2125,7 @@ export const NavigationView = ({
                 value={assessmentAnswer}
                 onChange={(event) => setAssessmentAnswer(event.target.value)}
                 placeholder={answerInputCopy.placeholder}
-                disabled={pendingAssessment || isEditorArchived}
+                disabled={assessmentInputsDisabled}
                 hint={answerInputCopy.helperText}
                 style={{ minHeight: 68 }}
               />
@@ -2119,7 +2142,7 @@ export const NavigationView = ({
                     ? 'Например: результат совпал с критерием, ответ можно зачесть'
                     : 'Например: коротко, почему ответ засчитан'
                 }
-                disabled={pendingAssessment || isEditorArchived}
+                disabled={assessmentInputsDisabled}
                 hint={verifierEvidenceHint}
                 style={{ minHeight: 78 }}
               />
@@ -2135,7 +2158,7 @@ export const NavigationView = ({
                     value={assessmentResultId}
                     onChange={(event) => setAssessmentResultId(event.target.value)}
                     placeholder={getAssessmentResultIdPlaceholder(resolvedCheckMethod)}
-                    disabled={pendingAssessment || isEditorArchived}
+                    disabled={assessmentInputsDisabled}
                     hint="Для авторского режима и аудита. Обычно достаточно подтверждения проверки выше."
                     style={{ minHeight: 34, padding: '4px 8px' }}
                   />
@@ -2158,89 +2181,123 @@ export const NavigationView = ({
                 }}
               >
                 <div className="flex items-start gap-2">
-                  {canSubmitAssessmentPass ? (
+                  {canSubmitAssessmentPass || latestAttemptPassed ? (
                     <CheckCircle2 size={14} style={{ color: 'var(--pixel-success)', marginTop: 2 }} />
                   ) : (
-                    <ShieldCheck size={14} style={{ color: assessmentValidationTone, marginTop: 2 }} />
+                    <ShieldCheck size={14} style={{ color: assessmentReadinessTone, marginTop: 2 }} />
                   )}
                   <div>
                     <PixelText as="p" size="xs" color="textMuted" uppercase style={{ margin: 0 }}>
                       Готовность к действию
                     </PixelText>
                     <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
-                      {assessmentValidationState.message}
+                      {assessmentReadinessMessage}
                     </PixelText>
                   </div>
                 </div>
               </PixelSurface>
 
-              <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
-                <PixelStack gap="xs">
-                  <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
-                    Основное действие
-                  </PixelText>
-                <PixelButton
-                  tone="accent"
-                  onClick={() =>
-                    void onSubmitAssessment({
-                      targetMasteryLevel: assessmentTargetLevel,
-                      checkMethod: resolvedCheckMethod,
-                      passed: true,
-                      submittedAnswer: assessmentSubmittedAnswer,
-                      feedbackSummary: trimmedEvidence || trimmedResultId,
-                      evidencePayload,
-                      checklistResults: isChecklistCheck ? assessmentChecklistValues : null,
-                      usesAutomaticStrictCheck: isAutoStrictCheck,
-                    })
-                  }
-                  disabled={!assessmentValidationState.ready}
-                  fullWidth
-                  style={{ minHeight: 36, padding: '8px 10px', gap: 6 }}
+              {latestAttemptPassed ? (
+                <PixelSurface
+                  frame="ghost"
+                  padding="sm"
+                  className="inspector-primary-action"
+                  style={{ borderColor: 'var(--pixel-success)' }}
                 >
-                  <ShieldCheck size={15} /> {primaryAssessmentActionLabel}
-                </PixelButton>
-                </PixelStack>
-              </PixelSurface>
-
-              <div className="grid gap-2 sm:grid-cols-2">
-                <PixelButton
-                  tone="ghost"
-                  onClick={() => void onMarkSelfMastery('seen')}
-                  disabled={pendingSelfMark || pendingAssessment || isEditorArchived}
-                  className="inspector-self-mark-button"
-                  style={{ minHeight: 30, padding: '6px 8px', gap: 6 }}
-                >
-                  <Eye size={14} /> Сам отметил без XP
-                </PixelButton>
-                {failedAttemptState.visible ? (
+                  <PixelStack gap="xs">
+                    <PixelText as="p" size="xs" color="success" uppercase style={{ margin: 0 }}>
+                      Зачтено
+                    </PixelText>
+                    <PixelText as="p" readable size="sm" style={{ margin: 0 }}>
+                      {latestAttemptResultCopy?.message ?? 'Прогресс сохранен.'}
+                    </PixelText>
+                    {mastery.latestAttempt?.feedback_summary ? (
+                      <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+                        {mastery.latestAttempt.feedback_summary}
+                      </PixelText>
+                    ) : null}
+                    <PixelButton
+                      tone="accent"
+                      onClick={onOpenToday}
+                      disabled={pendingAssessment || pendingSelfMark}
+                      fullWidth
+                      style={{ minHeight: 36, padding: '8px 10px', gap: 6 }}
+                    >
+                      <ChevronRight size={15} /> Следующий шаг
+                    </PixelButton>
+                  </PixelStack>
+                </PixelSurface>
+              ) : (
+                <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
+                  <PixelStack gap="xs">
+                    <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                      Основное действие
+                    </PixelText>
                   <PixelButton
-                    tone="ghost"
+                    tone="accent"
                     onClick={() =>
                       void onSubmitAssessment({
                         targetMasteryLevel: assessmentTargetLevel,
                         checkMethod: resolvedCheckMethod,
-                        passed: false,
-                        submittedAnswer: failedAttemptSubmittedAnswer,
-                        feedbackSummary: failedAttemptFeedbackSummary,
-                        evidencePayload: null,
+                        passed: true,
+                        submittedAnswer: assessmentSubmittedAnswer,
+                        feedbackSummary: trimmedEvidence || trimmedResultId,
+                        evidencePayload,
                         checklistResults: isChecklistCheck ? assessmentChecklistValues : null,
-                        usesAutomaticStrictCheck: isChecklistCheck,
+                        usesAutomaticStrictCheck: isAutoStrictCheck,
                       })
                     }
-                    disabled={failedAttemptState.disabled}
+                    disabled={!assessmentValidationState.ready}
+                    fullWidth
+                    style={{ minHeight: 36, padding: '8px 10px', gap: 6 }}
+                  >
+                    <ShieldCheck size={15} /> {primaryAssessmentActionLabel}
+                  </PixelButton>
+                  </PixelStack>
+                </PixelSurface>
+              )}
+
+              {!latestAttemptPassed ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <PixelButton
+                    tone="ghost"
+                    onClick={() => void onMarkSelfMastery('seen')}
+                    disabled={pendingSelfMark || pendingAssessment || isEditorArchived}
+                    className="inspector-self-mark-button"
                     style={{ minHeight: 30, padding: '6px 8px', gap: 6 }}
                   >
-                    <X size={14} /> {failedAttemptActionLabel}
+                    <Eye size={14} /> Отметить для себя
                   </PixelButton>
-                ) : null}
-              </div>
-              {failedAttemptState.visible ? (
+                  {failedAttemptState.visible ? (
+                    <PixelButton
+                      tone="ghost"
+                      onClick={() =>
+                        void onSubmitAssessment({
+                          targetMasteryLevel: assessmentTargetLevel,
+                          checkMethod: resolvedCheckMethod,
+                          passed: false,
+                          submittedAnswer: failedAttemptSubmittedAnswer,
+                          feedbackSummary: failedAttemptFeedbackSummary,
+                          evidencePayload: null,
+                          checklistResults: isChecklistCheck ? assessmentChecklistValues : null,
+                          usesAutomaticStrictCheck: isChecklistCheck,
+                        })
+                      }
+                      disabled={failedAttemptState.disabled}
+                      style={{ minHeight: 30, padding: '6px 8px', gap: 6 }}
+                    >
+                      <X size={14} /> {failedAttemptActionLabel}
+                    </PixelButton>
+                  ) : null}
+                </div>
+              ) : null}
+              {failedAttemptState.visible && !latestAttemptPassed ? (
                 <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
                   {failedAttemptState.message}
                 </PixelText>
               ) : null}
 
-              {mastery?.latestAttempt ? (
+              {mastery?.latestAttempt && !latestAttemptPassed ? (
                 <PixelSurface
                   frame="ghost"
                   padding="xs"
@@ -2343,7 +2400,7 @@ export const NavigationView = ({
           title={lessonTitle}
           aside={
             <PixelText as="span" size="xs" color={latestAttempt?.passed ? 'success' : 'accent'} uppercase>
-              {latestAttempt ? (latestAttempt.passed ? 'результат' : 'повтор') : 'учебный поток'}
+              {latestAttempt ? (latestAttempt.passed ? 'результат' : 'повтор') : 'занятие'}
             </PixelText>
           }
         />

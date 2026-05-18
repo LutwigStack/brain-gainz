@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -33,3 +33,9 @@ Create:
 - remaining technical terms are listed
 - screenshots cover desktop and mobile lesson states
 - tests, lint, and build pass
+
+## QA Notes
+
+- report: `tasks/24-human-readable-lesson-flow/human-readable-lesson-qa.md`
+- desktop and 390px mobile both pass the open -> failed attempt -> passed attempt -> next step loop
+- console warning/error check was clean in both viewports

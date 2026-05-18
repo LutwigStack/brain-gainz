@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -60,4 +60,4 @@ Excludes:
 - `done` - [workstreams/03-task-and-criteria-emphasis.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/24-human-readable-lesson-flow/workstreams/03-task-and-criteria-emphasis.md)
 - `done` - [workstreams/04-metadata-disclosure-pass.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/24-human-readable-lesson-flow/workstreams/04-metadata-disclosure-pass.md)
 - `done` - [workstreams/05-mobile-lesson-readability.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/24-human-readable-lesson-flow/workstreams/05-mobile-lesson-readability.md)
-- `planned` - [workstreams/06-browser-qa-human-readable-lesson.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/24-human-readable-lesson-flow/workstreams/06-browser-qa-human-readable-lesson.md)
+- `done` - [workstreams/06-browser-qa-human-readable-lesson.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/24-human-readable-lesson-flow/workstreams/06-browser-qa-human-readable-lesson.md)
