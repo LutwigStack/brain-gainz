@@ -3022,6 +3022,77 @@ textarea:disabled {
     min-height: 260px;
   }
 
+  .navigation-focused-check-flow {
+    padding: 10px !important;
+  }
+
+  .navigation-focused-check-flow h3 {
+    font-size: 16px !important;
+    line-height: 1.25 !important;
+    overflow-wrap: anywhere;
+  }
+
+  .navigation-focused-check-flow__task {
+    gap: 4px;
+    margin-top: 8px;
+    padding: 9px;
+  }
+
+  .navigation-focused-check-flow__task-text {
+    font-size: 13px !important;
+    line-height: 1.35 !important;
+  }
+
+  .navigation-focused-check-flow__context {
+    gap: 3px 8px;
+    margin-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .navigation-focused-check-flow__actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .navigation-focused-check-flow__actions button {
+    justify-content: center;
+    min-height: 30px !important;
+    padding: 5px 6px !important;
+  }
+
+  .navigation-focused-check-flow__body {
+    margin-top: 8px;
+  }
+
+  .navigation-focused-check-flow__body .grid.gap-2.sm\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .navigation-focused-check-flow__body .grid.gap-2.sm\:grid-cols-2 button {
+    justify-content: center;
+    min-height: 30px !important;
+    padding: 5px 6px !important;
+    font-size: 11px !important;
+  }
+
+  .navigation-focused-check-flow__body .navigation-lesson-criteria,
+  .navigation-focused-check-flow__body .inspector-primary-action {
+    padding: 8px !important;
+  }
+
+  .navigation-focused-check-flow__body .navigation-lesson-criteria-item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 6px;
+    min-height: 38px;
+    padding: 7px 8px;
+  }
+
+  .navigation-focused-check-flow__body .navigation-lesson-criteria-item__badge {
+    padding: 1px 4px;
+  }
+
   .today-dashboard-title,
   .today-main-goal-title {
     font-size: 18px !important;
