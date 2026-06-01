@@ -90,6 +90,9 @@ export interface TodayRightRailViewModel {
     campaignProgressLabel: string;
     scoreLabel: string;
     stateLabel: string;
+    controlLabel: string;
+    targetLabel: string;
+    nextActionLabel: string;
   };
   route: {
     title: string;
@@ -197,6 +200,7 @@ export const buildTodayRightRail = ({
   const route = today?.route ?? null;
   const planner = today?.planner ?? null;
   const opponent = today?.opponent ?? null;
+  const cityControl = today?.cityControl ?? null;
   const currentSpecialization = today?.currentSpecialization ?? null;
   const routeCompletionPercent = clampPercent(route?.completionPercent ?? 0);
   const opponentPressurePercent = clampPercent(opponent?.pressure ?? 0);
@@ -241,29 +245,39 @@ export const buildTodayRightRail = ({
       districts,
     },
     opponent: {
-      title: currentSpecialization ? 'ИИ-соперник' : 'Соперник не назначен',
-      subtitle: opponent
-        ? `${formatCount(opponent.daysElapsed)} дн. в маршруте`
-        : currentSpecialization
-          ? 'давление появится после старта маршрута'
-          : 'выберите карьерный маршрут',
-      hasOpponent: Boolean(opponent),
+      title: cityControl?.opponent.name ?? (currentSpecialization ? 'ИИ-соперник' : 'Соперник не назначен'),
+      subtitle: cityControl
+        ? `${cityControl.summary.label}: ${cityControl.summary.reason}`
+        : opponent
+          ? `${formatCount(opponent.daysElapsed)} дн. в маршруте`
+          : currentSpecialization
+            ? 'давление появится после старта маршрута'
+            : 'выберите учебный маршрут',
+      hasOpponent: Boolean(opponent || cityControl),
       userProgressPercent: routeCompletionPercent,
-      opponentProgressPercent: opponentPressurePercent,
-      campaignProgressLabel: opponent
-        ? `вы ${routeCompletionPercent}% / ИИ ${opponentPressurePercent}%`
-        : 'гонка не активна',
-      scoreLabel: opponent ? `${formatCount(opponent.score)} очков` : 'без счета',
-      stateLabel: opponent
-        ? opponentPressurePercent > routeCompletionPercent
-          ? 'ИИ впереди'
-          : opponentPressurePercent === routeCompletionPercent
-            ? 'ровная гонка'
-            : 'вы впереди'
-        : 'нет активного соперника',
+      opponentProgressPercent: cityControl ? cityControl.summary.pressure : opponentPressurePercent,
+      campaignProgressLabel: cityControl
+        ? `контроль ${cityControl.summary.controlScore}% / давление ${cityControl.summary.pressure}%`
+        : opponent
+          ? `вы ${routeCompletionPercent}% / ИИ ${opponentPressurePercent}%`
+          : 'город без давления',
+      scoreLabel: cityControl
+        ? `${formatCount(cityControl.opponent.xp)} XP влияния`
+        : opponent ? `${formatCount(opponent.score)} очков` : 'без счета',
+      stateLabel: cityControl
+        ? cityControl.opponent.pressureLabel
+        : opponent
+          ? opponentPressurePercent > routeCompletionPercent
+            ? 'ИИ впереди'
+            : opponentPressurePercent === routeCompletionPercent
+              ? 'ровная гонка'
+              : 'вы впереди'
+          : 'нет активного соперника',
+      controlLabel: cityControl?.summary.label ?? 'Город без давления',
+      targetLabel: cityControl?.opponent.targetObjectTitle ?? 'Цель не выбрана',
+      nextActionLabel: cityControl?.summary.nextActionLabel ?? 'Продолжить маршрут',
     },
-    route: {
-      title: planner?.currentStage ?? (route?.isComplete ? 'Маршрут закрыт' : 'Следующий шаг'),
+    route: {      title: planner?.currentStage ?? (route?.isComplete ? 'Маршрут закрыт' : 'Следующий шаг'),
       nodeLabel: `${formatCount(route?.routeNodeCount ?? today?.state.content.routeNodeCount ?? 0)} узл.`,
       stageLabel:
         (planner?.currentStageItems.length ?? 0) > 0

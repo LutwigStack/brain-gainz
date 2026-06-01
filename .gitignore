@@ -52,4 +52,5 @@ map-*-snapshot.md
 ui-*.png
 ui-*-snapshot.md
 output/
+test-results/
 tasks/**/ux-safety-regression-qa-checklist.md

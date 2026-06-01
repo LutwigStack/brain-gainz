@@ -700,6 +700,23 @@ export const runCampaignMigrations = async (database) => {
     )
   `);
 
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS campaign_opponents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      persona_key TEXT NOT NULL,
+      xp INTEGER NOT NULL DEFAULT 0,
+      momentum INTEGER NOT NULL DEFAULT 1,
+      pressure_level TEXT NOT NULL DEFAULT 'calm' CHECK (pressure_level IN ('calm', 'watch', 'attack', 'breach')),
+      target_object_id TEXT,
+      last_turn_resolved_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (campaign_id) REFERENCES campaigns (id)
+    )
+  `);
+
   await ensureColumn(database, 'spheres', 'campaign_id', 'INTEGER');
   await ensureColumn(database, 'daily_sessions', 'campaign_id', 'INTEGER');
   await ensureColumn(database, 'skills', 'primary_stat_id', 'INTEGER');
@@ -775,6 +792,7 @@ export const runCampaignMigrations = async (database) => {
   await database.execute('CREATE INDEX IF NOT EXISTS idx_mastery_events_campaign_node ON mastery_events (campaign_id, node_id, active)');
   await database.execute('CREATE INDEX IF NOT EXISTS idx_mastery_events_source ON mastery_events (campaign_id, source_type, source_id)');
   await database.execute('CREATE INDEX IF NOT EXISTS idx_assessment_attempts_campaign_node ON assessment_attempts (campaign_id, node_id)');
+  await database.execute('CREATE INDEX IF NOT EXISTS idx_campaign_opponents_campaign_id ON campaign_opponents (campaign_id)');
   await repairAssessmentIdempotencyBoundaries(database);
 
   const developerCampaign = await ensureDeveloperMainCampaign(database);

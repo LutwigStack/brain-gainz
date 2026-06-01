@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -99,14 +99,14 @@ Excludes:
 
 ## Workstreams
 
-- `planned` - [workstreams/01-control-and-opponent-domain.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/01-control-and-opponent-domain.md)
-- `planned` - [workstreams/02-city-object-mapping.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/02-city-object-mapping.md)
-- `planned` - [workstreams/03-opponent-xp-and-pressure.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/03-opponent-xp-and-pressure.md)
-- `planned` - [workstreams/04-today-command-center.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/04-today-command-center.md)
-- `planned` - [workstreams/05-map-control-overlay.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/05-map-control-overlay.md)
-- `planned` - [workstreams/06-inspector-and-assessment-control-copy.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/06-inspector-and-assessment-control-copy.md)
-- `planned` - [workstreams/07-wind-rose-strategy-view.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/07-wind-rose-strategy-view.md)
-- `planned` - [workstreams/08-tuning-and-browser-qa.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/08-tuning-and-browser-qa.md)
+- `done` - [workstreams/01-control-and-opponent-domain.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/01-control-and-opponent-domain.md)
+- `done` - [workstreams/02-city-object-mapping.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/02-city-object-mapping.md)
+- `done` - [workstreams/03-opponent-xp-and-pressure.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/03-opponent-xp-and-pressure.md)
+- `done` - [workstreams/04-today-command-center.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/04-today-command-center.md)
+- `done` - [workstreams/05-map-control-overlay.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/05-map-control-overlay.md)
+- `done` - [workstreams/06-inspector-and-assessment-control-copy.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/06-inspector-and-assessment-control-copy.md)
+- `done` - [workstreams/07-wind-rose-strategy-view.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/07-wind-rose-strategy-view.md)
+- `done` - [workstreams/08-tuning-and-browser-qa.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/workstreams/08-tuning-and-browser-qa.md)
 
 ## Suggested Sequence
 

@@ -102,7 +102,7 @@ test('passed assessment result puts progress XP and next step first', () => {
     }),
     {
       statusLabel: 'Зачтено',
-      progressLabel: 'Прогресс обновлен',
+      progressLabel: 'Контроль закреплен',
       progressValue: 'Подтвердил',
       xpLabel: 'XP обновлены',
       xpValue: 'XP обновлены',
@@ -118,8 +118,8 @@ test('failed assessment result puts reason and retry first', () => {
     }),
     {
       statusLabel: 'Не зачтено',
-      message: 'Прогресс и XP не изменились.',
-      reasonLabel: 'Что осталось',
+      message: 'Участок оспаривается. Прогресс и XP не изменились.',
+      reasonLabel: 'Что вернуть под контроль',
       reasonValue: 'Не отмечены пункты: Файл сохранен.',
       primaryActionLabel: 'Попробовать еще раз',
       secondaryActionLabel: 'Отметить для себя',

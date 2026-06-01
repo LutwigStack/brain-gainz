@@ -99,6 +99,9 @@ export interface DailySessionEvent {
 
 export type DailyRunState = 'not_started' | 'active' | 'completed' | 'abandoned';
 export type DailyRunTaskOutcome = 'pending' | 'completed' | 'failed' | 'skipped' | 'deferred';
+export type NodeControlState = 'unclaimed' | 'scouted' | 'controlled' | 'fortified' | 'weakened' | 'contested' | 'lost';
+export type ObjectControlState = 'secure' | 'developing' | 'weakening' | 'contested' | 'lost_ground';
+export type OpponentPressureLevel = 'calm' | 'watch' | 'attack' | 'breach';
 
 export interface DailyRunTask {
   id: number;
@@ -199,6 +202,56 @@ export interface RouteProgressItem {
   is_required: number;
   is_complete: boolean;
   is_actionable?: boolean;
+  control_state?: NodeControlState;
+  control_label?: string;
+  control_reason?: string;
+}
+
+export interface CityControlObject {
+  key: string;
+  title: string;
+  state: ObjectControlState;
+  label: string;
+  controlScore: number;
+  pressure: number;
+  totalNodeCount: number;
+  requiredNodeCount: number;
+  nextActionLabel: string;
+  reason: string;
+  counts: Record<NodeControlState, number>;
+}
+
+export interface CityControlSnapshot {
+  opponent: {
+    name: string;
+    personaKey: string;
+    xp: number;
+    momentum: number;
+    pressureLevel: OpponentPressureLevel;
+    pressureLabel: string;
+    targetObjectKey: string | null;
+    targetObjectTitle: string | null;
+    lastTurnResolvedAt?: string | null;
+  };
+  summary: {
+    state: ObjectControlState;
+    label: string;
+    reason: string;
+    nextActionLabel: string;
+    controlledNodeCount: number;
+    weakenedNodeCount: number;
+    contestedNodeCount: number;
+    controlScore: number;
+    pressure: number;
+  };
+  objects: CityControlObject[];
+  nodes: Array<RouteProgressItem & {
+    control_state: NodeControlState;
+    control_label: string;
+    control_reason: string;
+    object_key: string;
+    object_title: string;
+  }>;
 }
 
 export interface TodaySnapshot {
@@ -286,6 +339,7 @@ export interface TodaySnapshot {
     pressure: number;
     score: number;
   } | null;
+  cityControl?: CityControlSnapshot | null;
 }
 
 export interface NowDashboardSnapshot {

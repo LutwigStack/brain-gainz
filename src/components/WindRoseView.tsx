@@ -66,18 +66,18 @@ const branchState = (
   branch: WindRoseBranch,
 ): { key: BranchStateKey; label: string; tone: 'accent' | 'success' | 'warning' | 'danger' | 'info' } => {
   if (branch.node_count > 0 && branch.done_node_count >= branch.node_count) {
-    return { key: 'completed', label: 'Готово', tone: 'success' };
+    return { key: 'completed', label: 'Под контролем', tone: 'success' };
   }
 
   if (branch.next_action_id != null) {
-    return { key: 'active', label: 'В работе', tone: 'accent' };
+    return { key: 'active', label: 'Удержать', tone: 'accent' };
   }
 
   if (branch.focus_node_id != null) {
-    return { key: 'next', label: 'Следующий шаг', tone: 'info' };
+    return { key: 'next', label: 'Развить', tone: 'info' };
   }
 
-  return { key: 'blocked', label: 'Нет шага', tone: 'warning' };
+  return { key: 'blocked', label: 'Нет хода', tone: 'warning' };
 };
 
 const BranchStateIcon = ({ state }: { state: BranchStateKey }) => {

@@ -1,3 +1,9 @@
+import {
+  buildCityControlProjection,
+  dailyOpponentXp,
+  pressureLevelFromValue,
+} from './knowledge-city-control.ts';
+
 const STARTER_SLUGS = {
   sphere: 'career',
   direction: 'brain-gainz-evolution',
@@ -3049,12 +3055,14 @@ const buildCareerSnapshot = async (database, campaignId) => {
   return {
     campaign: {
       id: campaign.id,
+      type: campaign.type,
       name: campaign.name,
       icon: campaign.icon ?? null,
       color: campaign.color ?? null,
       mode: campaign.mode ?? 'free',
       career_status: campaign.career_status ?? 'active',
       current_specialization_id: campaign.current_specialization_id ?? null,
+      is_archived: campaign.is_archived ?? 0,
     },
     currentSpecialization: currentRows[0] ?? null,
     specializations: specializations.map((specialization) => {
@@ -3385,6 +3393,182 @@ const buildOpponentProjection = (specialization, routeCompletion) => {
   };
 };
 
+const opponentNameForCampaign = (campaign) => {
+  const name = String(campaign?.name ?? '').toLocaleLowerCase('ru-RU');
+  return name.includes('информатик') || name.includes('computer science') || /\bcs\b/i.test(String(campaign?.name ?? ''))
+    ? 'Corvus AI'
+    : 'Соперник';
+};
+
+const isPersonalOpponentCampaign = (campaign) => campaign?.type === 'user' && Number(campaign?.is_archived ?? 0) !== 1;
+
+const loadOpponentRow = async (database, campaignId) => {
+  const rows = await database.select('SELECT * FROM campaign_opponents WHERE campaign_id = ? LIMIT 1', [campaignId]);
+  return rows[0] ?? null;
+};
+
+const ensureCampaignOpponent = async (database, campaign) => {
+  if (!isPersonalOpponentCampaign(campaign)) {
+    return null;
+  }
+
+  const existing = await loadOpponentRow(database, campaign.id);
+  if (existing) {
+    return existing;
+  }
+
+  const timestamp = currentTimestamp();
+  await database.execute(
+    `
+      INSERT OR IGNORE INTO campaign_opponents (
+        campaign_id,
+        name,
+        persona_key,
+        xp,
+        momentum,
+        pressure_level,
+        target_object_id,
+        last_turn_resolved_at,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, 0, 1, 'calm', NULL, ?, ?, ?)
+    `,
+    [campaign.id, opponentNameForCampaign(campaign), opponentNameForCampaign(campaign) === 'Corvus AI' ? 'corvus-ai' : 'default-rival', todayDate(), timestamp, timestamp],
+  );
+  return loadOpponentRow(database, campaign.id);
+};
+
+const dateKeyToLocalDate = (dateKey) => {
+  const [year, month, day] = String(dateKey ?? '').split('-').map((part) => Number(part));
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+  return new Date(year, month - 1, day);
+};
+
+const daysBetweenDateKeys = (fromDateKey, toDateKey) => {
+  const from = dateKeyToLocalDate(fromDateKey);
+  const to = dateKeyToLocalDate(toDateKey);
+  if (!from || !to) {
+    return 0;
+  }
+  return Math.max(0, Math.floor((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)));
+};
+
+const OPPONENT_PRESSURE_RANKS = {
+  calm: 0,
+  watch: 1,
+  attack: 2,
+  breach: 3,
+};
+
+const maxOpponentPressureLevel = (...levels) =>
+  levels
+    .filter((level) => Object.prototype.hasOwnProperty.call(OPPONENT_PRESSURE_RANKS, level))
+    .sort((a, b) => OPPONENT_PRESSURE_RANKS[b] - OPPONENT_PRESSURE_RANKS[a])[0] ?? 'calm';
+
+const resolveOpponentDailyTurn = async (database, campaign, routeCompletion) => {
+  if (!isPersonalOpponentCampaign(campaign) || !routeCompletion || Number(routeCompletion.routeNodeCount ?? 0) <= 0) {
+    return null;
+  }
+
+  const opponent = await ensureCampaignOpponent(database, campaign);
+  if (!opponent) {
+    return null;
+  }
+
+  const today = todayDate();
+  const missedDays = Math.min(7, daysBetweenDateKeys(opponent.last_turn_resolved_at, today));
+  const preview = buildCityControlProjection({
+    routeItems: routeCompletion.items,
+    opponent,
+  });
+  const targetObject = preview?.objects?.[0] ?? null;
+  const weakNodeCount = preview?.summary?.weakenedNodeCount ?? 0;
+  const contestedNodeCount = preview?.summary?.contestedNodeCount ?? 0;
+  const targetObjectUnresolved = targetObject ? !['secure', 'developing'].includes(targetObject.state) : false;
+  const pressureLevel = maxOpponentPressureLevel(pressureLevelFromValue(targetObject?.pressure ?? 0), opponent.pressure_level);
+
+  if (missedDays <= 0 && opponent.target_object_id === (targetObject?.key ?? null) && opponent.pressure_level === pressureLevel) {
+    return opponent;
+  }
+
+  const xpDelta = missedDays > 0
+    ? Math.min(120, missedDays * dailyOpponentXp({ weakNodeCount, contestedNodeCount, targetObjectUnresolved }))
+    : 0;
+  const timestamp = currentTimestamp();
+  await database.execute(
+    `
+      UPDATE campaign_opponents
+      SET xp = xp + ?,
+          momentum = ?,
+          pressure_level = ?,
+          target_object_id = ?,
+          last_turn_resolved_at = ?,
+          updated_at = ?
+      WHERE campaign_id = ?
+    `,
+    [
+      xpDelta,
+      Math.max(1, Number(opponent.momentum ?? 1) + (targetObjectUnresolved && missedDays > 0 ? 1 : 0)),
+      pressureLevel,
+      targetObject?.key ?? null,
+      today,
+      timestamp,
+      campaign.id,
+    ],
+  );
+  return loadOpponentRow(database, campaign.id);
+};
+
+const recordOpponentAssessmentOutcome = async (database, campaignId, passed) => {
+  const campaign = await loadCampaign(database, campaignId);
+  if (!isPersonalOpponentCampaign(campaign)) {
+    return null;
+  }
+
+  const opponent = await ensureCampaignOpponent(database, campaign);
+  if (!opponent) {
+    return null;
+  }
+
+  const timestamp = currentTimestamp();
+  if (passed) {
+    await database.execute(
+      `
+        UPDATE campaign_opponents
+        SET momentum = ?,
+            pressure_level = CASE pressure_level
+              WHEN 'breach' THEN 'attack'
+              WHEN 'attack' THEN 'watch'
+              ELSE 'calm'
+            END,
+            updated_at = ?
+        WHERE campaign_id = ?
+      `,
+      [Math.max(1, Number(opponent.momentum ?? 1) - 1), timestamp, campaignId],
+    );
+  } else {
+    await database.execute(
+      `
+        UPDATE campaign_opponents
+        SET xp = xp + 8,
+            momentum = ?,
+            pressure_level = CASE
+              WHEN pressure_level IN ('breach', 'attack') THEN pressure_level
+              ELSE 'attack'
+            END,
+            updated_at = ?
+        WHERE campaign_id = ?
+      `,
+      [Math.max(2, Number(opponent.momentum ?? 1) + 1), timestamp, campaignId],
+    );
+  }
+
+  return loadOpponentRow(database, campaignId);
+};
+
 const routeMasteryGap = (item) =>
   Math.max(0, masteryLevelRank(item.required_mastery_level) + 1 - Number(item.current_mastery_rank ?? 0));
 
@@ -3661,6 +3845,30 @@ const buildTodayGameSnapshot = async (database, campaignId, career, metrics, pri
       }
     : null;
   const planner = hasActiveSpecialization ? buildRoutePlannerProjection(routeCompletion) : null;
+  const opponentRow = await resolveOpponentDailyTurn(database, career.campaign, routeCompletion);
+  const cityControl = opponentRow
+    ? buildCityControlProjection({
+        routeItems: routeCompletion?.items ?? [],
+        opponent: opponentRow,
+      })
+    : null;
+  if (route && cityControl) {
+    const controlByRouteItemId = new Map(cityControl.nodes.map((node) => [node.id, node]));
+    route.items = route.items.map((item) => {
+      const control = controlByRouteItemId.get(item.id);
+      return control
+        ? {
+            ...item,
+            control_state: control.control_state,
+            control_label: control.control_label,
+            control_reason: control.control_reason,
+          }
+        : item;
+    });
+    route.nextItem = route.nextItem
+      ? route.items.find((item) => item.id === route.nextItem.id) ?? route.nextItem
+      : null;
+  }
 
   return {
     currentSpecialization,
@@ -3673,6 +3881,7 @@ const buildTodayGameSnapshot = async (database, campaignId, career, metrics, pri
     city,
     activity,
     opponent: buildOpponentProjection(currentSpecialization, routeCompletion),
+    cityControl,
   };
 };
 
@@ -4342,6 +4551,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
         'SELECT * FROM assessment_attempts WHERE campaign_id = ? AND idempotency_key = ? LIMIT 1',
         [resolvedCampaignId, idempotencyKey],
       );
+      const isNewAttempt = existing.length === 0;
 
       const attempt =
         existing[0] ??
@@ -4416,6 +4626,10 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
           attempt.task_id,
           timestamp,
         );
+      }
+
+      if (isNewAttempt) {
+        await recordOpponentAssessmentOutcome(database, resolvedCampaignId, Number(attempt.passed ?? 0) === 1);
       }
 
       return {
@@ -5251,6 +5465,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
         current_risk: 'low',
         updated_at: timestamp,
       });
+      await recordOpponentAssessmentOutcome(database, resolvedCampaignId, true);
     }
 
     await dailySessionStore.addSessionEvent({
@@ -5302,6 +5517,7 @@ export const createNowService = ({ database, hierarchyStore, reviewStateStore, d
       current_risk: 'low',
       updated_at: timestamp,
     });
+    await recordOpponentAssessmentOutcome(database, resolvedCampaignId, true);
 
     await dailySessionStore.addSessionEvent({
       session_id: session.id,

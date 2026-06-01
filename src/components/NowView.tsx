@@ -1307,9 +1307,19 @@ export const NowView = ({
                 <strong>{todayRail.opponent.stateLabel}</strong>
               </span>
             </div>
+            <div className="today-rail-split-line">
+              <span>
+                <small>объект</small>
+                <strong>{todayRail.opponent.targetLabel}</strong>
+              </span>
+              <span>
+                <small>ход</small>
+                <strong>{todayRail.opponent.nextActionLabel}</strong>
+              </span>
+            </div>
             <div className="today-rail-stats">
               <span>{todayRail.opponent.scoreLabel}</span>
-              <span>{todayRail.opponent.hasOpponent ? 'давление маршрута' : 'пустой слот'}</span>
+              <span>{todayRail.opponent.hasOpponent ? todayRail.opponent.controlLabel : 'пустой слот'}</span>
             </div>
           </PixelSurface>
 

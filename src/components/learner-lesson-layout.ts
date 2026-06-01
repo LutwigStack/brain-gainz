@@ -56,24 +56,22 @@ export const getPassedAssessmentResultState = ({
   targetMasteryLabel,
 }: PassedAssessmentResultStateInput) => ({
   statusLabel: 'Зачтено',
-  progressLabel: 'Прогресс обновлен',
+  progressLabel: 'Контроль закреплен',
   progressValue: targetMasteryLabel,
   xpLabel: 'XP обновлены',
   xpValue: 'XP обновлены',
   primaryActionLabel: 'Следующий шаг',
 });
-
 export const getFailedAssessmentResultState = ({
   feedbackSummary,
 }: FailedAssessmentResultStateInput) => ({
   statusLabel: 'Не зачтено',
-  message: 'Прогресс и XP не изменились.',
-  reasonLabel: 'Что осталось',
+  message: 'Участок оспаривается. Прогресс и XP не изменились.',
+  reasonLabel: 'Что вернуть под контроль',
   reasonValue: feedbackSummary?.trim() || 'Пока не все пункты готовы.',
   primaryActionLabel: 'Попробовать еще раз',
   secondaryActionLabel: 'Отметить для себя',
 });
-
 export const getSelfMarkedAssessmentCopy = () => ({
   primaryActionLabel: 'Отметить для себя',
   helperText: 'Без зачета и XP.',

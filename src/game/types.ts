@@ -1,4 +1,5 @@
 export type GameNodeState = 'locked' | 'available' | 'active' | 'completed' | 'paused';
+export type GameNodeControlState = 'unclaimed' | 'scouted' | 'controlled' | 'fortified' | 'weakened' | 'contested' | 'lost';
 export type CanvasInteractionMode = 'free-edit' | 'layer-edit' | 'readonly';
 
 export interface GamePoint {
@@ -25,6 +26,7 @@ export interface GameNode {
   isCurrentRouteTarget?: boolean;
   isRouteLocked?: boolean;
   isWeakRouteNode?: boolean;
+  controlState?: GameNodeControlState | null;
   routeNodeId?: number;
   routeSequenceIndex?: number;
   routeOrder?: number | null;

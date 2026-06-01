@@ -649,7 +649,17 @@ export class MapLayer extends Container {
     const radius = this.overviewMode ? OVERVIEW_NODE_BOX.radius : NODE_BOX.radius;
     const isHighlighted = node.id === this.highlightedNodeId;
     const isConnectSource = node.id === this.connectSourceNodeId;
-    const routeColor = node.isRouteComplete
+    const controlColor =
+      node.controlState === 'lost' || node.controlState === 'contested'
+        ? 0xfb7185
+        : node.controlState === 'weakened'
+          ? 0xfacc15
+          : node.controlState === 'controlled' || node.controlState === 'fortified'
+            ? 0x6ee7b7
+            : node.controlState === 'scouted'
+              ? 0x38bdf8
+              : null;
+    const routeColor = controlColor ?? (node.isRouteComplete
       ? 0x6ee7b7
       : node.isCurrentRouteTarget
         ? 0x38bdf8
@@ -657,7 +667,7 @@ export class MapLayer extends Container {
           ? 0xfb7185
           : node.isRouteLocked
             ? 0x64748b
-            : 0xfacc15;
+            : 0xfacc15);
     const borderColor = isHighlighted
       ? biome?.accent ?? palette.stroke
       : isConnectSource

@@ -818,6 +818,7 @@ export const NavigationView = ({
           isCurrentTarget: currentRoute?.nextItem?.id === item.id,
           isLocked: item.is_actionable === false,
           isWeakSpot: Boolean(item.weak_spot_reason),
+          controlState: item.control_state ?? null,
           routeOrder: item.route_order,
           routeStage: item.route_stage,
           requiredMasteryLevel: item.required_mastery_level,
@@ -2905,6 +2906,16 @@ export const NavigationView = ({
   const learnerRouteStatusItems = [
     { key: 'current', label: 'Текущий', value: activeRouteTargetIndex >= 0 ? `#${activeRouteTargetIndex + 1}` : '-' },
     { key: 'done', label: 'Готово', value: `${routeProgressSummary.completed}` },
+    {
+      key: 'controlled',
+      label: 'Под контролем',
+      value: `${routeItems.filter((item) => item.control_state === 'controlled' || item.control_state === 'fortified').length}`,
+    },
+    {
+      key: 'contested',
+      label: 'Оспаривается',
+      value: `${routeItems.filter((item) => item.control_state === 'contested' || item.control_state === 'lost').length}`,
+    },
     { key: 'available', label: 'Доступно', value: `${routeProgressSummary.available}` },
     { key: 'weak', label: 'Повторить', value: `${routeProgressSummary.weak}` },
     { key: 'locked', label: 'Закрыто', value: `${routeProgressSummary.locked}` },
@@ -2915,6 +2926,7 @@ export const NavigationView = ({
       item.is_complete ? 'navigation-route-overview__node--complete' : '',
       item.is_actionable === false && !item.is_complete ? 'navigation-route-overview__node--locked' : '',
       item.weak_spot_reason ? 'navigation-route-overview__node--weak' : '',
+      item.control_state ? `navigation-route-overview__node--control-${item.control_state}` : '',
       isFront ? 'navigation-route-overview__node--front' : '',
       isFocused ? 'navigation-route-overview__node--focused' : '',
     ]

@@ -322,7 +322,7 @@ test('today right rail presents missing data as intentional empty state', () => 
   assert.equal(rail.city.progressPercent, 0);
   assert.equal(rail.opponent.hasOpponent, false);
   assert.equal(rail.opponent.title, 'Соперник не назначен');
-  assert.equal(rail.opponent.campaignProgressLabel, 'гонка не активна');
+  assert.equal(rail.opponent.campaignProgressLabel, 'город без давления');
 });
 
 test('today state fallback uses learner-facing route language', () => {

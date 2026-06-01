@@ -1,0 +1,22 @@
+[
+  {
+    "name": "desktop",
+    "hasRenderedApp": true,
+    "textLength": 1501,
+    "buttonCount": 25,
+    "canvasCount": 0,
+    "warningErrorCount": 0,
+    "messages": [],
+    "pageErrors": []
+  },
+  {
+    "name": "mobile-390",
+    "hasRenderedApp": true,
+    "textLength": 1236,
+    "buttonCount": 25,
+    "canvasCount": 0,
+    "warningErrorCount": 0,
+    "messages": [],
+    "pageErrors": []
+  }
+]

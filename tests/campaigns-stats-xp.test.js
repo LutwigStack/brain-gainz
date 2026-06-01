@@ -46,6 +46,9 @@ test('campaign migration is idempotent and seeds one developer main campaign', a
 
   const stats = await database.select('SELECT * FROM campaign_stats WHERE campaign_id = ?', [rows[0].id]);
   assert.equal(stats.length > 0, true);
+
+  const opponents = await database.select('SELECT * FROM campaign_opponents');
+  assert.equal(opponents.length, 0);
 });
 
 test('CS bachelor template seed is idempotent and visible as a template campaign', async (t) => {
@@ -288,10 +291,17 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
   const [template] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-cs-bachelor' LIMIT 1");
   const personal = await campaignStore.forkTemplateCampaign(template.id, { name: 'CS Playable Slice' });
 
+  const templateDashboard = await nowService.getDashboard(template.id);
+  assert.equal(templateDashboard.today.cityControl, null);
+
   const dashboard = await nowService.getDashboard(personal.id);
   assert.equal(dashboard.primaryRecommendation.nodeTitle, 'Среда программирования');
   assert.equal(dashboard.primaryRecommendation.actionTitle, 'Потренировать: Среда программирования');
   assert.equal(dashboard.today.route.routeNodeCount, 72);
+  assert.equal(dashboard.today.cityControl.opponent.name, 'Corvus AI');
+  assert.equal(dashboard.today.cityControl.opponent.xp, 0);
+  assert.equal(dashboard.today.cityControl.objects.length > 0, true);
+  assert.equal(dashboard.today.route.items.every((item) => item.control_state != null), true);
   assert.equal(dashboard.today.planner.currentStage, 'Основы программирования');
   assert.deepEqual(
     dashboard.today.planner.nextItems.slice(0, 3).map((item) => item.title),
@@ -537,6 +547,15 @@ test('forked CS bachelor weak spots combine low mastery stale failed and self-ma
     feedback_summary: 'Try the proof outline again.',
     idempotency_key: `weak-failed:${personal.id}:${failedItem.node_id}`,
   });
+  await nowService.submitAssessmentAttempt(personal.id, {
+    node_id: failedItem.node_id,
+    task_id: `node:${failedItem.node_id}:assessment`,
+    check_method: 'strict',
+    target_mastery_level: 'seen',
+    passed: false,
+    feedback_summary: 'Try the proof outline again.',
+    idempotency_key: `weak-failed:${personal.id}:${failedItem.node_id}`,
+  });
   await database.execute(
     `
       INSERT INTO review_states (node_id, review_profile, next_due_at, last_reviewed_at, current_risk, updated_at)
@@ -552,6 +571,12 @@ test('forked CS bachelor weak spots combine low mastery stale failed and self-ma
   assert.equal(weakSources.has('stale'), true);
   assert.equal(weakSources.has('self_marked_unverified'), true);
   assert.equal(dashboard.today.planner.weakSpots.every((item) => /error/i.test(item.weak_spot_reason_label) === false), true);
+  assert.equal(dashboard.today.cityControl.summary.contestedNodeCount > 0, true);
+  assert.equal(['contested', 'lost_ground'].includes(dashboard.today.cityControl.summary.state), true);
+
+  const [opponent] = await database.select('SELECT * FROM campaign_opponents WHERE campaign_id = ?', [personal.id]);
+  assert.equal(Number(opponent.xp), 8);
+  assert.equal(opponent.pressure_level, 'attack');
 
   const run = await nowService.startTodaySessionFromPrimaryRecommendation(personal.id);
   assert.equal(run.tasks.some((task) => task.source === 'weak_spot'), true);
@@ -669,12 +694,15 @@ test('completed CS bachelor route nodes can return as stale recovery tasks', asy
   const staleCompleted = dashboard.today.planner.weakSpots.find((item) => item.node_id === completedTask.nodeId);
   assert.equal(staleCompleted?.is_complete, true);
   assert.equal(staleCompleted?.weak_spot_sources.includes('stale'), true);
+  await database.execute("UPDATE campaign_opponents SET pressure_level = 'attack' WHERE campaign_id = ?", [personal.id]);
 
   const recoveryRun = await nowService.startTodaySessionFromPrimaryRecommendation(personal.id);
   const staleRecoveryTask = recoveryRun.tasks.find((task) => task.source === 'weak_spot' && task.nodeId === completedTask.nodeId);
   assert.ok(staleRecoveryTask);
 
   await nowService.completeActionInTodaySession(personal.id, staleRecoveryTask.actionId);
+  const [pressureAfterRecovery] = await database.select('SELECT * FROM campaign_opponents WHERE campaign_id = ?', [personal.id]);
+  assert.equal(pressureAfterRecovery.pressure_level, 'watch');
   const afterRecovery = await nowService.getDashboard(personal.id);
   const staleAfterCompletion = afterRecovery.today.planner.weakSpots.find((item) => item.node_id === completedTask.nodeId);
   assert.equal(staleAfterCompletion, undefined);

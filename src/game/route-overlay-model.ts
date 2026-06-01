@@ -1,4 +1,4 @@
-import type { GameSceneModel } from './types';
+import type { GameNodeControlState, GameSceneModel } from './types';
 
 export interface RouteNodeCanvasMetadata {
   nodeId: number;
@@ -11,6 +11,7 @@ export interface RouteNodeCanvasMetadata {
   currentMasteryRank?: number;
   isLocked?: boolean;
   isWeakSpot?: boolean;
+  controlState?: GameNodeControlState | null;
 }
 
 export const applyRouteOverlayToModel = (
@@ -43,6 +44,7 @@ export const applyRouteOverlayToModel = (
             isCurrentRouteTarget: Boolean(route.isCurrentTarget),
             isRouteLocked: Boolean(route.isLocked),
             isWeakRouteNode: Boolean(route.isWeakSpot),
+            controlState: route.controlState ?? null,
             routeNodeId: route.routeNodeId,
             routeSequenceIndex: route.routeSequenceIndex,
             routeOrder: route.routeOrder ?? null,
