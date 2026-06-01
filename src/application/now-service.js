@@ -2380,10 +2380,10 @@ const refreshOutcomeResult = async (service, campaignId, nodeId, actionId = null
 });
 
 const dailyRunTaskOutcomeNotes = {
-  completed: 'Завершено из задач дня.',
-  failed: 'Нужен еще один проход в задачах дня.',
-  skipped: 'Пропущено в задачах дня.',
-  deferred: 'Отложено в задачах дня.',
+  completed: 'Занятие закрыто через проверку.',
+  failed: 'Оставлено на повторение в задачах дня.',
+  skipped: 'Убрано из текущего набора задач дня.',
+  deferred: 'Отложено на другой подход.',
 };
 
 const normalizeDailyRunTaskOutcome = (outcome) => {
@@ -2406,11 +2406,9 @@ const buildDailyRunFinishSummaryNote = async (database, campaignId, session) => 
   const recoveryKeyForTask = (task) => (task.actionId != null ? `action:${task.actionId}` : `node:${task.nodeId}`);
   const completedKeys = new Set(completed.map(recoveryKeyForTask));
   const recoveryKeys = new Set([...failed, ...skipped, ...deferred].map(recoveryKeyForTask));
-  const recoveredKeys = new Set([...recoveryKeys].filter((key) => completedKeys.has(key)));
   const openRecovery = [...recoveryKeys].filter((key) => !completedKeys.has(key)).length;
   const completedNodeIds = [...new Set(completed.map((task) => task.nodeId).filter((id) => id != null))];
   let xp = 0;
-  let masteryEvents = 0;
 
   if (completedNodeIds.length > 0) {
     const placeholders = completedNodeIds.map(() => '?').join(', ');
@@ -2425,29 +2423,15 @@ const buildDailyRunFinishSummaryNote = async (database, campaignId, session) => 
       `,
       [campaignId, ...completedNodeIds, NODE_COMPLETION_GRANT_REASON],
     );
-    const masteryRows = await database.select(
-      `
-        SELECT COUNT(*) AS count
-        FROM mastery_events
-        WHERE campaign_id = ?
-          AND active = 1
-          AND node_id IN (${placeholders})
-          AND source_type = 'legacy_node_completion'
-      `,
-      [campaignId, ...completedNodeIds],
-    );
     xp = Number(xpRows[0]?.xp ?? 0);
-    masteryEvents = Number(masteryRows[0]?.count ?? 0);
   }
 
-  const changedTitles = completed.slice(0, 3).map((task) => task.title).join(', ') || 'Пока нет завершенных задач';
+  const changedTitles = completed.slice(0, 3).map((task) => task.title).join(', ') || 'Пока нет закрытых занятий';
 
   return [
-    `Изменения: ${completed.length}/${tasks.length} задач завершено. ${changedTitles}.`,
-    `XP/освоение: ${xp} XP активно за этот набор; событий освоения: ${masteryEvents}.`,
-    recoveredKeys.size > 0 || openRecovery > 0
-      ? `Повторение: ${recoveredKeys.size} закреплено в наборе; ${openRecovery} еще в очереди.`
-      : 'Повторение: дополнительных задач нет.',
+    `Итог дня: ${completed.length}/${tasks.length} закрыто; ${openRecovery} на повторении.`,
+    xp > 0 ? `Прогресс: +${xp} XP.` : 'Прогресс: без нового XP.',
+    `Закрыто: ${changedTitles}.`,
   ].join('\n');
 };
 

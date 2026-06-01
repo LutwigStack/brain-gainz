@@ -61,8 +61,8 @@ Excludes:
 
 - `done` - [workstreams/01-retry-state-reset.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/workstreams/01-retry-state-reset.md)
 - `done` - [workstreams/02-hide-expected-answers.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/workstreams/02-hide-expected-answers.md)
-- `planned` - [workstreams/03-today-one-next-lesson.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/workstreams/03-today-one-next-lesson.md)
-- `planned` - [workstreams/04-daily-queue-action-model.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/workstreams/04-daily-queue-action-model.md)
-- `planned` - [workstreams/05-next-step-focus-and-summary.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/workstreams/05-next-step-focus-and-summary.md)
-- `planned` - [workstreams/06-mobile-nav-and-map-overview.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/workstreams/06-mobile-nav-and-map-overview.md)
-- `planned` - [workstreams/07-browser-qa-daily-run.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/workstreams/07-browser-qa-daily-run.md)
+- `done` - [workstreams/03-today-one-next-lesson.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/workstreams/03-today-one-next-lesson.md)
+- `done` - [workstreams/04-daily-queue-action-model.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/workstreams/04-daily-queue-action-model.md)
+- `done` - [workstreams/05-next-step-focus-and-summary.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/workstreams/05-next-step-focus-and-summary.md)
+- `done` - [workstreams/06-mobile-nav-and-map-overview.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/workstreams/06-mobile-nav-and-map-overview.md)
+- `done` - [workstreams/07-browser-qa-daily-run.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/workstreams/07-browser-qa-daily-run.md)

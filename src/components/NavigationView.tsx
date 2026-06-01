@@ -2871,6 +2871,37 @@ export const NavigationView = ({
 
     return { completed, locked, weak, available };
   }, [routeItems]);
+  const nextRouteItem =
+    activeRouteTargetIndex >= 0
+      ? routeItems.slice(activeRouteTargetIndex + 1).find((item) => !item.is_complete) ?? null
+      : routeItems.find((item) => !item.is_complete) ?? null;
+  const nextRouteItemIndex = nextRouteItem != null ? routeItems.findIndex((item) => item.id === nextRouteItem.id) : -1;
+  const currentRouteOrientationItem = activeRouteTargetItem ?? focusedRouteItem ?? null;
+  const routeOrientationItems = [
+    {
+      key: 'current',
+      label: 'Сейчас',
+      title: currentRouteOrientationItem?.title ?? focus?.node?.title ?? 'Выберите шаг',
+      meta:
+        activeRouteTargetIndex >= 0
+          ? `Шаг #${activeRouteTargetIndex + 1}`
+          : focusedRouteIndex >= 0
+            ? `В маршруте #${focusedRouteIndex + 1}`
+            : 'Маршрут',
+    },
+    {
+      key: 'next',
+      label: 'Дальше',
+      title: nextRouteItem?.title ?? 'Today покажет следующий шаг после результата',
+      meta: nextRouteItemIndex >= 0 ? `Шаг #${nextRouteItemIndex + 1}` : 'После текущего',
+    },
+    {
+      key: 'stage',
+      label: 'Этап',
+      title: currentRouteOrientationItem?.route_stage ?? currentSpecialization?.name ?? 'Текущий маршрут',
+      meta: `${routeProgressSummary.completed}/${routeItems.length || 0} закрыто`,
+    },
+  ];
   const learnerRouteStatusItems = [
     { key: 'current', label: 'Текущий', value: activeRouteTargetIndex >= 0 ? `#${activeRouteTargetIndex + 1}` : '-' },
     { key: 'done', label: 'Готово', value: `${routeProgressSummary.completed}` },
@@ -3550,6 +3581,32 @@ export const NavigationView = ({
                 </div>
                 ) : (
                 <div className="navigation-learner-map-overview">
+                  <div className="navigation-learner-map-overview__orientation" aria-label="Текущий и следующий шаг маршрута">
+                    {routeOrientationItems.map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        className={`navigation-learner-map-overview__orientation-item navigation-learner-map-overview__orientation-item--${item.key}`}
+                        onClick={() => {
+                          if (item.key === 'current' && currentRouteOrientationItem) {
+                            selectRouteItemOnMap(currentRouteOrientationItem);
+                            return;
+                          }
+
+                          if (item.key === 'next' && nextRouteItem) {
+                            selectRouteItemOnMap(nextRouteItem);
+                            return;
+                          }
+
+                          runMapCommand('fit-overview');
+                        }}
+                      >
+                        <span>{item.label}</span>
+                        <strong>{item.title}</strong>
+                        <small>{item.meta}</small>
+                      </button>
+                    ))}
+                  </div>
                   <div className="navigation-learner-map-overview__main">
                     <PixelText as="span" size="xs" color="textDim" uppercase>
                       Обзор прогресса

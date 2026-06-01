@@ -403,9 +403,9 @@ test('forked CS bachelor Daily Run selects route weak due tasks and records outc
   const finished = await nowService.finishDailyRun(personal.id);
   assert.equal(finished.status, 'completed');
   assert.equal(finished.state, 'completed');
-  assert.match(finished.summary_note, /Изменения:/);
-  assert.match(finished.summary_note, /XP\/освоение:/);
-  assert.match(finished.summary_note, /Повторение:/);
+  assert.match(finished.summary_note, /Итог дня: 1\/4 закрыто; 3 на повторении/);
+  assert.match(finished.summary_note, /Прогресс: \+25 XP/);
+  assert.match(finished.summary_note, /Закрыто: Потренировать: Среда программирования/);
 
   const refreshed = await nowService.getDashboard(personal.id);
   assert.equal(refreshed.todaySession.status, 'completed');
@@ -507,8 +507,8 @@ test('Daily Run retry adds a visible recovery attempt and completion removes the
   );
 
   const finished = await nowService.finishDailyRun(personal.id);
-  assert.match(finished.summary_note, /Повторение: 1 закреплено в наборе; 0 еще в очереди/);
-  assert.doesNotMatch(finished.summary_note, /Повторение: 2 закреплено/);
+  assert.match(finished.summary_note, /Итог дня: 1\/6 закрыто; 0 на повторении/);
+  assert.doesNotMatch(finished.summary_note, /Итог дня: 2\/6 закрыто/);
 
   const refreshed = await nowService.getDashboard(personal.id);
   const sameWeakSpot = refreshed.today.planner.weakSpots.find((item) => item.node_id === recoveryTask.nodeId);
@@ -640,8 +640,8 @@ test('forked CS bachelor Daily Run finish summary counts reactivated XP and mast
   assert.equal(reactivatedGrant.active, 1);
   assert.equal(reactivatedGrant.created_at, initialGrant.created_at);
   assert.equal(Number(mastery.count), 1);
-  assert.match(finished.summary_note, new RegExp(`XP/освоение: ${reactivatedGrant.xp_amount} XP активно`));
-  assert.match(finished.summary_note, /событий освоения: 1/);
+  assert.match(finished.summary_note, new RegExp(`Прогресс: \\+${reactivatedGrant.xp_amount} XP`));
+  assert.doesNotMatch(finished.summary_note, /событий освоения/);
 });
 
 test('template campaigns reject learner progress writes', async (t) => {

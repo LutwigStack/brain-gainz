@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -33,3 +33,21 @@ Make Daily Run actions trustworthy and unambiguous.
 - learner cannot mistake queue management for verified learning
 - each card has one primary action
 - Daily Run finish summary has one clear status
+
+## Implementation Notes
+
+- Current Daily Run task cards now expose one primary action: `Открыть занятие`.
+- Queue management actions moved behind `Действия набора`: `Повторить позже`, `Отложить`, `Убрать из набора`.
+- Manual `Готово`/`Еще раз` controls are no longer shown in the Daily Run queue.
+- Resolved task labels and finish summary use queue language, not verified mastery language.
+
+## Verification
+
+- `node --test tests/today-priority-layout.test.js tests/today-dashboard-model.test.js tests/now-service.test.js tests/mode-boundary.test.js`
+- `npm run lint`
+- `npm run build`
+- `git diff --check`
+- Browser smoke: active Daily Run shows `Открыть занятие` as the one primary card action; queue actions are under `Действия набора`; no visible `Готово`, `Еще раз`, or `Завершить`.
+- Screenshots:
+  - [../qa/04-daily-queue-actions-desktop.png](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/qa/04-daily-queue-actions-desktop.png)
+  - [../qa/04-daily-queue-actions-mobile.png](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/26-daily-run-simplification/qa/04-daily-queue-actions-mobile.png)

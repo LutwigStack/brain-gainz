@@ -333,7 +333,7 @@ const dailyStatusByState: Record<DailyTaskState, string> = {
   recovery: 'Повторение',
   locked: 'Закрыта',
   future: 'Позже',
-  complete: 'Готово',
+  complete: 'Пройдено',
 };
 
 const dailyActionByState: Record<DailyTaskState, string> = {
@@ -342,7 +342,7 @@ const dailyActionByState: Record<DailyTaskState, string> = {
   recovery: 'Повторить',
   locked: 'Недоступно',
   future: 'Открыть карту',
-  complete: 'Повторить',
+  complete: 'Открыть снова',
 };
 
 const dailyStatusLabel = (state: DailyTaskState) => dailyStatusByState[state];

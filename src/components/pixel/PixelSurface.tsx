@@ -1,4 +1,4 @@
-import type { CSSProperties, HTMLAttributes, PropsWithChildren } from 'react';
+import { forwardRef, type CSSProperties, type HTMLAttributes, type PropsWithChildren } from 'react';
 import { createPixelFrameStyle, pixelColors, type PixelFrameToken, type PixelSpacingToken } from '../../theme/pixel';
 
 export interface PixelSurfaceProps extends PropsWithChildren, HTMLAttributes<HTMLDivElement> {
@@ -7,7 +7,7 @@ export interface PixelSurfaceProps extends PropsWithChildren, HTMLAttributes<HTM
   fullWidth?: boolean;
 }
 
-export const PixelSurface = ({
+export const PixelSurface = forwardRef<HTMLDivElement, PixelSurfaceProps>(({
   children,
   frame = 'panel',
   padding = 'lg',
@@ -15,7 +15,7 @@ export const PixelSurface = ({
   className,
   style,
   ...props
-}: PixelSurfaceProps) => {
+}, ref) => {
   const surfaceStyle: CSSProperties = {
     ...createPixelFrameStyle({ frame, padding }),
     color: pixelColors.text,
@@ -25,8 +25,10 @@ export const PixelSurface = ({
   };
 
   return (
-    <div {...props} className={className} data-pixel-frame={frame} style={surfaceStyle}>
+    <div ref={ref} {...props} className={className} data-pixel-frame={frame} style={surfaceStyle}>
       {children}
     </div>
   );
-};
+});
+
+PixelSurface.displayName = 'PixelSurface';

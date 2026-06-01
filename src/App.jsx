@@ -10,6 +10,7 @@ import {
   Eye,
   Flag,
   Globe2,
+  MoreHorizontal,
   PencilLine,
   RefreshCw,
   Settings,
@@ -46,7 +47,10 @@ import {
   shouldShowShellNavDescriptions,
   workspaceModeLabels,
 } from './components/mode-boundary.ts';
-import { getMobileNavigationPriorityClass } from './components/mobile-navigation-priority.ts';
+import {
+  getMobileNavigationPriorityClass,
+  getMobileNavigationSections,
+} from './components/mobile-navigation-priority.ts';
 import { getSelfMarkedAssessmentCopy } from './components/learner-lesson-layout.ts';
 import { ReferenceAssetImage } from './assets/ReferenceAssetImage.tsx';
 import {
@@ -128,6 +132,7 @@ export default function App() {
   const [nowFocus, setNowFocus] = useState(null);
   const [nowFocusLoading, setNowFocusLoading] = useState(false);
   const [nowSelection, setNowSelection] = useState(null);
+  const [todayMainGoalFocusRequestId, setTodayMainGoalFocusRequestId] = useState(0);
   const [navigationSnapshot, setNavigationSnapshot] = useState(null);
   const [navigationLoading, setNavigationLoading] = useState(false);
   const [navigationError, setNavigationError] = useState(null);
@@ -381,6 +386,7 @@ export default function App() {
     setMapRouteFilterRequestId(null);
     setWindRoseSnapshot(null);
     setSelectedWindStatId(null);
+    setTodayMainGoalFocusRequestId(0);
     mapUndoStackRef.current = [];
     setMapUndoCount(0);
   };
@@ -388,6 +394,11 @@ export default function App() {
   const requestMapRouteFilter = () => {
     mapRouteFilterRequestCounterRef.current += 1;
     setMapRouteFilterRequestId(mapRouteFilterRequestCounterRef.current);
+  };
+
+  const openTodayMainGoal = () => {
+    setActiveTab('now');
+    setTodayMainGoalFocusRequestId((current) => current + 1);
   };
 
   const handleOpenCampaign = async (campaign) => {
@@ -1890,6 +1901,8 @@ export default function App() {
       label: 'Кампании',
       description: 'Меню миров',
       secondary: true,
+      mobileLabel: 'Кампании',
+      mobilePrimary: !selectedCampaign,
       icon: Globe2,
       active: !selectedCampaign,
       disabled: false,
@@ -1899,15 +1912,19 @@ export default function App() {
       key: 'today',
       label: 'Сегодня',
       description: 'Дневной ход',
+      mobileLabel: 'Сегодня',
+      mobilePrimary: true,
       icon: CalendarCheck,
       active: Boolean(selectedCampaign && normalizedActiveTab === 'now'),
       disabled: !selectedCampaign,
-      onClick: () => setActiveTab('now'),
+      onClick: openTodayMainGoal,
     },
     {
       key: 'map',
       label: workspaceModeLabels[workspaceMode].mapLabel,
       description: workspaceModeLabels[workspaceMode].mapDescription,
+      mobileLabel: 'Карта',
+      mobilePrimary: true,
       icon: TreePine,
       active: Boolean(selectedCampaign && normalizedActiveTab === 'map' && mapInspectorRequest?.mode !== 'assessment'),
       disabled: !selectedCampaign,
@@ -1917,6 +1934,8 @@ export default function App() {
       key: 'assessment',
       label: workspaceModeLabels[workspaceMode].assessmentLabel,
       description: workspaceModeLabels[workspaceMode].assessmentDescription,
+      mobileLabel: 'Проверка',
+      mobilePrimary: true,
       icon: ShieldCheck,
       active: Boolean(selectedCampaign && normalizedActiveTab === 'map' && mapInspectorRequest?.mode === 'assessment'),
       disabled: !selectedCampaign,
@@ -1930,6 +1949,7 @@ export default function App() {
       label: workspaceMode === 'learner' ? 'Прогресс' : 'Роза / статистика',
       description: 'Статы кампании',
       secondary: true,
+      mobileLabel: 'Прогресс',
       icon: BarChart3,
       active: Boolean(selectedCampaign && normalizedActiveTab === 'wind'),
       disabled: !selectedCampaign,
@@ -1937,52 +1957,75 @@ export default function App() {
     },
   ];
 
-  const renderShellNav = (variant) => (
-    <nav
-      className={`app-shell-nav app-shell-nav--${variant}`}
-      aria-label={variant === 'desktop' ? 'Основная навигация BrainGainz' : 'Мобильная навигация BrainGainz'}
-    >
-      {navItems.map((item) => {
-        const Icon = item.icon;
-        return (
-          <PixelButton
-            key={item.key}
-            tone={item.active ? 'accent' : 'ghost'}
-            onClick={item.onClick}
-            disabled={item.disabled}
-            aria-label={item.label}
-            aria-pressed={item.active}
-            aria-current={item.active ? 'page' : undefined}
-            className={`app-nav-button ${item.active ? 'app-nav-button--active' : ''} ${
-              usesLearnerPriorityShell && item.secondary ? 'app-nav-button--secondary' : ''
-            } ${variant === 'mobile' ? getMobileNavigationPriorityClass(item) : ''}`}
-          >
-            <Icon size={16} />
-            <span className="app-nav-button__copy">
-              <span className="app-nav-button__label">{item.label}</span>
-              {variant === 'desktop' && showShellNavDescriptions ? <span className="app-nav-button__description">{item.description}</span> : null}
-            </span>
-          </PixelButton>
-        );
-      })}
+  const settingsNavItem = {
+    key: 'settings',
+    label: 'Настройки',
+    description: 'Профиль и экспорт',
+    secondary: true,
+    mobileLabel: 'Настройки',
+    icon: Settings,
+    active: showSettings,
+    disabled: false,
+    onClick: () => setShowSettings(!showSettings),
+  };
+  const allNavItems = [...navItems, settingsNavItem];
 
+  const renderNavButton = (item, variant, extraClassName = '') => {
+    const Icon = item.icon;
+    const label = variant === 'mobile' ? item.mobileLabel ?? item.label : item.label;
+
+    return (
       <PixelButton
-        tone={showSettings ? 'accent' : 'ghost'}
-        onClick={() => setShowSettings(!showSettings)}
-        aria-label="Настройки"
-        aria-pressed={showSettings}
-        className={`app-nav-button ${showSettings ? 'app-nav-button--active' : ''} ${
-          usesLearnerPriorityShell ? 'app-nav-button--secondary' : ''
-        } ${variant === 'mobile' ? getMobileNavigationPriorityClass({ active: showSettings, secondary: usesLearnerPriorityShell }) : ''}`}
+        key={item.key}
+        tone={item.active ? 'accent' : 'ghost'}
+        onClick={item.onClick}
+        disabled={item.disabled}
+        aria-label={item.label}
+        aria-pressed={item.active}
+        aria-current={item.active ? 'page' : undefined}
+        className={`app-nav-button ${item.active ? 'app-nav-button--active' : ''} ${
+          usesLearnerPriorityShell && item.secondary ? 'app-nav-button--secondary' : ''
+        } ${variant === 'mobile' ? getMobileNavigationPriorityClass(item) : ''} ${extraClassName}`}
       >
-        <Settings size={16} />
+        <Icon size={16} />
         <span className="app-nav-button__copy">
-          <span className="app-nav-button__label">Настройки</span>
-          {variant === 'desktop' && showShellNavDescriptions ? <span className="app-nav-button__description">Профиль и экспорт</span> : null}
+          <span className="app-nav-button__label">{label}</span>
+          {variant === 'desktop' && showShellNavDescriptions ? <span className="app-nav-button__description">{item.description}</span> : null}
         </span>
       </PixelButton>
-    </nav>
-  );
+    );
+  };
+
+  const renderShellNav = (variant) => {
+    const mobileSections =
+      variant === 'mobile' ? getMobileNavigationSections(allNavItems) : { primaryItems: allNavItems, overflowItems: [] };
+
+    return (
+      <nav
+        className={`app-shell-nav app-shell-nav--${variant}`}
+        aria-label={variant === 'desktop' ? 'Основная навигация BrainGainz' : 'Мобильная навигация BrainGainz'}
+      >
+        {mobileSections.primaryItems.map((item) => renderNavButton(item, variant))}
+
+        {variant === 'mobile' && mobileSections.overflowItems.length > 0 ? (
+          <details className="app-nav-more">
+            <summary
+              aria-label="Еще разделы"
+              className={`app-nav-more__summary ${
+                mobileSections.overflowItems.some((item) => item.active) ? 'app-nav-more__summary--active' : ''
+              }`}
+            >
+              <MoreHorizontal size={15} />
+              <span>Ещё</span>
+            </summary>
+            <div className="app-nav-more__menu">
+              {mobileSections.overflowItems.map((item) => renderNavButton(item, variant, 'app-nav-button--overflow'))}
+            </div>
+          </details>
+        ) : null}
+      </nav>
+    );
+  };
 
   const handleDownloadLocalDatabaseBackup = () => {
     const persistedDatabase = localStorage.getItem(WEB_SQLITE_STORAGE_KEY);
@@ -2499,6 +2542,7 @@ export default function App() {
             onDeferDailyRunTask={handleDeferDailyRunTask}
             onFinishDailyRun={handleFinishDailyRun}
             onAbandonDailyRun={handleAbandonDailyRun}
+            focusMainGoalRequestId={todayMainGoalFocusRequestId}
           />
         )}
 
@@ -2516,7 +2560,7 @@ export default function App() {
             barrierType={mapBarrierType}
             shrinkTitle={mapShrinkTitle}
             onRefresh={loadNavigationSnapshot}
-            onOpenToday={() => setActiveTab('now')}
+            onOpenToday={openTodayMainGoal}
             onCreateStructure={handleCreateStructure}
             onCreateLinearAlgebraGraph={handleCreateLinearAlgebraGraph}
             onSelectNode={handleSelectNavigationNode}

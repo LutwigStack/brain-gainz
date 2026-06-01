@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -12,6 +13,7 @@ import {
   ListChecks,
   Lock,
   Map as MapIcon,
+  PauseCircle,
   RefreshCw,
   ShieldCheck,
   Swords,
@@ -37,7 +39,16 @@ import {
   resolveDirectLessonAction,
   type DailyTaskCardViewModel,
 } from './today-dashboard-model';
-import { shouldOpenQuietDailyTasks, shouldShowQuietWeakPanel } from './today-priority-layout';
+import {
+  dailyRunQueueManagementActions,
+  getDailyRunOutcomeLabel,
+  getDailyRunRetryActionLabel,
+  getDailyRunSummaryStatus,
+  getQuietDailyTaskSummary,
+  shouldOpenQuietDailyTasks,
+  shouldShowQuietWeakPanel,
+  type DailyRunQueueOutcome,
+} from './today-priority-layout';
 import type {
   DailyRunTaskOutcome,
   NodeFocusSnapshot,
@@ -173,6 +184,7 @@ interface NowViewProps {
   onDeferDailyRunTask: (taskId: number) => void;
   onFinishDailyRun: () => void;
   onAbandonDailyRun: () => void;
+  focusMainGoalRequestId?: number;
 }
 
 export const NowView = ({
@@ -194,14 +206,16 @@ export const NowView = ({
   onContinueSpecialization,
   isDailyRunPending = false,
   onStartDailyRun,
-  onCompleteDailyRunTask,
   onFailDailyRunTask,
   onRetryDailyRunTask,
   onSkipDailyRunTask,
   onDeferDailyRunTask,
   onFinishDailyRun,
   onAbandonDailyRun,
+  focusMainGoalRequestId = 0,
 }: NowViewProps) => {
+  const mainGoalRef = useRef<HTMLDivElement | null>(null);
+  const handledFocusRequestIdRef = useRef(0);
   const metrics = snapshot?.metrics ?? emptyMetrics;
   const primaryRecommendation = snapshot?.primaryRecommendation ?? null;
   const queue = snapshot?.queue ?? [];
@@ -220,6 +234,11 @@ export const NowView = ({
   const firstPendingRunTask = dailyRunTasks.find((task) => task.outcome === 'pending') ?? null;
   const firstPendingRunTaskId = firstPendingRunTask?.id ?? null;
   const canFinishDailyRun = isDailyRunActive && dailyRunTasks.length > 0 && pendingRunTaskCount === 0;
+  const dailyRunSummaryStatus = getDailyRunSummaryStatus({
+    state: dailyRunState,
+    completedCount: todaySession?.summary?.completedCount ?? dailyRunTasks.filter((task) => task.outcome === 'completed').length,
+    totalTaskCount: dailyRunTasks.length,
+  });
   const dailyRunResolvedPercent =
     dailyRunTasks.length > 0 ? clampPercent((resolvedRunTaskCount / dailyRunTasks.length) * 100) : 0;
   const today = snapshot?.today ?? null;
@@ -320,6 +339,15 @@ export const NowView = ({
     isDailyRunActive,
     isDailyRunFinished,
     dailyTaskCount: dailyTaskCards.length,
+    resolvedRunTaskCount,
+  });
+  const dailyTaskSummaryLabel = getQuietDailyTaskSummary({
+    isDailyRunActive,
+    isDailyRunFinished,
+    dailyTaskCount: dailyRunTasks.length || dailyTaskCards.length,
+    activeDailyTaskCount,
+    resolvedRunTaskCount,
+    canFinishDailyRun,
   });
   const singleNextAction = canFinishDailyRun
       ? {
@@ -441,16 +469,25 @@ export const NowView = ({
     onOpenRouteNode(task.nodeId, task.actionId ?? null);
   };
 
-  const handleRunTaskOutcome = (
-    task: NonNullable<NonNullable<NowDashboardSnapshot['todaySession']>['tasks']>[number],
-    outcome: 'completed' | 'failed' | 'skipped' | 'deferred',
-  ) => {
-    if (isDailyRunPending || task.outcome !== 'pending') {
+  const openRunTask = (task: NonNullable<NonNullable<NowDashboardSnapshot['todaySession']>['tasks']>[number]) => {
+    if (task.nodeId != null) {
+      if (task.actionId != null) {
+        onStartLesson(task.nodeId, task.actionId);
+        return;
+      }
+
+      onOpenRouteNode(task.nodeId, task.actionId ?? null);
       return;
     }
 
-    if (outcome === 'completed') {
-      onCompleteDailyRunTask(task.id);
+    onOpenRouteMap();
+  };
+
+  const handleRunTaskOutcome = (
+    task: NonNullable<NonNullable<NowDashboardSnapshot['todaySession']>['tasks']>[number],
+    outcome: Exclude<DailyRunQueueOutcome, 'completed'>,
+  ) => {
+    if (isDailyRunPending || task.outcome !== 'pending') {
       return;
     }
 
@@ -477,21 +514,19 @@ export const NowView = ({
     onRetryDailyRunTask(task.actionId);
   };
 
-  const runOutcomeLabel = (outcome: string) => {
-    if (outcome === 'completed') {
-      return 'закреплено';
+  useEffect(() => {
+    if (focusMainGoalRequestId <= 0 || handledFocusRequestIdRef.current === focusMainGoalRequestId) {
+      return;
     }
-    if (outcome === 'failed') {
-      return 'нужен повтор';
-    }
-    if (outcome === 'skipped') {
-      return 'оставлено на потом';
-    }
-    if (outcome === 'deferred') {
-      return 'отложено';
-    }
-    return outcome;
-  };
+
+    handledFocusRequestIdRef.current = focusMainGoalRequestId;
+    const frame = window.requestAnimationFrame(() => {
+      mainGoalRef.current?.scrollIntoView({ block: 'start' });
+      mainGoalRef.current?.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusMainGoalRequestId]);
 
   return (
     <div className="now-view today-dashboard-shell">
@@ -527,7 +562,14 @@ export const NowView = ({
 
       <div className="today-dashboard-grid">
         <main className="today-dashboard-main">
-          <PixelSurface frame={isVictory ? 'selected' : 'primary'} padding="xl" className="today-main-goal-card">
+          <PixelSurface
+            ref={mainGoalRef}
+            frame={isVictory ? 'selected' : 'primary'}
+            padding="xl"
+            className="today-main-goal-card"
+            tabIndex={-1}
+            data-today-main-goal="true"
+          >
             <div className="today-main-goal-layout">
               <div className="today-goal-icon" aria-hidden="true">
                 {hasCoreCsAssets ? (
@@ -578,7 +620,7 @@ export const NowView = ({
                 <span>
                   <ListChecks size={14} /> Задачи дня
                 </span>
-                <span>{activeDailyTaskCount} активных</span>
+                <span>{dailyTaskSummaryLabel}</span>
               </summary>
 
             <PixelSurface
@@ -608,7 +650,7 @@ export const NowView = ({
                 <div className="today-run-active">
                   <div className={`today-run-progress${canFinishDailyRun ? ' today-run-progress--ready' : ''}`}>
                     <PixelText as="span" size="xs" color={canFinishDailyRun ? 'accent' : 'textMuted'} uppercase>
-                      {canFinishDailyRun ? 'можно завершить' : `${resolvedRunTaskCount}/${dailyRunTasks.length} решено`}
+                      {canFinishDailyRun ? 'можно завершить' : `${resolvedRunTaskCount}/${dailyRunTasks.length} разобрано`}
                     </PixelText>
                     <span className="today-run-progress__meter" aria-hidden="true">
                       <span style={{ width: `${dailyRunResolvedPercent}%` }} />
@@ -651,18 +693,26 @@ export const NowView = ({
                         </div>
                         {task.outcome === 'pending' && isCurrentRunTask ? (
                           <div className="today-run-task__actions">
-                            <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'completed')} disabled={isDailyRunPending}>
-                              <CheckCircle2 size={13} /> Готово
+                            <PixelButton tone="accent" onClick={() => openRunTask(task)} disabled={isDailyRunPending}>
+                              <ArrowRight size={13} /> Открыть занятие
                             </PixelButton>
-                            <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'failed')} disabled={isDailyRunPending}>
-                              <RefreshCw size={13} /> Еще раз
-                            </PixelButton>
-                            <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'skipped')} disabled={isDailyRunPending}>
-                              <ArrowRight size={13} /> Пропустить
-                            </PixelButton>
-                            <PixelButton tone="ghost" onClick={() => handleRunTaskOutcome(task, 'deferred')} disabled={isDailyRunPending}>
-                              <RefreshCw size={13} /> Отложить
-                            </PixelButton>
+                            <details className="today-run-task__menu">
+                              <summary>Действия набора</summary>
+                              <div className="today-run-task__menu-actions">
+                                {dailyRunQueueManagementActions.map((action) => (
+                                  <PixelButton
+                                    key={action.outcome}
+                                    tone="ghost"
+                                    onClick={() => handleRunTaskOutcome(task, action.outcome)}
+                                    disabled={isDailyRunPending}
+                                    title={action.description}
+                                  >
+                                    {action.outcome === 'failed' ? <RefreshCw size={13} /> : <PauseCircle size={13} />}
+                                    {action.label}
+                                  </PixelButton>
+                                ))}
+                              </div>
+                            </details>
                           </div>
                         ) : task.outcome === 'pending' ? (
                           <div className="today-run-task__resolved">
@@ -671,11 +721,11 @@ export const NowView = ({
                         ) : (
                           <div className="today-run-task__resolved">
                             <span className={`today-run-task__outcome today-run-task__outcome--${task.outcome}`}>
-                              {runOutcomeLabel(task.outcome)}
+                              {getDailyRunOutcomeLabel(task.outcome)}
                             </span>
                             {isDailyRunActive && task.actionId != null ? (
                               <PixelButton tone="ghost" onClick={() => handleRetryRunTask(task)} disabled={isDailyRunPending}>
-                                <RefreshCw size={13} /> {task.outcome === 'completed' ? 'Повторить' : 'Вернуть'}
+                                <RefreshCw size={13} /> {getDailyRunRetryActionLabel(task.outcome)}
                               </PixelButton>
                             ) : null}
                           </div>
@@ -690,10 +740,10 @@ export const NowView = ({
                     </PixelText>
                     <div className="today-run-footer__actions">
                       <PixelButton tone="ghost" onClick={onAbandonDailyRun} disabled={isDailyRunPending}>
-                        <AlertTriangle size={13} /> Сбросить
+                        <AlertTriangle size={13} /> Сбросить набор
                       </PixelButton>
                       <PixelButton tone="ghost" onClick={onFinishDailyRun} disabled={isDailyRunPending || !canFinishDailyRun}>
-                        <Flag size={13} /> Завершить
+                        <Flag size={13} /> Закрыть набор
                       </PixelButton>
                     </div>
                   </div>
@@ -702,8 +752,8 @@ export const NowView = ({
 
               {isDailyRunFinished ? (
                 <div className="today-run-summary">
-                  <PixelText as="p" size="xs" color={dailyRunState === 'completed' ? 'success' : 'warning'} uppercase>
-                    {dailyRunState === 'completed' ? 'Задачи завершены' : 'Задачи сброшены'}
+                  <PixelText as="p" size="xs" color={dailyRunSummaryStatus.tone} uppercase>
+                    {dailyRunSummaryStatus.label}
                   </PixelText>
                   {(todaySession.summary?.lines.length ? todaySession.summary.lines : [todaySession.summary_note ?? 'Сводка не записана.']).map((line) => (
                     <PixelText key={line} as="p" readable size="sm" color="textMuted">

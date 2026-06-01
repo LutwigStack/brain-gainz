@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -33,3 +33,11 @@ Create:
 - open findings are listed by severity
 - screenshots cover desktop and mobile
 - tests, lint, and build pass
+
+## QA Result
+
+Pass. Daily use is fast enough for the simplified loop: Today keeps one main CTA, queue controls stay secondary, retry resets to a new attempt, and mobile map starts with current/next orientation before the canvas.
+
+Open findings: none.
+
+See `tasks/26-daily-run-simplification/daily-run-simplification-qa.md`.

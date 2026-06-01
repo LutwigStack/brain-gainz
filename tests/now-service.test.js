@@ -242,7 +242,9 @@ test('completing the selected action records outcome while the run stays open un
 
   const finished = await nowService.finishDailyRun();
   assert.equal(finished.status, 'completed');
-  assert.match(finished.summary_note, /Изменения:/);
+  assert.match(finished.summary_note, /Итог дня:/);
+  assert.match(finished.summary_note, /Прогресс:/);
+  assert.doesNotMatch(finished.summary_note, /событий освоения/);
 });
 
 test('skipping after completion reopens the action and deactivates completion XP', async (t) => {
