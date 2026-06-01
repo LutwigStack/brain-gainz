@@ -1,10 +1,21 @@
-import { Archive, Copy, Flag, Play, Plus, RotateCcw } from 'lucide-react';
+import {
+  Archive,
+  BookOpen,
+  Flag,
+  MoreHorizontal,
+  Play,
+  Plus,
+  RotateCcw,
+  SlidersHorizontal,
+  Sparkles,
+  Wrench,
+} from 'lucide-react';
+import { useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 import {
   PixelButton,
   PixelInput,
-  PixelPanelHeader,
-  PixelStack,
   PixelSurface,
   PixelText,
 } from './pixel';
@@ -12,8 +23,16 @@ import { ReferenceAssetImage } from '../assets/ReferenceAssetImage';
 import {
   csBachelorReferenceAssets,
   isCsBachelorCampaign,
+  resolveCampaignCardAsset,
 } from '../assets/referenceStyleAssets';
 import type { CampaignListSnapshot, CampaignSummary } from '../types/app-shell';
+import { splitTemplateCampaignsForMenu } from './campaign-menu-model';
+
+interface CampaignMenuNotice {
+  message: string;
+  actionLabel?: string;
+  campaign?: CampaignSummary;
+}
 
 interface CampaignMenuProps {
   campaigns: CampaignListSnapshot | null;
@@ -21,141 +40,474 @@ interface CampaignMenuProps {
   isMutating: boolean;
   newCampaignName: string;
   error: string | null;
+  notice: CampaignMenuNotice | null;
   onNewCampaignNameChange: (value: string) => void;
   onOpenCampaign: (campaign: CampaignSummary) => void;
   onForkTemplate: (campaign: CampaignSummary) => void;
   onCreateCampaign: () => void;
+  onCreateCampaignDetailed: () => void;
   onArchiveCampaign: (campaign: CampaignSummary) => void;
   onRestoreCampaign: (campaign: CampaignSummary) => void;
 }
 
+type CampaignCourseItem =
+  | { kind: 'available'; campaign: CampaignSummary }
+  | { kind: 'restore'; campaign: CampaignSummary; template: CampaignSummary };
+
+const templateCampaignOrder = [
+  'template-cs-bachelor',
+  'template-materials-science',
+  'template-nlh-cash',
+  'template-biology',
+  'template-applied-math',
+  'template-ml-ai',
+];
+
+const sortTemplateCampaigns = (campaigns: CampaignSummary[]) =>
+  [...campaigns].sort((left, right) => {
+    const leftIndex = templateCampaignOrder.indexOf(left.slug ?? '');
+    const rightIndex = templateCampaignOrder.indexOf(right.slug ?? '');
+    const leftRank = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
+    const rightRank = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex;
+    return leftRank - rightRank || String(left.name).localeCompare(String(right.name), 'ru-RU');
+  });
+
+const presetCampaignNames = ['Моя программа', 'Подготовка к собеседованию', 'План на семестр'];
+
 const modeLabel = (campaign: CampaignSummary) => (campaign.mode === 'career' ? 'Маршрут' : 'Свободный режим');
 const campaignStateLabel = (campaign: CampaignSummary) =>
   campaign.career_status === 'victory' ? 'Маршрут пройден' : campaign.is_archived ? 'В архиве' : 'Активна';
+const campaignStatsLabel = (campaign: CampaignSummary) =>
+  `${Number(campaign.node_count ?? 0)} узл. · ${Number(campaign.total_xp ?? 0)} XP`;
 
-const CampaignCard = ({
+const campaignProgressPercent = (campaign: CampaignSummary) => {
+  const xp = Number(campaign.total_xp ?? 0);
+  const nodes = Number(campaign.node_count ?? 0);
+
+  if (xp <= 0) {
+    return 0;
+  }
+
+  return Math.max(12, Math.min(100, Math.round((xp / Math.max(120, nodes * 3)) * 100)));
+};
+
+const courseDescription = (campaign: CampaignSummary) =>
+  campaign.slug?.includes('materials-science')
+    ? 'Структура материалов, свойства, лабораторное мышление и инженерный выбор.'
+    : campaign.slug?.includes('nlh-cash')
+      ? 'Учебная стратегия кэш-игры NLH: диапазоны, банк, позиция и разбор решений.'
+      : campaign.slug?.includes('biology')
+        ? 'Клетка, генетика, эволюция, экосистемы и базовая лабораторная логика.'
+        : campaign.slug?.includes('applied-math')
+          ? 'Модели, анализ, вероятность, оптимизация и прикладное решение задач.'
+          : campaign.slug?.includes('ml-ai')
+            ? 'Данные, модели, обучение, оценка качества и практический ИИ-пайплайн.'
+            : isCsBachelorCampaign(campaign)
+              ? 'Программирование, математика, структуры данных, алгоритмы и системы.'
+              : 'Готовая учебная программа без ручной настройки.';
+
+const courseTypeLabel = (campaign: CampaignSummary) =>
+  campaign.slug?.includes('nlh-cash') ? 'Стратегия и практика' : 'Готовая программа';
+
+const CampaignSection = ({
+  title,
+  children,
+  className = '',
+}: {
+  title: string;
+  children: ReactNode;
+  className?: string;
+}) => (
+  <section className={`campaign-intent-section ${className}`.trim()}>
+    <div className="campaign-intent-heading">
+      <div className="min-w-0">
+        <PixelText as="h2" readable size="lg" className="campaign-intent-heading__title">
+          {title}
+        </PixelText>
+      </div>
+    </div>
+    {children}
+  </section>
+);
+
+const CampaignAsset = ({
   campaign,
+  identityCampaign = campaign,
+  className = '',
+}: {
+  campaign: CampaignSummary;
+  identityCampaign?: CampaignSummary;
+  className?: string;
+}) => {
+  const identityAsset = resolveCampaignCardAsset(identityCampaign);
+
+  return (
+    <span className={`campaign-card__asset ${className}`.trim()} aria-hidden="true">
+      {isCsBachelorCampaign(identityCampaign) ? (
+        <ReferenceAssetImage
+          asset={csBachelorReferenceAssets.campaign.crest}
+          decorative
+          className="campaign-card__asset-image"
+          fallback={<Flag size={22} />}
+        />
+      ) : identityAsset ? (
+        <ReferenceAssetImage
+          asset={identityAsset}
+          decorative
+          className="campaign-card__asset-image"
+          fallback={<Flag size={22} />}
+        />
+      ) : (
+        <Flag size={22} />
+      )}
+    </span>
+  );
+};
+
+const CampaignStatPill = ({ label }: { label: string }) => (
+  <PixelText as="span" readable size="xs" color="textMuted" className="campaign-stat-pill">
+    {label}
+  </PixelText>
+);
+
+const CampaignSaveSlotMetric = ({ label, value }: { label: string; value: string }) => (
+  <div className="campaign-save-slot__metric">
+    <PixelText as="span" size="xs" color="textDim" uppercase>
+      {label}
+    </PixelText>
+    <PixelText as="strong" readable size="sm">
+      {value}
+    </PixelText>
+  </div>
+);
+
+const CampaignSaveSlot = ({
+  campaign,
+  identityCampaign = campaign,
   isMutating,
   onOpen,
-  onFork,
   onArchive,
 }: {
   campaign: CampaignSummary;
+  identityCampaign?: CampaignSummary;
   isMutating: boolean;
   onOpen: () => void;
-  onFork: () => void;
   onArchive: () => void;
 }) => {
-  const isSystem = campaign.type === 'developer_main';
-  const isTemplate = campaign.type === 'template';
+  const progress = campaignProgressPercent(campaign);
   const nodeCount = Number(campaign.node_count ?? 0);
   const totalXp = Number(campaign.total_xp ?? 0);
-  const hasCsAssets = isCsBachelorCampaign(campaign);
-  const openLabel = isSystem ? 'Открыть шаблон' : isTemplate ? 'Посмотреть' : 'Продолжить';
+  const heroAsset = isCsBachelorCampaign(identityCampaign)
+    ? csBachelorReferenceAssets.city.coreCsCitadel
+    : resolveCampaignCardAsset(identityCampaign);
 
   return (
     <PixelSurface
       frame="secondary"
-      padding={isSystem || isTemplate ? 'sm' : 'md'}
-      className={`campaign-card min-w-0 ${isSystem || isTemplate ? 'campaign-card--system' : 'campaign-card--user'}`}
-      style={
-        isSystem || isTemplate
-          ? {
-              background: 'rgba(148, 163, 184, 0.035)',
-              borderColor: 'var(--pixel-line-soft)',
-            }
-          : undefined
-      }
+      padding="lg"
+      className={`campaign-save-slot ${heroAsset ? 'campaign-save-slot--with-art' : ''}`.trim()}
     >
-      <div className={isSystem || isTemplate ? 'grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]' : 'grid min-w-0 gap-3'}>
-        <div className={hasCsAssets ? 'campaign-card__heading min-w-0' : 'min-w-0'}>
-          {hasCsAssets ? (
-            <span className="campaign-card__asset" aria-hidden="true">
-              <ReferenceAssetImage
-                asset={csBachelorReferenceAssets.campaign.crest}
-                decorative
-                className="campaign-card__asset-image"
-                fallback={<Flag size={18} />}
-              />
-            </span>
-          ) : null}
-          <div className="min-w-0">
-          {!isSystem && !isTemplate ? (
-            <PixelText
-              as="h3"
-              readable
-              size="lg"
-              title={campaign.name}
-              className="campaign-card__title"
-              style={{ fontWeight: 800 }}
-            >
-              {campaign.name}
-            </PixelText>
-          ) : (
-            <PixelText
-              as="h3"
-              readable
-              size="sm"
-              title={campaign.name}
-              className="campaign-card__title"
-              style={{ fontWeight: 700 }}
-            >
-              {campaign.name}
-            </PixelText>
-          )}
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <PixelText as="span" readable size="xs" color={isSystem || isTemplate ? 'textDim' : 'textMuted'}>
-              {isSystem ? 'Системный шаблон' : modeLabel(campaign)}
-            </PixelText>
-            {isTemplate ? (
-              <PixelText as="span" readable size="xs" color="textDim">
-                Многоразовый шаблон
-              </PixelText>
-            ) : null}
-            <PixelText as="span" readable size="xs" color="textDim">
-              {campaignStateLabel(campaign)}
-            </PixelText>
-            <PixelText as="span" size="xs" color="textDim" uppercase>
-              {nodeCount} узл. · {totalXp} XP
-            </PixelText>
-          </div>
+      {heroAsset ? (
+        <ReferenceAssetImage
+          asset={heroAsset}
+          decorative
+          className="campaign-save-slot__backdrop"
+          fallback={<span className="campaign-save-slot__backdrop-fallback" />}
+        />
+      ) : (
+        <span className="campaign-save-slot__backdrop-fallback" aria-hidden="true" />
+      )}
+      <span className="campaign-save-slot__shade" aria-hidden="true" />
+
+      <div className="campaign-save-slot__layout">
+        <CampaignAsset
+          campaign={campaign}
+          identityCampaign={identityCampaign}
+          className="campaign-card__asset--hero"
+        />
+
+        <div className="campaign-save-slot__main min-w-0">
+          <PixelText as="p" size="xs" color="accent" uppercase className="campaign-save-slot__eyebrow">
+            Продолжить обучение
+          </PixelText>
+          <PixelText as="h3" readable size="xl" title={campaign.name} className="campaign-save-slot__title">
+            {campaign.name}
+          </PixelText>
+          <PixelText as="p" readable size="sm" color="textMuted" className="campaign-save-slot__status">
+            {modeLabel(campaign)} · {campaignStateLabel(campaign)}
+          </PixelText>
+          <div className="campaign-save-slot__metrics" aria-label="Сводка программы">
+            <CampaignSaveSlotMetric label="Узлы" value={`${nodeCount}`} />
+            <CampaignSaveSlotMetric label="XP" value={`${totalXp}`} />
+            <CampaignSaveSlotMetric label="Статус" value={campaignStateLabel(campaign)} />
           </div>
         </div>
 
-        <div className={isSystem || isTemplate ? 'flex min-w-0 flex-wrap items-center justify-end gap-2' : 'campaign-card__actions'}>
-          {isTemplate ? (
-            <PixelButton
-              tone="accent"
-              onClick={onFork}
-              disabled={isMutating}
-              aria-label={`Создать личную кампанию из ${campaign.name}`}
-              style={{ minHeight: 32, padding: '6px 10px', gap: 6 }}
-            >
-              <Copy size={15} /> Взять шаблон
-            </PixelButton>
-          ) : null}
+        <div className="campaign-save-slot__actions">
+          <div className="campaign-save-slot__progress" aria-label={`Прогресс программы ${progress}%`}>
+            <PixelText as="span" readable className="campaign-save-slot__progress-value">
+              {progress}%
+            </PixelText>
+            <PixelText as="span" size="xs" color="textMuted" uppercase>
+              Прогресс
+            </PixelText>
+            <span className="campaign-save-slot__progress-track">
+              <span style={{ width: `${progress}%` }} />
+            </span>
+          </div>
           <PixelButton
-            tone={isSystem || isTemplate ? 'ghost' : 'accent'}
+            tone="accent"
             onClick={onOpen}
             disabled={isMutating}
-            aria-label={`${openLabel}: ${campaign.name}`}
-            style={{ minHeight: 32, padding: '6px 10px', gap: 6, whiteSpace: 'nowrap' }}
+            aria-label={`Продолжить: ${campaign.name}`}
+            className="campaign-save-slot__primary"
+            fullWidth
+            style={{ display: 'flex', width: '100%', minHeight: 48, padding: '10px 16px', gap: 8 }}
           >
-            <Play size={15} /> {openLabel}
+            <Play size={16} /> Продолжить
           </PixelButton>
-          {!isSystem && !isTemplate ? (
-            <PixelButton
-              tone="danger"
-              onClick={onArchive}
-              disabled={isMutating}
-              aria-label={`Архивировать кампанию ${campaign.name}`}
-            >
-              <Archive size={15} /> Архивировать
-            </PixelButton>
-          ) : (
-            null
-          )}
+          <details className="campaign-save-slot__more">
+            <summary aria-label={`Еще действия для программы ${campaign.name}`}>
+              <MoreHorizontal size={17} />
+            </summary>
+            <div className="campaign-save-slot__more-menu">
+              <PixelButton
+                tone="ghost"
+                onClick={onArchive}
+                disabled={isMutating}
+                aria-label={`Скрыть программу ${campaign.name} в архив`}
+                style={{ minHeight: 32, padding: '6px 10px', gap: 6 }}
+              >
+                <Archive size={14} /> Скрыть в архив
+              </PixelButton>
+            </div>
+          </details>
         </div>
+      </div>
+    </PixelSurface>
+  );
+};
+
+const CampaignMiniRow = ({
+  campaign,
+  isMutating,
+  onSelect,
+}: {
+  campaign: CampaignSummary;
+  isMutating: boolean;
+  onSelect: () => void;
+}) => (
+  <button
+    type="button"
+    className="campaign-mini-row"
+    onClick={onSelect}
+    disabled={isMutating}
+    aria-label={`Показать в продолжении: ${campaign.name}`}
+  >
+    <span className="campaign-mini-row__content min-w-0">
+      <PixelText as="span" readable size="sm" title={campaign.name} className="campaign-card__title">
+        {campaign.name}
+      </PixelText>
+      <PixelText as="span" size="xs" color="textDim" uppercase>
+        {campaignStatsLabel(campaign)}
+      </PixelText>
+    </span>
+    <span className="campaign-mini-row__cue" aria-hidden="true" />
+  </button>
+);
+
+const CampaignCourseCard = ({
+  item,
+  isMutating,
+  onOpen,
+  onFork,
+  onRestore,
+}: {
+  item: CampaignCourseItem;
+  isMutating: boolean;
+  onOpen: (campaign: CampaignSummary) => void;
+  onFork: (campaign: CampaignSummary) => void;
+  onRestore: (campaign: CampaignSummary) => void;
+}) => {
+  const { campaign } = item;
+  const isRestore = item.kind === 'restore';
+  const cardAsset = resolveCampaignCardAsset(campaign);
+  const nodeCount = Number(campaign.node_count ?? 0);
+  const totalXp = Number(campaign.total_xp ?? 0);
+
+  return (
+    <PixelSurface
+      frame="secondary"
+      padding="md"
+      className={`campaign-course-card ${isRestore ? 'campaign-course-card--restore' : ''}`.trim()}
+    >
+      {cardAsset ? (
+        <ReferenceAssetImage
+          asset={cardAsset}
+          decorative
+          className="campaign-course-card__image"
+          fallback={<span className="campaign-course-card__image-fallback" />}
+        />
+      ) : (
+        <span className="campaign-course-card__image-fallback" aria-hidden="true" />
+      )}
+      <span className="campaign-course-card__shade" aria-hidden="true" />
+      {!isRestore ? (
+        <PixelButton
+          tone="ghost"
+          onClick={() => onOpen(campaign)}
+          disabled={isMutating}
+          aria-label={`Посмотреть карту программы ${campaign.name}`}
+          className="campaign-course-card__map-action"
+          style={{ minHeight: 28, padding: '5px 7px', gap: 5 }}
+        >
+          <BookOpen size={14} /> Карта
+        </PixelButton>
+      ) : null}
+
+      <div className="campaign-course-card__body min-w-0">
+        <PixelText as="p" size="xs" color={isRestore ? 'warning' : 'info'} uppercase className="campaign-course-card__type">
+          {isRestore ? 'В архиве' : courseTypeLabel(campaign)}
+        </PixelText>
+        <PixelText as="h3" readable size="lg" title={campaign.name} className="campaign-course-card__title">
+          {campaign.name}
+        </PixelText>
+        <PixelText as="p" readable size="sm" color="textMuted" className="campaign-course-card__copy">
+          {courseDescription(campaign)}
+        </PixelText>
+        <div className="campaign-course-card__metrics">
+          <CampaignStatPill label={`${nodeCount} узл.`} />
+          {totalXp > 0 ? <CampaignStatPill label={`${totalXp} XP`} /> : null}
+        </div>
+      </div>
+
+      <div className="campaign-course-card__actions">
+        {isRestore ? (
+          <PixelButton
+            tone="accent"
+            onClick={() => onRestore(campaign)}
+            disabled={isMutating}
+            aria-label={`Восстановить программу ${campaign.name}`}
+            className="campaign-course-card__primary"
+            fullWidth
+            style={{ minHeight: 38, padding: '8px 11px', gap: 6 }}
+          >
+            <RotateCcw size={15} /> Восстановить
+          </PixelButton>
+        ) : (
+          <PixelButton
+            tone="accent"
+            onClick={() => onFork(campaign)}
+            disabled={isMutating}
+            aria-label={`Начать готовую программу ${campaign.name}`}
+            className="campaign-course-card__primary campaign-course-card__primary--start"
+            fullWidth
+            style={{ minHeight: 38, padding: '8px 11px', gap: 6 }}
+          >
+            <Play size={15} /> Начать программу
+          </PixelButton>
+        )}
+      </div>
+    </PixelSurface>
+  );
+};
+
+const CampaignReadyProgramEmptySlot = ({ slotCount }: { slotCount: number }) => (
+  <div
+    className="campaign-course-empty-slot"
+    role="note"
+    aria-label="Пустое место в сетке готовых программ: больше программ скоро появится"
+    style={
+      {
+        '--campaign-ready-empty-slot-span': String(Math.max(1, Math.min(3, slotCount))),
+      } as CSSProperties
+    }
+  >
+    <span className="campaign-course-empty-slot__mark" aria-hidden="true" />
+    <PixelText as="p" readable size="sm" color="textDim" className="campaign-course-empty-slot__copy">
+      Больше программ скоро появится
+    </PixelText>
+  </div>
+);
+
+const CampaignCreateWorkshop = ({
+  newCampaignName,
+  isMutating,
+  onNewCampaignNameChange,
+  onCreateCampaign,
+  onCreateCampaignDetailed,
+}: {
+  newCampaignName: string;
+  isMutating: boolean;
+  onNewCampaignNameChange: (value: string) => void;
+  onCreateCampaign: () => void;
+  onCreateCampaignDetailed: () => void;
+}) => {
+  const canCreate = !isMutating && newCampaignName.trim().length > 0;
+
+  return (
+    <PixelSurface frame="ghost" padding="md" className="campaign-create-workshop">
+      <div className="campaign-create-workshop__intro">
+        <span className="campaign-create-workshop__icon" aria-hidden="true">
+          <Wrench size={17} />
+        </span>
+        <PixelText as="p" readable size="sm" className="campaign-create-workshop__title">
+          С нуля
+        </PixelText>
+      </div>
+
+      <div className="campaign-create-workshop__field">
+        <PixelInput
+          id="new-campaign-name"
+          label="Название"
+          value={newCampaignName}
+          onChange={(event) => onNewCampaignNameChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              onCreateCampaign();
+            }
+          }}
+          placeholder="Например: Моя программа"
+          style={{ minHeight: 36, padding: '6px 10px' }}
+        />
+        <div className="campaign-create-workshop__presets" aria-label="Быстрые варианты названия">
+          <PixelText as="span" size="xs" color="textDim" uppercase className="campaign-create-workshop__presets-label">
+            Варианты
+          </PixelText>
+          {presetCampaignNames.map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              className="campaign-preset-chip"
+              onClick={() => onNewCampaignNameChange(preset)}
+              disabled={isMutating}
+            >
+              {preset}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="campaign-create-strip__layout">
+        <PixelButton
+          tone="accent"
+          onClick={onCreateCampaign}
+          disabled={!canCreate}
+          className="campaign-create-workshop__create"
+          style={{ minHeight: 36, padding: '7px 11px', gap: 6 }}
+        >
+          <Plus size={15} /> Создать
+        </PixelButton>
+        <PixelButton
+          tone="ghost"
+          onClick={onCreateCampaignDetailed}
+          disabled={!canCreate}
+          className="campaign-create-workshop__settings"
+          style={{ minHeight: 36, padding: '7px 11px', gap: 6 }}
+        >
+          <SlidersHorizontal size={15} /> Настроить
+        </PixelButton>
       </div>
     </PixelSurface>
   );
@@ -167,184 +519,186 @@ export const CampaignMenu = ({
   isMutating,
   newCampaignName,
   error,
+  notice,
   onNewCampaignNameChange,
   onOpenCampaign,
   onForkTemplate,
   onCreateCampaign,
+  onCreateCampaignDetailed,
   onArchiveCampaign,
   onRestoreCampaign,
 }: CampaignMenuProps) => {
   const activeCampaigns = campaigns?.active ?? [];
   const archivedCampaigns = campaigns?.archived ?? [];
-  const lastOpened = campaigns?.lastOpened ?? null;
+  const lastOpened = campaigns?.lastOpened?.type === 'user' ? campaigns.lastOpened : null;
   const userCampaigns = activeCampaigns.filter((campaign) => campaign.type === 'user');
-  const templateCampaigns = activeCampaigns.filter((campaign) => campaign.type === 'template');
-  const systemCampaigns = activeCampaigns.filter((campaign) => campaign.type === 'developer_main');
+  const [selectedPrimaryCampaignId, setSelectedPrimaryCampaignId] = useState<number | null>(null);
+  const templateCampaigns = sortTemplateCampaigns(activeCampaigns.filter((campaign) => campaign.type === 'template'));
+  const templateCampaignById = new Map(templateCampaigns.map((campaign) => [Number(campaign.id), campaign]));
+  const { availableTemplates, archivedTemplateCopies } = splitTemplateCampaignsForMenu({
+    templates: templateCampaigns,
+    activeUserCampaigns: userCampaigns,
+    archivedCampaigns,
+  });
+  const selectedPrimaryCampaign =
+    selectedPrimaryCampaignId == null
+      ? null
+      : userCampaigns.find((campaign) => Number(campaign.id) === selectedPrimaryCampaignId) ?? null;
+  const primaryCampaign = selectedPrimaryCampaign ?? lastOpened ?? userCampaigns[0] ?? null;
+  const primaryCampaignIdentity =
+    primaryCampaign?.source_template_id != null
+      ? templateCampaignById.get(Number(primaryCampaign.source_template_id)) ?? primaryCampaign
+      : primaryCampaign;
+  const secondaryUserCampaigns = primaryCampaign
+    ? userCampaigns.filter((campaign) => campaign.id !== primaryCampaign.id)
+    : userCampaigns;
+  const courseItems: CampaignCourseItem[] = [
+    ...availableTemplates.map((campaign) => ({ kind: 'available' as const, campaign })),
+    ...archivedTemplateCopies.map(({ campaign, template }) => ({ kind: 'restore' as const, campaign, template })),
+  ];
+  const readyProgramEmptySlotCount = Math.max(
+    0,
+    templateCampaigns.length - availableTemplates.length - archivedTemplateCopies.length,
+  );
+  const showReadyProgramEmptySlot = !isLoading && courseItems.length > 0 && readyProgramEmptySlotCount > 0;
   const emptyPersonalCampaigns = !isLoading && userCampaigns.length === 0;
+  const mutationDisabled = isMutating || isLoading;
 
   return (
     <div className="campaign-menu w-full min-w-0 flex-grow pt-3">
-      <div className="mx-auto grid w-full max-w-6xl gap-4">
-        <PixelSurface frame="secondary" padding="xl">
-          <PixelStack gap="lg">
-            <PixelPanelHeader
-              eyebrow="Кампании"
-              title="Личные кампании"
-              description="Продолжите кампанию или возьмите шаблон."
-              aside={
-                lastOpened ? (
-                  <PixelButton
-                    tone="accent"
-                    onClick={() => onOpenCampaign(lastOpened)}
-                    disabled={isMutating || isLoading}
-                    aria-label={`Продолжить кампанию ${lastOpened.name}`}
-                    style={{ maxWidth: 300, justifyContent: 'flex-start' }}
-                  >
-                    <Play size={16} />
-                    <span className="min-w-0 truncate">Продолжить: {lastOpened.name}</span>
-                  </PixelButton>
-                ) : null
-              }
-            />
+      <div className="campaign-board mx-auto w-full max-w-6xl">
+        {error ? (
+          <PixelSurface frame="destructive" padding="sm">
+            <PixelText as="p" readable size="sm">
+              {error}
+            </PixelText>
+          </PixelSurface>
+        ) : null}
 
-            {error ? (
-              <PixelSurface frame="destructive" padding="sm">
-                <PixelText as="p" readable size="sm">
-                  {error}
-                </PixelText>
-              </PixelSurface>
-            ) : null}
-
-            <PixelSurface frame="ghost" padding="sm" className="campaign-create-strip">
-              <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                <PixelInput
-                  id="new-campaign-name"
-                  label="Новая личная кампания"
-                  value={newCampaignName}
-                  onChange={(event) => onNewCampaignNameChange(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      onCreateCampaign();
-                    }
-                  }}
-                  placeholder="Например: Мой курс"
-                  style={{ minHeight: 36, padding: '6px 10px' }}
-                />
+        {notice ? (
+          <PixelSurface frame="selected" padding="sm" className="campaign-notice">
+            <div className="campaign-notice__content">
+              <PixelText as="p" readable size="sm">
+                {notice.message}
+              </PixelText>
+              {notice.campaign && notice.actionLabel ? (
                 <PixelButton
                   tone="ghost"
-                  onClick={onCreateCampaign}
-                  disabled={isMutating || !newCampaignName.trim()}
-                  style={{ minHeight: 36, padding: '7px 10px', gap: 6 }}
+                  onClick={() => onRestoreCampaign(notice.campaign as CampaignSummary)}
+                  disabled={mutationDisabled}
+                  aria-label={`Восстановить программу ${notice.campaign.name}`}
+                  style={{ minHeight: 32, padding: '6px 10px', gap: 6 }}
                 >
-                  <Plus size={15} /> Создать
+                  <RotateCcw size={14} /> {notice.actionLabel}
                 </PixelButton>
-              </div>
-            </PixelSurface>
-
-            <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(240px,300px)]">
-              <div className="grid min-w-0 gap-3">
-                {userCampaigns.length > 0 ? (
-                  <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {userCampaigns.map((campaign) => (
-                      <CampaignCard
-                        key={campaign.id}
-                        campaign={campaign}
-                        isMutating={isMutating || isLoading}
-                        onOpen={() => onOpenCampaign(campaign)}
-                        onFork={() => undefined}
-                        onArchive={() => onArchiveCampaign(campaign)}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-
-                {emptyPersonalCampaigns ? (
-                  <PixelSurface frame="inset" padding="md">
-                    <PixelText as="p" readable size="sm" color="textMuted">
-                      Создайте кампанию выше или возьмите шаблон ниже.
-                    </PixelText>
-                  </PixelSurface>
-                ) : null}
-
-                {systemCampaigns.length > 0 ? (
-                  <div className="campaign-system-section grid min-w-0 gap-2">
-                    <PixelText as="p" size="xs" color="textMuted" uppercase>
-                      Системный шаблон
-                    </PixelText>
-                    <div className="grid min-w-0 gap-2">
-                      {systemCampaigns.map((campaign) => (
-                        <CampaignCard
-                          key={campaign.id}
-                          campaign={campaign}
-                          isMutating={isMutating || isLoading}
-                          onOpen={() => onOpenCampaign(campaign)}
-                          onFork={() => undefined}
-                          onArchive={() => onArchiveCampaign(campaign)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {templateCampaigns.length > 0 ? (
-                  <div className="campaign-system-section grid min-w-0 gap-2">
-                    <PixelText as="p" size="xs" color="textMuted" uppercase>
-                      Многоразовые шаблоны
-                    </PixelText>
-                    <div className="grid min-w-0 gap-2">
-                      {templateCampaigns.map((campaign) => (
-                        <CampaignCard
-                          key={campaign.id}
-                          campaign={campaign}
-                          isMutating={isMutating || isLoading}
-                          onOpen={() => onOpenCampaign(campaign)}
-                          onFork={() => onForkTemplate(campaign)}
-                          onArchive={() => onArchiveCampaign(campaign)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <PixelSurface frame="ghost" padding="md" className="campaign-archive-panel">
-                <PixelStack gap="md">
-                  {archivedCampaigns.length > 0 ? (
-                    <div className="grid gap-2">
-                      <PixelText as="p" size="xs" color="textMuted" uppercase>
-                        Архив
-                      </PixelText>
-                      {archivedCampaigns.map((campaign) => (
-                        <PixelSurface key={campaign.id} frame="inset" padding="sm" className="min-w-0">
-                          <div className="grid min-w-0 gap-2">
-                            <PixelText as="p" readable size="sm" title={campaign.name} className="truncate">
-                              {campaign.name}
-                            </PixelText>
-                            <PixelButton
-                              tone="ghost"
-                              onClick={() => onRestoreCampaign(campaign)}
-                              disabled={isMutating}
-                              aria-label={`Восстановить кампанию ${campaign.name}`}
-                              fullWidth
-                              style={{ minHeight: 32, padding: '6px 10px', gap: 6 }}
-                            >
-                              <RotateCcw size={14} /> Восстановить
-                            </PixelButton>
-                          </div>
-                        </PixelSurface>
-                      ))}
-                    </div>
-                  ) : (
-                    <PixelText as="p" readable size="sm" color="textDim">
-                      Архив пуст.
-                    </PixelText>
-                  )}
-                </PixelStack>
-              </PixelSurface>
+              ) : null}
             </div>
-          </PixelStack>
-        </PixelSurface>
+          </PixelSurface>
+        ) : null}
+
+        <CampaignSection title="Продолжить обучение" className="campaign-intent-section--continue">
+          {primaryCampaign ? (
+            <CampaignSaveSlot
+              key={primaryCampaign.id}
+              campaign={primaryCampaign}
+              identityCampaign={primaryCampaignIdentity ?? primaryCampaign}
+              isMutating={mutationDisabled}
+              onOpen={() => onOpenCampaign(primaryCampaign)}
+              onArchive={() => onArchiveCampaign(primaryCampaign)}
+            />
+          ) : null}
+
+          {secondaryUserCampaigns.length > 0 ? (
+            <details className="campaign-other-panel">
+              <summary>Другие программы ({secondaryUserCampaigns.length})</summary>
+              <div className="campaign-other-list">
+                {secondaryUserCampaigns.map((campaign) => (
+                  <CampaignMiniRow
+                    key={campaign.id}
+                    campaign={campaign}
+                    isMutating={mutationDisabled}
+                    onSelect={() => setSelectedPrimaryCampaignId(Number(campaign.id))}
+                  />
+                ))}
+              </div>
+            </details>
+          ) : null}
+
+          {emptyPersonalCampaigns ? (
+            <PixelSurface frame="inset" padding="md" className="campaign-empty-state">
+              <Sparkles size={17} />
+              <PixelText as="p" readable size="sm" color="textMuted">
+                Личных программ пока нет. Начните готовую программу или создайте свою.
+              </PixelText>
+            </PixelSurface>
+          ) : null}
+        </CampaignSection>
+
+        <CampaignSection title="Начать готовую программу" className="campaign-intent-section--courses">
+          {courseItems.length > 0 ? (
+            <div className="campaign-course-grid">
+              {courseItems.map((item) => (
+                <CampaignCourseCard
+                  key={`${item.kind}-${item.campaign.id}`}
+                  item={item}
+                  isMutating={mutationDisabled}
+                  onOpen={onOpenCampaign}
+                  onFork={onForkTemplate}
+                  onRestore={onRestoreCampaign}
+                />
+              ))}
+              {showReadyProgramEmptySlot ? (
+                <CampaignReadyProgramEmptySlot slotCount={readyProgramEmptySlotCount} />
+              ) : null}
+            </div>
+          ) : (
+            <PixelSurface frame="inset" padding="md" className="campaign-empty-state campaign-empty-state--course">
+              <BookOpen size={17} />
+              <PixelText as="p" readable size="sm" color="textMuted">
+                {templateCampaigns.length > 0 ? 'Все готовые программы уже в вашем списке.' : 'Готовые программы появятся здесь.'}
+              </PixelText>
+            </PixelSurface>
+          )}
+        </CampaignSection>
+
+        <CampaignSection title="Создать свою программу" className="campaign-intent-section--create">
+          <CampaignCreateWorkshop
+            newCampaignName={newCampaignName}
+            isMutating={mutationDisabled}
+            onNewCampaignNameChange={onNewCampaignNameChange}
+            onCreateCampaign={onCreateCampaign}
+            onCreateCampaignDetailed={onCreateCampaignDetailed}
+          />
+        </CampaignSection>
+
+        {archivedCampaigns.length > 0 ? (
+          <details className="campaign-archive-panel">
+            <summary>Архив программ ({archivedCampaigns.length})</summary>
+            <div className="campaign-archive-list">
+              {archivedCampaigns.map((campaign) => (
+                <PixelSurface key={campaign.id} frame="inset" padding="sm" className="campaign-archive-item">
+                  <div className="min-w-0">
+                    <PixelText as="p" readable size="sm" title={campaign.name} className="truncate">
+                      {campaign.name}
+                    </PixelText>
+                    <PixelText as="p" size="xs" color="textDim" uppercase>
+                      {campaignStatsLabel(campaign)}
+                    </PixelText>
+                  </div>
+                  <PixelButton
+                    tone="ghost"
+                    onClick={() => onRestoreCampaign(campaign)}
+                    disabled={isMutating}
+                    aria-label={`Восстановить программу ${campaign.name}`}
+                    style={{ minHeight: 32, padding: '6px 10px', gap: 6 }}
+                  >
+                    <RotateCcw size={14} /> Восстановить
+                  </PixelButton>
+                </PixelSurface>
+              ))}
+            </div>
+          </details>
+        ) : null}
       </div>
     </div>
   );

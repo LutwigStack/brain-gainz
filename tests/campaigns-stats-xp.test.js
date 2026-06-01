@@ -127,6 +127,103 @@ test('CS bachelor template seed is idempotent and visible as a template campaign
   assert.equal(campaigns.lastOpened?.slug, undefined);
 });
 
+test('campaign template catalog seeds the first showcase batch as forkable campaigns', async (t) => {
+  const { database, campaignStore } = await setupCampaignService();
+  t.after(() => database.close());
+
+  await bootstrapDatabase(database);
+
+  const rows = await database.select(
+    `
+      SELECT campaigns.slug, campaigns.name, COUNT(nodes.id) AS node_count
+      FROM campaigns
+      LEFT JOIN spheres ON spheres.campaign_id = campaigns.id AND spheres.is_archived = 0
+      LEFT JOIN directions ON directions.sphere_id = spheres.id AND directions.is_archived = 0
+      LEFT JOIN skills ON skills.direction_id = directions.id AND skills.is_archived = 0
+      LEFT JOIN nodes ON nodes.skill_id = skills.id AND nodes.is_archived = 0
+      WHERE campaigns.type = 'template'
+      GROUP BY campaigns.id
+      ORDER BY campaigns.slug ASC
+    `,
+  );
+  const templatesBySlug = new Map(rows.map((row) => [row.slug, row]));
+
+  for (const slug of [
+    'template-applied-math',
+    'template-biology',
+    'template-cs-bachelor',
+    'template-materials-science',
+    'template-ml-ai',
+    'template-nlh-cash',
+  ]) {
+    assert.equal(templatesBySlug.has(slug), true);
+    assert.equal(Number(templatesBySlug.get(slug).node_count) >= 3, true);
+  }
+
+  assert.equal(templatesBySlug.get('template-nlh-cash').name, 'NLH cash');
+
+  const [nlhTemplate] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-nlh-cash' LIMIT 1");
+  const personal = await campaignStore.forkTemplateCampaign(nlhTemplate.id);
+  assert.equal(personal.type, 'user');
+  assert.equal(personal.name, 'NLH cash');
+  assert.equal(personal.source_template_id, nlhTemplate.id);
+});
+
+test('campaign migration links legacy same-name user campaigns after seeding new templates', async (t) => {
+  const database = createSqliteTestDatabase();
+  t.after(() => database.close());
+  const timestamp = '2026-01-01T00:00:00.000Z';
+
+  await database.execute(`
+    CREATE TABLE campaigns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL CHECK (type IN ('developer_main', 'user', 'template')),
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      icon TEXT,
+      color TEXT,
+      mode TEXT NOT NULL DEFAULT 'free',
+      career_status TEXT NOT NULL DEFAULT 'active' CHECK (career_status IN ('active', 'victory')),
+      current_specialization_id INTEGER,
+      is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_opened_at TEXT
+    )
+  `);
+  await database.execute(
+    `
+      INSERT INTO campaigns (
+        type,
+        slug,
+        name,
+        icon,
+        color,
+        mode,
+        career_status,
+        current_specialization_id,
+        is_archived,
+        created_at,
+        updated_at,
+        last_opened_at
+      )
+      VALUES ('user', 'legacy-applied-math', 'Бакалавриат по прикладной математике', NULL, NULL, 'career', 'active', NULL, 0, ?, ?, ?)
+    `,
+    [timestamp, timestamp, timestamp],
+  );
+
+  await bootstrapDatabase(database);
+
+  const [legacyCampaign] = await database.select(
+    "SELECT source_template_id FROM campaigns WHERE slug = 'legacy-applied-math' LIMIT 1",
+  );
+  const [templateCampaign] = await database.select(
+    "SELECT id FROM campaigns WHERE slug = 'template-applied-math' LIMIT 1",
+  );
+
+  assert.equal(legacyCampaign.source_template_id, templateCampaign.id);
+});
+
 test('CS bachelor template can fork into a personal campaign without copying progress', async (t) => {
   const { database, campaignStore, nowService } = await setupCampaignService();
   t.after(() => database.close());
@@ -136,6 +233,7 @@ test('CS bachelor template can fork into a personal campaign without copying pro
 
   assert.equal(personal.type, 'user');
   assert.equal(personal.name, 'Бакалавриат по информатике');
+  assert.equal(personal.source_template_id, template.id);
   assert.notEqual(personal.id, template.id);
 
   const countNodes = async (campaignId) =>

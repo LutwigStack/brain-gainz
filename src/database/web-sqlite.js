@@ -64,11 +64,43 @@ export const loadWebDatabase = async () => {
   const SQL = await getSqlJs();
   const database = new SQL.Database(loadPersistedBytes());
   let transactionDepth = 0;
+  let persistTimer = null;
+  let isClosed = false;
 
   const persist = () => {
+    if (isClosed) {
+      return;
+    }
     const exportedBytes = database.export();
     window.localStorage.setItem(WEB_SQLITE_STORAGE_KEY, encodeBase64(exportedBytes));
   };
+
+  const flushPersist = () => {
+    if (persistTimer != null) {
+      window.clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+    persist();
+  };
+
+  const schedulePersist = () => {
+    if (persistTimer != null) {
+      window.clearTimeout(persistTimer);
+    }
+    persistTimer = window.setTimeout(() => {
+      persistTimer = null;
+      persist();
+    }, 250);
+  };
+
+  const handlePageHidden = () => {
+    if (document.visibilityState === 'hidden') {
+      flushPersist();
+    }
+  };
+
+  window.addEventListener('pagehide', flushPersist);
+  document.addEventListener('visibilitychange', handlePageHidden);
 
   return {
     async execute(sql, params = []) {
@@ -89,7 +121,7 @@ export const loadWebDatabase = async () => {
       }
 
       if (transactionDepth === 0 && !isBegin && !isRollback) {
-        persist();
+        schedulePersist();
       }
 
       return {
@@ -111,6 +143,10 @@ export const loadWebDatabase = async () => {
     },
 
     close() {
+      flushPersist();
+      window.removeEventListener('pagehide', flushPersist);
+      document.removeEventListener('visibilitychange', handlePageHidden);
+      isClosed = true;
       database.close();
     },
   };

@@ -226,10 +226,20 @@ export const createCampaignStore = (database, hierarchyStore) => ({
       const campaign = await insertAndFetch(
         database,
         `
-          INSERT INTO campaigns (type, slug, name, icon, color, mode, career_status, current_specialization_id, is_archived, created_at, updated_at, last_opened_at)
-          VALUES ('user', ?, ?, ?, ?, ?, 'active', NULL, 0, ?, ?, ?)
+          INSERT INTO campaigns (type, slug, name, icon, color, mode, career_status, current_specialization_id, source_template_id, is_archived, created_at, updated_at, last_opened_at)
+          VALUES ('user', ?, ?, ?, ?, ?, 'active', NULL, ?, 0, ?, ?, ?)
         `,
-        [slug, title, template.icon ?? 'spark', template.color ?? '#5ee6b5', template.mode ?? 'free', timestamp, timestamp, timestamp],
+        [
+          slug,
+          title,
+          template.icon ?? 'spark',
+          template.color ?? '#5ee6b5',
+          template.mode ?? 'free',
+          template.id,
+          timestamp,
+          timestamp,
+          timestamp,
+        ],
         'campaigns',
       );
 

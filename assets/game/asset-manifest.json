@@ -688,6 +688,198 @@
         ]
       },
       "notes": "Tracked deterministic vector landmark for the database second slice; avoids a blank route stage while keeping route text outside the image."
+    },
+    {
+      "asset_id": "campaign-card.cs-bachelor",
+      "family": "campaign_card",
+      "usage_surface": "campaign_menu_ready_campaign_templates",
+      "ui_slot": "Campaign Menu ready campaign card background",
+      "target_slots": [
+        "Campaign Menu ready campaign card"
+      ],
+      "target_width": 640,
+      "target_height": 360,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/14-reference-style-assets/generated-candidate-manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/campaign-card-first-batch/cs-bachelor/bgz-ref-campaign-card-cs-bachelor-candidate-01.png",
+        "output/generated-assets/campaign-card-first-batch/cs-bachelor/bgz-ref-campaign-card-cs-bachelor-candidate-02-review-darkened.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-cs-bachelor.webp",
+      "status": "accepted",
+      "alt": "Computer Science Bachelor campaign card background",
+      "fallback": "Dark academy campaign card background with campaign title rendered in HTML",
+      "ui_check": {
+        "component": "CampaignMenu",
+        "display_width": 260,
+        "display_height": 180,
+        "required_states": [
+          "ready campaign template",
+          "cs-bachelor"
+        ]
+      },
+      "notes": "Accepted campaign-card first batch; no baked text, UI copy is rendered in HTML."
+    },
+    {
+      "asset_id": "campaign-card.materials-science",
+      "family": "campaign_card",
+      "usage_surface": "campaign_menu_ready_campaign_templates",
+      "ui_slot": "Campaign Menu ready campaign card background",
+      "target_slots": [
+        "Campaign Menu ready campaign card"
+      ],
+      "target_width": 640,
+      "target_height": 360,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/14-reference-style-assets/generated-candidate-manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/campaign-card-first-batch/materials-science/bgz-ref-campaign-card-materials-science-candidate-01.png",
+        "output/generated-assets/campaign-card-first-batch/materials-science/bgz-ref-campaign-card-materials-science-candidate-02-review-darkened.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-materials-science.webp",
+      "status": "accepted",
+      "alt": "Materials Science Bachelor campaign card background",
+      "fallback": "Dark academy campaign card background with campaign title rendered in HTML",
+      "ui_check": {
+        "component": "CampaignMenu",
+        "display_width": 260,
+        "display_height": 180,
+        "required_states": [
+          "ready campaign template",
+          "materials-science"
+        ]
+      },
+      "notes": "Accepted campaign-card first batch; no baked text, UI copy is rendered in HTML."
+    },
+    {
+      "asset_id": "campaign-card.nlh-cash",
+      "family": "campaign_card",
+      "usage_surface": "campaign_menu_ready_campaign_templates",
+      "ui_slot": "Campaign Menu ready campaign card background",
+      "target_slots": [
+        "Campaign Menu ready campaign card"
+      ],
+      "target_width": 640,
+      "target_height": 360,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/14-reference-style-assets/generated-candidate-manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/campaign-card-first-batch/nlh-cash/bgz-ref-campaign-card-nlh-cash-candidate-01.png",
+        "output/generated-assets/campaign-card-first-batch/nlh-cash/bgz-ref-campaign-card-nlh-cash-candidate-02-review-darkened.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-nlh-cash.webp",
+      "status": "accepted",
+      "alt": "NLH cash learning campaign card background",
+      "fallback": "Dark academy campaign card background with campaign title rendered in HTML",
+      "ui_check": {
+        "component": "CampaignMenu",
+        "display_width": 260,
+        "display_height": 180,
+        "required_states": [
+          "ready campaign template",
+          "nlh-cash"
+        ]
+      },
+      "notes": "Accepted campaign-card first batch; no baked text, UI copy is rendered in HTML."
+    },
+    {
+      "asset_id": "campaign-card.biology",
+      "family": "campaign_card",
+      "usage_surface": "campaign_menu_ready_campaign_templates",
+      "ui_slot": "Campaign Menu ready campaign card background",
+      "target_slots": [
+        "Campaign Menu ready campaign card"
+      ],
+      "target_width": 640,
+      "target_height": 360,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/14-reference-style-assets/generated-candidate-manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/campaign-card-first-batch/biology/bgz-ref-campaign-card-biology-candidate-01.png",
+        "output/generated-assets/campaign-card-first-batch/biology/bgz-ref-campaign-card-biology-candidate-02-review-darkened.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-biology.webp",
+      "status": "accepted",
+      "alt": "Biology Bachelor campaign card background",
+      "fallback": "Dark academy campaign card background with campaign title rendered in HTML",
+      "ui_check": {
+        "component": "CampaignMenu",
+        "display_width": 260,
+        "display_height": 180,
+        "required_states": [
+          "ready campaign template",
+          "biology"
+        ]
+      },
+      "notes": "Accepted campaign-card first batch; no baked text, UI copy is rendered in HTML."
+    },
+    {
+      "asset_id": "campaign-card.applied-math",
+      "family": "campaign_card",
+      "usage_surface": "campaign_menu_ready_campaign_templates",
+      "ui_slot": "Campaign Menu ready campaign card background",
+      "target_slots": [
+        "Campaign Menu ready campaign card"
+      ],
+      "target_width": 640,
+      "target_height": 360,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/14-reference-style-assets/generated-candidate-manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/campaign-card-first-batch/applied-math/bgz-ref-campaign-card-applied-math-candidate-01.png",
+        "output/generated-assets/campaign-card-first-batch/applied-math/bgz-ref-campaign-card-applied-math-candidate-02-review-darkened.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-applied-math.webp",
+      "status": "accepted",
+      "alt": "Applied Mathematics Bachelor campaign card background",
+      "fallback": "Dark academy campaign card background with campaign title rendered in HTML",
+      "ui_check": {
+        "component": "CampaignMenu",
+        "display_width": 260,
+        "display_height": 180,
+        "required_states": [
+          "ready campaign template",
+          "applied-math"
+        ]
+      },
+      "notes": "Accepted campaign-card first batch; no baked text, UI copy is rendered in HTML."
+    },
+    {
+      "asset_id": "campaign-card.ml-ai",
+      "family": "campaign_card",
+      "usage_surface": "campaign_menu_ready_campaign_templates",
+      "ui_slot": "Campaign Menu ready campaign card background",
+      "target_slots": [
+        "Campaign Menu ready campaign card"
+      ],
+      "target_width": 640,
+      "target_height": 360,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/14-reference-style-assets/generated-candidate-manifest.md",
+      "raw_variant_paths": [
+        "output/generated-assets/campaign-card-first-batch/ml-ai/bgz-ref-campaign-card-ml-ai-candidate-01.png",
+        "output/generated-assets/campaign-card-first-batch/ml-ai/bgz-ref-campaign-card-ml-ai-candidate-02-review-darkened.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-ml-ai.webp",
+      "status": "accepted",
+      "alt": "Machine Learning and AI Bachelor campaign card background",
+      "fallback": "Dark academy campaign card background with campaign title rendered in HTML",
+      "ui_check": {
+        "component": "CampaignMenu",
+        "display_width": 260,
+        "display_height": 180,
+        "required_states": [
+          "ready campaign template",
+          "ml-ai"
+        ]
+      },
+      "notes": "Accepted campaign-card first batch; no baked text, UI copy is rendered in HTML."
     }
   ]
 }

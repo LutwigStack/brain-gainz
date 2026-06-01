@@ -1,4 +1,5 @@
 import { createUtcTimestamp } from '../stores/store-helpers.js';
+import { seedCampaignTemplateCatalog } from './campaign-template-catalog-seed.js';
 import { seedCsBachelorTemplate } from './cs-bachelor-template-seed.js';
 
 export const DEVELOPER_MAIN_CAMPAIGN_SLUG = 'developer-main';
@@ -193,6 +194,32 @@ const ensureCampaignTypeSupportsTemplates = async (database) => {
   } finally {
     await database.execute('PRAGMA legacy_alter_table = OFF');
     await database.execute('PRAGMA foreign_keys = ON');
+  }
+};
+
+const backfillCampaignTemplateSources = async (database) => {
+  const templates = await database.select("SELECT id, name FROM campaigns WHERE type = 'template'");
+  if (templates.length === 0) {
+    return;
+  }
+
+  const users = await database.select(
+    "SELECT id, name FROM campaigns WHERE type = 'user' AND source_template_id IS NULL",
+  );
+  for (const campaign of users) {
+    const matchingTemplate = templates.find(
+      (template) =>
+        String(template.name ?? '').trim().toLocaleLowerCase('ru-RU') ===
+        String(campaign.name ?? '').trim().toLocaleLowerCase('ru-RU'),
+    );
+    if (!matchingTemplate) {
+      continue;
+    }
+
+    await database.execute('UPDATE campaigns SET source_template_id = ? WHERE id = ?', [
+      matchingTemplate.id,
+      campaign.id,
+    ]);
   }
 };
 
@@ -506,6 +533,7 @@ export const runCampaignMigrations = async (database) => {
       mode TEXT NOT NULL DEFAULT 'free',
       career_status TEXT NOT NULL DEFAULT 'active' CHECK (career_status IN ('active', 'victory')),
       current_specialization_id INTEGER,
+      source_template_id INTEGER,
       is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -517,6 +545,8 @@ export const runCampaignMigrations = async (database) => {
   await ensureColumn(database, 'campaigns', 'career_status', "TEXT NOT NULL DEFAULT 'active'");
   await ensureColumn(database, 'campaigns', 'current_specialization_id', 'INTEGER');
   await ensureCampaignTypeSupportsTemplates(database);
+  await ensureColumn(database, 'campaigns', 'source_template_id', 'INTEGER');
+  await backfillCampaignTemplateSources(database);
 
   await database.execute(`
     CREATE TABLE IF NOT EXISTS campaign_stats (
@@ -756,6 +786,8 @@ export const runCampaignMigrations = async (database) => {
   await repairCampaignModeForCurrentSpecializations(database);
   await backfillLegacyMasteryEvents(database);
   await seedCsBachelorTemplate(database);
+  await seedCampaignTemplateCatalog(database);
+  await backfillCampaignTemplateSources(database);
 
   if (!(await tableExists(database, 'campaigns'))) {
     throw new Error('Campaign migration verification failed: missing campaigns table.');

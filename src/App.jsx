@@ -77,7 +77,7 @@ const domainErrorMessages = new globalThis.Map([
   ['Specialization route is not complete.', 'Маршрут пока нельзя завершить: сначала закройте обязательные узлы.'],
   ['No current specialization to complete.', 'Нет активного маршрута для завершения.'],
   ['Only an active specialization can be completed.', 'Завершить можно только активный маршрут.'],
-  ['Campaign already has an active specialization.', 'В кампании уже есть активный маршрут.'],
+  ['Campaign already has an active specialization.', 'В программе уже есть активный маршрут.'],
 ]);
 
 const userActionErrorMessage = (error, fallback) => {
@@ -113,6 +113,7 @@ export default function App() {
   const [campaignsLoading, setCampaignsLoading] = useState(false);
   const [campaignMutationPending, setCampaignMutationPending] = useState(false);
   const [campaignError, setCampaignError] = useState(null);
+  const [campaignNotice, setCampaignNotice] = useState(null);
   const [databaseRecoveryError, setDatabaseRecoveryError] = useState(null);
   const [databaseRecoveryNotice, setDatabaseRecoveryNotice] = useState(null);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
@@ -170,7 +171,7 @@ export default function App() {
       setCampaigns(snapshot);
     } catch (error) {
       console.error('Failed to load campaigns', error);
-      setCampaignError(error.message || 'Не удалось загрузить кампании.');
+      setCampaignError(error.message || 'Не удалось загрузить программы.');
     } finally {
       setCampaignsLoading(false);
     }
@@ -404,6 +405,7 @@ export default function App() {
   const handleOpenCampaign = async (campaign) => {
     setCampaignMutationPending(true);
     setCampaignError(null);
+    setCampaignNotice(null);
 
     try {
       const opened = await db.openCampaign(campaign.id);
@@ -419,7 +421,7 @@ export default function App() {
       await loadCampaigns();
     } catch (error) {
       logUnexpectedActionError('Failed to open campaign', error);
-      setCampaignError(userActionErrorMessage(error, 'Не удалось открыть кампанию.'));
+      setCampaignError(userActionErrorMessage(error, 'Не удалось открыть программу.'));
     } finally {
       setCampaignMutationPending(false);
     }
@@ -427,17 +429,19 @@ export default function App() {
 
   const handleBackToCampaigns = () => {
     setSelectedCampaign(null);
+    setCampaignNotice(null);
     resetCampaignWorkspaceState();
     void loadCampaigns();
   };
 
-  const handleCreateCampaign = async () => {
+  const handleCreateCampaign = async ({ openAuthorSettings = false } = {}) => {
     if (!newCampaignName.trim()) {
       return;
     }
 
     setCampaignMutationPending(true);
     setCampaignError(null);
+    setCampaignNotice(null);
 
     try {
       const campaign = await db.createUserCampaign({ name: newCampaignName });
@@ -445,10 +449,14 @@ export default function App() {
       await loadCampaigns();
       if (campaign) {
         await handleOpenCampaign(campaign);
+        if (openAuthorSettings) {
+          setWorkspaceMode('author');
+          setActiveTab('map');
+        }
       }
     } catch (error) {
       logUnexpectedActionError('Failed to create campaign', error);
-      setCampaignError(userActionErrorMessage(error, 'Не удалось создать кампанию.'));
+      setCampaignError(userActionErrorMessage(error, 'Не удалось создать программу.'));
     } finally {
       setCampaignMutationPending(false);
     }
@@ -457,6 +465,7 @@ export default function App() {
   const handleForkTemplateCampaign = async (campaign) => {
     setCampaignMutationPending(true);
     setCampaignError(null);
+    setCampaignNotice(null);
 
     try {
       const forked = await db.forkTemplateCampaign(campaign.id, { name: campaign.name });
@@ -466,7 +475,7 @@ export default function App() {
       }
     } catch (error) {
       logUnexpectedActionError('Failed to fork template campaign', error);
-      setCampaignError(userActionErrorMessage(error, 'Не удалось создать личную кампанию из этого шаблона.'));
+      setCampaignError(userActionErrorMessage(error, 'Не удалось создать личную программу из этого шаблона.'));
     } finally {
       setCampaignMutationPending(false);
     }
@@ -475,13 +484,14 @@ export default function App() {
   const handleArchiveCampaign = async (campaign) => {
     if (
       requiresAuthorConfirmation('archive-campaign') &&
-      !globalThis.confirm(`Архивировать кампанию «${campaign.name}»? Ее можно будет восстановить из архива.`)
+      !globalThis.confirm(`Скрыть программу “${campaign.name}” из списка? Прогресс сохранится.`)
     ) {
       return;
     }
 
     setCampaignMutationPending(true);
     setCampaignError(null);
+    setCampaignNotice(null);
 
     try {
       await db.archiveCampaign(campaign.id);
@@ -489,9 +499,14 @@ export default function App() {
         handleBackToCampaigns();
       }
       await loadCampaigns();
+      setCampaignNotice({
+        message: 'Программа в архиве. Прогресс сохранен.',
+        actionLabel: 'Восстановить',
+        campaign,
+      });
     } catch (error) {
       logUnexpectedActionError('Failed to archive campaign', error);
-      setCampaignError(userActionErrorMessage(error, 'Не удалось архивировать кампанию.'));
+      setCampaignError(userActionErrorMessage(error, 'Не удалось архивировать программу.'));
     } finally {
       setCampaignMutationPending(false);
     }
@@ -500,13 +515,17 @@ export default function App() {
   const handleRestoreCampaign = async (campaign) => {
     setCampaignMutationPending(true);
     setCampaignError(null);
+    setCampaignNotice(null);
 
     try {
       await db.restoreCampaign(campaign.id);
       await loadCampaigns();
+      setCampaignNotice({
+        message: 'Программа восстановлена.',
+      });
     } catch (error) {
       logUnexpectedActionError('Failed to restore campaign', error);
-      setCampaignError(userActionErrorMessage(error, 'Не удалось восстановить кампанию.'));
+      setCampaignError(userActionErrorMessage(error, 'Не удалось восстановить программу.'));
     } finally {
       setCampaignMutationPending(false);
     }
@@ -1863,10 +1882,12 @@ export default function App() {
   const usesLearnerPriorityShell = Boolean(selectedCampaign && workspaceMode === 'learner');
   const showShellNavDescriptions = shouldShowShellNavDescriptions(workspaceMode);
   const campaignKindLabel = !selectedCampaign
-    ? 'Кампания не выбрана'
+    ? 'Программа не выбрана'
     : selectedCampaign.type === 'developer_main'
-      ? 'Системный шаблон'
-      : 'Личная кампания';
+      ? 'Системная программа'
+      : selectedCampaign.type === 'template'
+        ? 'Готовая программа'
+      : 'Личная программа';
   const campaignModeLabel = selectedCampaign ? workspaceModeLabels[workspaceMode].title : 'Настройка';
   const campaignStatusLabel =
     selectedCampaign?.career_status === 'victory'
@@ -1874,7 +1895,7 @@ export default function App() {
       : selectedCampaign
         ? workspaceModeLabels[workspaceMode].description
         : 'Выберите мир';
-  const specializationLabel = contextSpecialization?.name ?? (selectedCampaign ? 'Свободный режим' : 'Нет кампании');
+  const specializationLabel = contextSpecialization?.name ?? (selectedCampaign ? 'Свободный режим' : 'Нет программы');
   const specializationMeta = contextSpecialization?.domain
     ? `${contextSpecialization.domain} / ${specializationLengthLabel(contextSpecialization.length)}`
     : specializationLengthLabel(contextSpecialization?.length) ?? (selectedCampaign ? 'Текущий режим' : 'Ожидает выбора');
@@ -1885,7 +1906,7 @@ export default function App() {
   const hasCsCampaignAssets = isCsBachelorCampaign(selectedCampaign);
   const hasCoreCsAssets = hasCsCampaignAssets && isCoreCsFoundations(contextSpecialization);
   const activeScreenLabel = !selectedCampaign
-    ? 'Кампании'
+    ? 'Программы'
     : normalizedActiveTab === 'map'
       ? mapInspectorRequest?.mode === 'assessment'
         ? workspaceModeLabels[workspaceMode].assessmentLabel
@@ -1898,10 +1919,10 @@ export default function App() {
   const navItems = [
     {
       key: 'campaigns',
-      label: 'Кампании',
+      label: 'Программы',
       description: 'Меню миров',
       secondary: true,
-      mobileLabel: 'Кампании',
+      mobileLabel: 'Программы',
       mobilePrimary: !selectedCampaign,
       icon: Globe2,
       active: !selectedCampaign,
@@ -1947,7 +1968,7 @@ export default function App() {
     {
       key: 'wind',
       label: workspaceMode === 'learner' ? 'Прогресс' : 'Роза / статистика',
-      description: 'Статы кампании',
+      description: 'Прогресс программы',
       secondary: true,
       mobileLabel: 'Прогресс',
       icon: BarChart3,
@@ -2208,7 +2229,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className={`app-context-grid ${usesLearnerPriorityShell ? 'app-context-grid--learner' : ''}`} aria-label="Контекст кампании">
+                  <div className={`app-context-grid ${usesLearnerPriorityShell ? 'app-context-grid--learner' : ''}`} aria-label="Контекст программы">
                     <div className="app-context-card app-context-card--campaign">
                       <div className="app-context-card__icon" style={{ borderColor: selectedCampaign?.color ?? undefined }}>
                         {hasCsCampaignAssets ? (
@@ -2224,10 +2245,10 @@ export default function App() {
                       </div>
                       <div className="min-w-0">
                         <PixelText as="p" size="xs" color="textDim" uppercase>
-                          Кампания
+                          Программа
                         </PixelText>
                         <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
-                          {selectedCampaign?.name ?? 'Меню кампаний'}
+                          {selectedCampaign?.name ?? 'Меню программ'}
                         </PixelText>
                         <PixelText as="p" readable size="xs" color="textMuted" className="truncate" style={{ marginTop: 2 }}>
                           {campaignKindLabel}
@@ -2404,10 +2425,10 @@ export default function App() {
                 <PixelSurface frame="ghost" padding="sm">
                   <PixelStack gap="xs">
                     <PixelText as="p" size="xs" color="textMuted" uppercase>
-                      Кампания
+                      Программа
                     </PixelText>
                     <PixelText as="p" readable size="sm" color="textMuted">
-                      Учебный путь остается основным. Настройку кампании открывайте только когда нужно менять узлы, проверки или маршрут.
+                      Учебный путь остается основным. Настройку программы открывайте только когда нужно менять узлы, проверки или маршрут.
                     </PixelText>
                     {workspaceMode === 'author' ? (
                       <PixelButton tone="accent" onClick={activateLearnerModeFromSettings} fullWidth>
@@ -2415,7 +2436,7 @@ export default function App() {
                       </PixelButton>
                     ) : (
                       <PixelButton tone="ghost" onClick={activateAuthorModeFromSettings} fullWidth>
-                        <PencilLine size={16} /> Открыть настройку кампании
+                        <PencilLine size={16} /> Открыть настройку программы
                       </PixelButton>
                     )}
                   </PixelStack>
@@ -2502,10 +2523,12 @@ export default function App() {
             isMutating={campaignMutationPending}
             newCampaignName={newCampaignName}
             error={campaignError}
+            notice={campaignNotice}
             onNewCampaignNameChange={setNewCampaignName}
             onOpenCampaign={handleOpenCampaign}
             onForkTemplate={handleForkTemplateCampaign}
             onCreateCampaign={handleCreateCampaign}
+            onCreateCampaignDetailed={() => handleCreateCampaign({ openAuthorSettings: true })}
             onArchiveCampaign={handleArchiveCampaign}
             onRestoreCampaign={handleRestoreCampaign}
           />

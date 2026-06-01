@@ -53,6 +53,7 @@ export interface CampaignSummary {
   mode?: 'career' | 'free' | null;
   career_status?: 'active' | 'victory' | null;
   current_specialization_id?: number | null;
+  source_template_id?: number | null;
   icon?: string | null;
   color?: string | null;
   is_archived: number;

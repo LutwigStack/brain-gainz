@@ -1,4 +1,10 @@
 import campaignCrest from '../../assets/game/reference-style-first-batch/campaign/bgz-ref-campaign-cs-bachelor-computer-science-bachelor-crest.webp';
+import campaignCardAppliedMath from '../../assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-applied-math.webp';
+import campaignCardBiology from '../../assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-biology.webp';
+import campaignCardCsBachelor from '../../assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-cs-bachelor.webp';
+import campaignCardMaterialsScience from '../../assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-materials-science.webp';
+import campaignCardMlAi from '../../assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-ml-ai.webp';
+import campaignCardNlhCash from '../../assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-nlh-cash.webp';
 import algorithmsLandmark from '../../assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-algorithms-landmark.webp';
 import cityCard from '../../assets/game/reference-style-first-batch/city/bgz-ref-city-cs-bachelor-core-cs-citadel-card.webp';
 import databaseSystemsLandmark from '../../assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-database-systems-landmark.svg';
@@ -66,6 +72,14 @@ export const csBachelorReferenceAssets = {
   campaign: {
     crest: acceptedAsset('campaign.cs-bachelor.computer-science-bachelor.crest', campaignCrest),
   },
+  campaignCard: {
+    csBachelor: acceptedAsset('campaign-card.cs-bachelor', campaignCardCsBachelor),
+    materialsScience: acceptedAsset('campaign-card.materials-science', campaignCardMaterialsScience),
+    nlhCash: acceptedAsset('campaign-card.nlh-cash', campaignCardNlhCash),
+    biology: acceptedAsset('campaign-card.biology', campaignCardBiology),
+    appliedMath: acceptedAsset('campaign-card.applied-math', campaignCardAppliedMath),
+    mlAi: acceptedAsset('campaign-card.ml-ai', campaignCardMlAi),
+  },
   specialization: {
     coreCsFoundations: acceptedAsset('specialization.cs-bachelor.core-cs-foundations.emblem', specializationEmblem),
   },
@@ -112,6 +126,8 @@ interface NamedEntity {
 }
 
 const normalizedText = (value: unknown) => String(value ?? '').trim().toLowerCase();
+const normalizedEntityText = (entity: NamedEntity | null | undefined) =>
+  normalizedText(`${entity?.slug ?? ''} ${entity?.key ?? ''} ${entity?.name ?? ''} ${entity?.title ?? ''}`);
 const includesAny = (value: unknown, needles: string[]) => {
   const normalized = normalizedText(value);
   return needles.some((needle) => normalized.includes(needle));
@@ -120,7 +136,32 @@ const includesAny = (value: unknown, needles: string[]) => {
 export const isCsBachelorCampaign = (campaign: NamedEntity | null | undefined) =>
   includesAny(campaign?.slug, ['cs-bachelor']) ||
   includesAny(campaign?.key, ['cs-bachelor']) ||
-  includesAny(campaign?.name, ['computer science bachelor']);
+  includesAny(campaign?.name, ['computer science bachelor', 'бакалавриат по информатике']);
+
+export const resolveCampaignCardAsset = (campaign: NamedEntity | null | undefined): ReferenceAsset | null => {
+  const text = normalizedEntityText(campaign);
+
+  if (text.includes('materials-science') || text.includes('материаловед')) {
+    return csBachelorReferenceAssets.campaignCard.materialsScience;
+  }
+  if (text.includes('nlh-cash') || text.includes('nlh cash') || text.includes('покер')) {
+    return csBachelorReferenceAssets.campaignCard.nlhCash;
+  }
+  if (text.includes('biology') || text.includes('биолог')) {
+    return csBachelorReferenceAssets.campaignCard.biology;
+  }
+  if (text.includes('applied-math') || text.includes('прикладн') || text.includes('математик')) {
+    return csBachelorReferenceAssets.campaignCard.appliedMath;
+  }
+  if (text.includes('ml-ai') || text.includes('machine-learning') || text.includes('машинн') || text.includes('ии')) {
+    return csBachelorReferenceAssets.campaignCard.mlAi;
+  }
+  if (isCsBachelorCampaign(campaign) || text.includes('computer science')) {
+    return csBachelorReferenceAssets.campaignCard.csBachelor;
+  }
+
+  return null;
+};
 
 export const isCoreCsFoundations = (specialization: NamedEntity | null | undefined) =>
   includesAny(specialization?.key, ['core-cs-foundations']) ||

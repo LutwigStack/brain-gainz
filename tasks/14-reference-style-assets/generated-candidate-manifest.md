@@ -10,7 +10,7 @@ Detailed selected-candidate rationale lives in `tasks/14-reference-style-assets/
 
 ## Local Artifact Contract
 
-- Raw candidates live under `output/generated-assets/reference-style-first-batch/`.
+- Raw candidates live under `output/generated-assets/reference-style-first-batch/` and `output/generated-assets/campaign-card-first-batch/`.
 - Raw candidates are local or externally shared review artifacts, not runtime assets.
 - Runtime-selected assets live under `assets/game/reference-style-first-batch/` and must be tracked.
 - Manifest `raw_variant_paths` may reference ignored local raw candidates for reviewers who have the artifact bundle.
@@ -48,6 +48,12 @@ All prompts followed the first-batch style bible:
 | `route/discrete-math` | `01-04` | `02` | Discrete Math route landmark, graph/proof observatory, violet/cyan graph identity. |
 | `route/data-structures` | `01-04` | `03` | Data Structures route landmark, stack/archive blocks, green grid structure identity. |
 | `route/algorithms` | `01-04` | `02` | Algorithms route landmark, graph traversal, sorting bars, decision paths, search motif. |
+| `campaign-card/cs-bachelor` | `01-02` | `02` | Computer Science Bachelor full-card background, dark cyber-academic citadel and knowledge-tree crest, no baked text. |
+| `campaign-card/materials-science` | `01-02` | `02` | Materials Science campaign card, crystal forge academy, lattices and microscopy mood, no baked text. |
+| `campaign-card/nlh-cash` | `01-02` | `02` | NLH cash learning card, analytical strategy table and decision-review mood, no casino advertising tone, no baked text. |
+| `campaign-card/biology` | `01-02` | `02` | Biology campaign card, greenhouse laboratory academy, cells and living-system motifs, no baked text. |
+| `campaign-card/applied-math` | `01-02` | `02` | Applied Mathematics campaign card, observatory, geometric models and abstract graphs, no readable formulas or text. |
+| `campaign-card/ml-ai` | `01-02` | `02` | Machine Learning and AI campaign card, neural academy, model cores and data-grid atmosphere, no baked text. |
 
 ## Reproduction Note
 
