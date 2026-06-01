@@ -23,6 +23,12 @@ export type CompactAssessmentResultLayoutInput = {
   isRetryingFailedAttempt: boolean;
 };
 
+export type FailedAttemptHistoryInput = {
+  hasFailedAttempt: boolean;
+  showFailedResultState: boolean;
+  isRetryingFailedAttempt: boolean;
+};
+
 const singleColumnMapShellClassName = 'navigation-map-shell grid min-w-0 items-start gap-3 xl:grid-cols-1';
 
 const splitMapShellClassName =
@@ -80,3 +86,9 @@ export const shouldUseCompactAssessmentResultLayout = ({
   hasFailedAttempt,
   isRetryingFailedAttempt,
 }: CompactAssessmentResultLayoutInput) => hasPassedAttempt || (hasFailedAttempt && !isRetryingFailedAttempt);
+
+export const shouldShowFailedAttemptHistory = ({
+  hasFailedAttempt,
+  showFailedResultState,
+  isRetryingFailedAttempt,
+}: FailedAttemptHistoryInput) => hasFailedAttempt && !showFailedResultState && !isRetryingFailedAttempt;

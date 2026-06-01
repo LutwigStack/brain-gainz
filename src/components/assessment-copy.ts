@@ -57,6 +57,19 @@ type ValidationInput = {
   hasAnswer: boolean;
   hasVerifierEvidence: boolean;
   resolvedCheckMethod: AssessmentCheckMethod;
+  requiredChecklistItemsCount?: number;
+  completedRequiredChecklistItemsCount?: number;
+};
+
+const pluralizeRussianCount = (count: number, forms: [string, string, string]) => {
+  const absoluteCount = Math.abs(count);
+  const lastTwoDigits = absoluteCount % 100;
+  const lastDigit = absoluteCount % 10;
+
+  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) return forms[2];
+  if (lastDigit === 1) return forms[0];
+  if (lastDigit >= 2 && lastDigit <= 4) return forms[1];
+  return forms[2];
 };
 
 export const getAssessmentCheckTypeLabel = ({ strictCheckType, resolvedCheckMethod }: CheckTypeInput) => {
@@ -180,6 +193,8 @@ export const getAssessmentValidationState = ({
   hasAnswer,
   hasVerifierEvidence,
   resolvedCheckMethod,
+  requiredChecklistItemsCount = 0,
+  completedRequiredChecklistItemsCount = 0,
 }: ValidationInput) => {
   if (pendingAssessment) {
     return {
@@ -218,7 +233,12 @@ export const getAssessmentValidationState = ({
       tone: 'accent' as const,
       ready: false,
       message: isChecklistCheck
-        ? 'Отметьте хотя бы один пункт.'
+        ? requiredChecklistItemsCount > 0
+          ? `Осталось отметить ${Math.max(0, requiredChecklistItemsCount - completedRequiredChecklistItemsCount)} ${pluralizeRussianCount(
+              Math.max(0, requiredChecklistItemsCount - completedRequiredChecklistItemsCount),
+              ['пункт', 'пункта', 'пунктов'],
+            )}.`
+          : 'Отметьте хотя бы один пункт.'
         : `Введите ответ: ${checkTypeLabel.toLocaleLowerCase()}.`,
     };
   }

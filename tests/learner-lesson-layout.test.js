@@ -7,6 +7,7 @@ import {
   getPassedAssessmentResultState,
   getSelfMarkedAssessmentCopy,
   shouldShowNavigationInspectorRail,
+  shouldShowFailedAttemptHistory,
   shouldUseCompactAssessmentResultLayout,
   shouldUseFocusedLearnerLessonScreen,
 } from '../src/components/learner-lesson-layout.ts';
@@ -159,5 +160,32 @@ test('compact result layout turns off while retrying a failed attempt', () => {
       isRetryingFailedAttempt: true,
     }),
     false,
+  );
+});
+
+test('retrying a failed attempt hides the old failed attempt history', () => {
+  assert.equal(
+    shouldShowFailedAttemptHistory({
+      hasFailedAttempt: true,
+      showFailedResultState: true,
+      isRetryingFailedAttempt: false,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldShowFailedAttemptHistory({
+      hasFailedAttempt: true,
+      showFailedResultState: false,
+      isRetryingFailedAttempt: true,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldShowFailedAttemptHistory({
+      hasFailedAttempt: true,
+      showFailedResultState: false,
+      isRetryingFailedAttempt: false,
+    }),
+    true,
   );
 });

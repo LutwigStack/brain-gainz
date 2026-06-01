@@ -85,6 +85,28 @@ test('assessment validation state gives one actionable reason near the action', 
     },
   );
 
+  assert.deepEqual(
+    getAssessmentValidationState({
+      pendingAssessment: false,
+      pendingSelfMark: false,
+      isEditorArchived: false,
+      isAutoStrictCheck: true,
+      isChecklistCheck: true,
+      canSubmitAssessmentPass: false,
+      checkTypeLabel: 'Список пунктов',
+      hasAnswer: true,
+      hasVerifierEvidence: false,
+      resolvedCheckMethod: 'strict',
+      requiredChecklistItemsCount: 3,
+      completedRequiredChecklistItemsCount: 1,
+    }),
+    {
+      tone: 'accent',
+      ready: false,
+      message: 'Осталось отметить 2 пункта.',
+    },
+  );
+
   assert.equal(
     getAssessmentValidationState({
       pendingAssessment: false,

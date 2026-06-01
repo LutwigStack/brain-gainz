@@ -94,6 +94,7 @@ import {
   getSelfMarkedAssessmentCopy,
   getNavigationMapShellClassName,
   shouldShowNavigationInspectorRail,
+  shouldShowFailedAttemptHistory,
   shouldUseCompactAssessmentResultLayout,
   shouldUseFocusedLearnerLessonScreen,
 } from './learner-lesson-layout';
@@ -626,6 +627,12 @@ export const NavigationView = ({
     handleInspectorModeChange('assessment');
   };
 
+  const startAssessmentRetry = (attemptId: number | null | undefined) => {
+    resetAssessmentDraft();
+    setRetryingAssessmentAttemptId(attemptId ?? null);
+    handleInspectorModeChange('assessment');
+  };
+
   const renderLearnerLessonPanel = (nodeFocus: NodeFocusSnapshot) => {
     if (canUseAuthorTools) {
       return null;
@@ -668,7 +675,7 @@ export const NavigationView = ({
       buttonLabel = latestAttempt.passed ? 'Следующий шаг' : 'Повторить проверку';
       buttonIcon = latestAttempt.passed ? <ChevronRight size={15} /> : <RotateCcw size={15} />;
       buttonDisabled = false;
-      buttonAction = latestAttempt.passed ? onOpenToday : openAssessmentStep;
+      buttonAction = latestAttempt.passed ? onOpenToday : () => startAssessmentRetry(latestAttempt.id);
     } else if (activeSession) {
       stateLabel = 'занятие';
       buttonLabel = 'Перейти к проверке';
@@ -1635,6 +1642,15 @@ export const NavigationView = ({
     const isAutoStrictCheck = resolvedCheckMethod === 'strict' && Boolean(mastery?.check.isAutoStrictCheck);
     const checklistItems = mastery?.check.checklistItems ?? [];
     const isChecklistCheck = isAutoStrictCheck && strictCheckType === 'checklist' && checklistItems.length > 0;
+    const requiredChecklistItems = checklistItems.filter((item) => item.required);
+    const requiredChecklistItemsCount = requiredChecklistItems.length;
+    const completedRequiredChecklistItemsCount = requiredChecklistItems.filter(
+      (item) => assessmentChecklistValues[item.id],
+    ).length;
+    const isRequiredChecklistComplete =
+      requiredChecklistItemsCount > 0
+        ? completedRequiredChecklistItemsCount >= requiredChecklistItemsCount
+        : checklistItems.some((item) => assessmentChecklistValues[item.id]);
     const pendingSelfMark = masteryPendingAction === 'self-mark';
     const pendingAssessment = masteryPendingAction === 'assessment';
     const trimmedAnswer = assessmentAnswer.trim();
@@ -1644,7 +1660,7 @@ export const NavigationView = ({
     const hasVisibleEvidence = trimmedEvidence.length >= 3;
     const hasVerifierEvidence = hasTechnicalResultId || hasVisibleEvidence;
     const hasChecklistSelection = checklistItems.some((item) => assessmentChecklistValues[item.id]);
-    const canRunAutoStrictCheck = isAutoStrictCheck && (isChecklistCheck ? hasChecklistSelection : trimmedAnswer.length > 0);
+    const canRunAutoStrictCheck = isAutoStrictCheck && (isChecklistCheck ? isRequiredChecklistComplete : trimmedAnswer.length > 0);
     const canSubmitAssessmentPass = isAutoStrictCheck ? canRunAutoStrictCheck : hasVerifierEvidence;
     const evidencePayload = !isAutoStrictCheck && canSubmitAssessmentPass
       ? resolvedCheckMethod === 'strict'
@@ -1705,6 +1721,8 @@ export const NavigationView = ({
       hasAnswer,
       hasVerifierEvidence,
       resolvedCheckMethod,
+      requiredChecklistItemsCount,
+      completedRequiredChecklistItemsCount,
     });
     const assessmentValidationTone =
       assessmentValidationState.tone === 'success' ? 'var(--pixel-success)' : 'var(--pixel-accent)';
@@ -1719,6 +1737,11 @@ export const NavigationView = ({
     const isRetryingFailedAttempt =
       latestAttemptFailed && retryingAssessmentAttemptId === mastery?.latestAttempt?.id;
     const showFailedResultState = latestAttemptFailed && !isRetryingFailedAttempt;
+    const showFailedAttemptHistory = shouldShowFailedAttemptHistory({
+      hasFailedAttempt: latestAttemptFailed,
+      showFailedResultState,
+      isRetryingFailedAttempt,
+    });
     const passedResultState =
       latestAttemptPassed && mastery?.latestAttempt
         ? getPassedAssessmentResultState({
@@ -2313,7 +2336,7 @@ export const NavigationView = ({
                     <div className="grid gap-2 sm:grid-cols-2">
                       <PixelButton
                         tone="accent"
-                        onClick={() => setRetryingAssessmentAttemptId(mastery.latestAttempt?.id ?? null)}
+                        onClick={() => startAssessmentRetry(mastery.latestAttempt?.id)}
                         disabled={pendingAssessment || pendingSelfMark || isEditorArchived}
                         fullWidth
                         style={{ minHeight: 36, padding: '8px 10px', gap: 6 }}
@@ -2402,7 +2425,7 @@ export const NavigationView = ({
                 </PixelText>
               ) : null}
 
-              {mastery?.latestAttempt && !latestAttemptPassed && !showFailedResultState ? (
+              {mastery?.latestAttempt && !latestAttemptPassed && showFailedAttemptHistory ? (
                 <PixelSurface
                   frame="ghost"
                   padding="xs"
@@ -2503,7 +2526,13 @@ export const NavigationView = ({
     const routeContext = routeRequirement
       ? `Маршрут: ${routeRequirement.specialization_name} · нужно ${masteryLabel(routeRequirement.required_mastery_level)}`
       : 'Маршрут: текущий учебный шаг';
-    const resultContext = latestAttempt ? (latestAttempt.passed ? 'Зачтено' : 'Не зачтено') : 'Пока без результата';
+    const resultContext = isRetryingFailedAttempt
+      ? 'Новая попытка'
+      : latestAttempt
+        ? latestAttempt.passed
+          ? 'Зачтено'
+          : 'Не зачтено'
+        : 'Пока без результата';
 
     return (
       <PixelSurface
