@@ -6,6 +6,7 @@ import {
   getAssessmentAttemptResultCopy,
   getAssessmentCheckTypeLabel,
   getAssessmentEvidenceHint,
+  getAssessmentFeedbackSummary,
   getAssessmentFailedAttemptState,
   getAssessmentExpectedInputText,
   getAssessmentPrimaryActionLabel,
@@ -62,6 +63,79 @@ test('assessment expectation copy describes criteria without raw verifier terms'
 
   assert.match(manualCopy, /работа готова/);
   assert.doesNotMatch(manualCopy, /verifier|verdict|evidence/i);
+});
+
+test('learner assessment expectation copy hides expected answers', () => {
+  const exactCopy = getAssessmentExpectedInputText({
+    isChecklistCheck: false,
+    checklistItems: [],
+    strictCheckType: 'exact',
+    expectedSummary: '5',
+    resolvedCheckMethod: 'strict',
+    audience: 'learner',
+  });
+  assert.equal(exactCopy, 'Введите ответ без подсказки.');
+  assert.doesNotMatch(exactCopy, /5|должен совпасть/);
+
+  const numberCopy = getAssessmentExpectedInputText({
+    isChecklistCheck: false,
+    checklistItems: [],
+    strictCheckType: 'number',
+    expectedSummary: '42',
+    resolvedCheckMethod: 'strict',
+    audience: 'learner',
+  });
+  assert.equal(numberCopy, 'Введите число без лишнего текста.');
+  assert.doesNotMatch(numberCopy, /42/);
+
+  const containsCopy = getAssessmentExpectedInputText({
+    isChecklistCheck: false,
+    checklistItems: [],
+    strictCheckType: 'contains',
+    requiredTerms: ['алгоритм', 'цикл'],
+    resolvedCheckMethod: 'strict',
+    audience: 'learner',
+  });
+  assert.equal(containsCopy, 'Напишите ответ своими словами.');
+  assert.doesNotMatch(containsCopy, /алгоритм|цикл|обязательными элементами/);
+});
+
+test('author assessment expectation copy keeps expected answers visible', () => {
+  assert.equal(
+    getAssessmentExpectedInputText({
+      isChecklistCheck: false,
+      checklistItems: [],
+      strictCheckType: 'exact',
+      expectedSummary: '5',
+      resolvedCheckMethod: 'strict',
+      audience: 'author',
+    }),
+    'Введите ответ, который должен совпасть: 5',
+  );
+
+  assert.equal(
+    getAssessmentExpectedInputText({
+      isChecklistCheck: false,
+      checklistItems: [],
+      strictCheckType: 'number',
+      expectedSummary: '42',
+      resolvedCheckMethod: 'strict',
+      audience: 'author',
+    }),
+    'Введите число: 42.',
+  );
+
+  assert.equal(
+    getAssessmentExpectedInputText({
+      isChecklistCheck: false,
+      checklistItems: [],
+      strictCheckType: 'contains',
+      requiredTerms: ['алгоритм', 'цикл'],
+      resolvedCheckMethod: 'strict',
+      audience: 'author',
+    }),
+    'Введите ответ с обязательными элементами: алгоритм, цикл.',
+  );
 });
 
 test('assessment validation state gives one actionable reason near the action', () => {
@@ -158,11 +232,29 @@ test('assessment validation state gives one actionable reason near the action', 
 
 test('assessment answer input copy explains what learners should enter', () => {
   assert.deepEqual(
+    getAssessmentAnswerInputCopy({ strictCheckType: 'exact', resolvedCheckMethod: 'strict' }),
+    {
+      label: 'Ваш ответ',
+      placeholder: 'Введите один итоговый ответ',
+      helperText: 'Без вариантов и пояснений.',
+    },
+  );
+
+  assert.deepEqual(
     getAssessmentAnswerInputCopy({ strictCheckType: 'number', resolvedCheckMethod: 'strict' }),
     {
-      label: 'Число для проверки',
-      placeholder: 'Введите число без лишнего текста',
-      helperText: 'Проверка учтет допустимую погрешность, если она задана.',
+      label: 'Число',
+      placeholder: 'Введите только число',
+      helperText: 'Без единиц измерения и лишнего текста.',
+    },
+  );
+
+  assert.deepEqual(
+    getAssessmentAnswerInputCopy({ strictCheckType: 'contains', resolvedCheckMethod: 'strict' }),
+    {
+      label: 'Ответ',
+      placeholder: 'Напишите ответ целиком',
+      helperText: 'Сформулируйте своими словами.',
     },
   );
 
@@ -173,6 +265,45 @@ test('assessment answer input copy explains what learners should enter', () => {
       placeholder: 'Коротко: ответ, ход решения или ссылка на работу',
       helperText: 'Когда ответ готов, сохраните результат.',
     },
+  );
+});
+
+test('author answer input copy can describe verification mechanics', () => {
+  assert.deepEqual(
+    getAssessmentAnswerInputCopy({
+      strictCheckType: 'number',
+      resolvedCheckMethod: 'strict',
+      audience: 'author',
+    }),
+    {
+      label: 'Число для проверки',
+      placeholder: 'Введите число без лишнего текста',
+      helperText: 'Проверка учтет допустимую погрешность, если она задана.',
+    },
+  );
+});
+
+test('learner feedback summary hides missing contains terms', () => {
+  const learnerFeedback = getAssessmentFeedbackSummary({
+    strictCheckType: 'contains',
+    resolvedCheckMethod: 'strict',
+    passed: false,
+    feedbackSummary: 'Не хватает обязательных элементов: dimension.',
+    audience: 'learner',
+  });
+
+  assert.equal(learnerFeedback, 'Ответ пока не зачтен. Попробуйте дополнить формулировку.');
+  assert.doesNotMatch(learnerFeedback, /dimension|обязательных элементов/);
+
+  assert.equal(
+    getAssessmentFeedbackSummary({
+      strictCheckType: 'contains',
+      resolvedCheckMethod: 'strict',
+      passed: false,
+      feedbackSummary: 'Не хватает обязательных элементов: dimension.',
+      audience: 'author',
+    }),
+    'Не хватает обязательных элементов: dimension.',
   );
 });
 

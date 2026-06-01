@@ -6,6 +6,8 @@ export type AssessmentChecklistItem = {
   required: boolean;
 };
 
+type AssessmentCopyAudience = 'learner' | 'author';
+
 type CheckTypeInput = {
   strictCheckType?: string | null;
   resolvedCheckMethod: AssessmentCheckMethod;
@@ -16,6 +18,7 @@ type ExpectationInput = CheckTypeInput & {
   checklistItems: AssessmentChecklistItem[];
   expectedSummary?: string | null;
   requiredTerms?: string[];
+  audience?: AssessmentCopyAudience;
 };
 
 type AnswerInputCopy = {
@@ -24,9 +27,19 @@ type AnswerInputCopy = {
   helperText: string;
 };
 
+type AnswerInputCopyInput = CheckTypeInput & {
+  audience?: AssessmentCopyAudience;
+};
+
 type AttemptResultCopyInput = {
   passed: boolean;
   targetMasteryLabel: string;
+};
+
+type FeedbackSummaryInput = CheckTypeInput & {
+  passed: boolean;
+  feedbackSummary?: string | null;
+  audience?: AssessmentCopyAudience;
 };
 
 type PrimaryActionCopyInput = {
@@ -88,6 +101,7 @@ export const getAssessmentExpectedInputText = ({
   expectedSummary,
   requiredTerms = [],
   resolvedCheckMethod,
+  audience = 'learner',
 }: ExpectationInput) => {
   if (isChecklistCheck) {
     const requiredCount = checklistItems.filter((item) => item.required).length;
@@ -95,14 +109,17 @@ export const getAssessmentExpectedInputText = ({
   }
 
   if (strictCheckType === 'exact') {
+    if (audience === 'learner') return 'Введите ответ без подсказки.';
     return `Введите ответ, который должен совпасть${expectedSummary ? `: ${expectedSummary}` : '.'}`;
   }
 
   if (strictCheckType === 'number') {
+    if (audience === 'learner') return 'Введите число без лишнего текста.';
     return `Введите число${expectedSummary ? `: ${expectedSummary}` : ''}.`;
   }
 
   if (strictCheckType === 'contains') {
+    if (audience === 'learner') return 'Напишите ответ своими словами.';
     return `Введите ответ с обязательными элементами: ${requiredTerms.join(', ') || 'элементы не заданы'}.`;
   }
 
@@ -116,8 +133,17 @@ export const getAssessmentExpectedInputText = ({
 export const getAssessmentAnswerInputCopy = ({
   strictCheckType,
   resolvedCheckMethod,
-}: CheckTypeInput): AnswerInputCopy => {
+  audience = 'learner',
+}: AnswerInputCopyInput): AnswerInputCopy => {
   if (strictCheckType === 'exact') {
+    if (audience === 'learner') {
+      return {
+        label: 'Ваш ответ',
+        placeholder: 'Введите один итоговый ответ',
+        helperText: 'Без вариантов и пояснений.',
+      };
+    }
+
     return {
       label: 'Ответ для точной проверки',
       placeholder: 'Введите один ответ так, как он должен быть зачтен',
@@ -126,6 +152,14 @@ export const getAssessmentAnswerInputCopy = ({
   }
 
   if (strictCheckType === 'number') {
+    if (audience === 'learner') {
+      return {
+        label: 'Число',
+        placeholder: 'Введите только число',
+        helperText: 'Без единиц измерения и лишнего текста.',
+      };
+    }
+
     return {
       label: 'Число для проверки',
       placeholder: 'Введите число без лишнего текста',
@@ -134,6 +168,14 @@ export const getAssessmentAnswerInputCopy = ({
   }
 
   if (strictCheckType === 'contains') {
+    if (audience === 'learner') {
+      return {
+        label: 'Ответ',
+        placeholder: 'Напишите ответ целиком',
+        helperText: 'Сформулируйте своими словами.',
+      };
+    }
+
     return {
       label: 'Ответ с обязательными терминами',
       placeholder: 'Напишите ответ так, чтобы в нем были все обязательные термины',
@@ -180,6 +222,24 @@ export const getAssessmentEvidenceHint = ({
   return audience === 'author'
     ? 'Для зачета добавьте короткое объяснение. Служебные детали можно оставить пустыми.'
     : 'Коротко напишите, что получилось и почему этого достаточно.';
+};
+
+export const getAssessmentFeedbackSummary = ({
+  strictCheckType,
+  resolvedCheckMethod,
+  passed,
+  feedbackSummary,
+  audience = 'learner',
+}: FeedbackSummaryInput) => {
+  const trimmedFeedback = feedbackSummary?.trim() ?? '';
+
+  if (audience === 'author') return trimmedFeedback;
+
+  if (strictCheckType === 'contains' && resolvedCheckMethod === 'strict') {
+    return passed ? 'Ответ зачтен.' : 'Ответ пока не зачтен. Попробуйте дополнить формулировку.';
+  }
+
+  return trimmedFeedback;
 };
 
 export const getAssessmentValidationState = ({

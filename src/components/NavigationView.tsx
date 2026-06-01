@@ -59,6 +59,7 @@ import {
   getAssessmentAttemptResultCopy,
   getAssessmentCheckTypeLabel,
   getAssessmentEvidenceHint,
+  getAssessmentFeedbackSummary,
   getAssessmentFailedAttemptState,
   getAssessmentExpectedInputText,
   getAssessmentPrimaryActionLabel,
@@ -1703,13 +1704,18 @@ export const NavigationView = ({
       expectedSummary: mastery?.check.expectedSummary,
       requiredTerms: mastery?.check.requiredTerms,
       resolvedCheckMethod,
+      audience: canUseAuthorTools ? 'author' : 'learner',
     });
     const verifierEvidenceHint = getAssessmentEvidenceHint({
       hasVisibleEvidence,
       hasTechnicalResultId,
       audience: canUseAuthorTools ? 'author' : 'learner',
     });
-    const answerInputCopy = getAssessmentAnswerInputCopy({ strictCheckType, resolvedCheckMethod });
+    const answerInputCopy = getAssessmentAnswerInputCopy({
+      strictCheckType,
+      resolvedCheckMethod,
+      audience: canUseAuthorTools ? 'author' : 'learner',
+    });
     const assessmentValidationState = getAssessmentValidationState({
       pendingAssessment,
       pendingSelfMark,
@@ -1734,6 +1740,15 @@ export const NavigationView = ({
       : null;
     const latestAttemptPassed = Boolean(mastery?.latestAttempt?.passed);
     const latestAttemptFailed = Boolean(mastery?.latestAttempt && !mastery.latestAttempt.passed);
+    const latestAttemptFeedbackSummary = mastery?.latestAttempt
+      ? getAssessmentFeedbackSummary({
+          strictCheckType,
+          resolvedCheckMethod,
+          passed: mastery.latestAttempt.passed,
+          feedbackSummary: mastery.latestAttempt.feedback_summary,
+          audience: canUseAuthorTools ? 'author' : 'learner',
+        })
+      : '';
     const isRetryingFailedAttempt =
       latestAttemptFailed && retryingAssessmentAttemptId === mastery?.latestAttempt?.id;
     const showFailedResultState = latestAttemptFailed && !isRetryingFailedAttempt;
@@ -1751,7 +1766,7 @@ export const NavigationView = ({
     const failedResultState =
       showFailedResultState && mastery?.latestAttempt
         ? getFailedAssessmentResultState({
-            feedbackSummary: mastery.latestAttempt.feedback_summary,
+            feedbackSummary: latestAttemptFeedbackSummary,
           })
         : null;
     const assessmentInputsDisabled = pendingAssessment || isEditorArchived || latestAttemptPassed;
@@ -1786,8 +1801,11 @@ export const NavigationView = ({
     const showAssessmentMethodControls = showAssessmentControls && canUseAuthorTools;
     const showAssessmentTargetControls = showAssessmentControls && canUseAuthorTools;
     const selfMarkCopy = getSelfMarkedAssessmentCopy();
-    const hasCriteriaDisclosure =
-      Boolean(mastery?.check.expectedSummary) || (mastery?.check.requiredTerms?.length ?? 0) > 0 || requiresVerifierEvidence;
+    const hasAuthorCheckDetails =
+      Boolean(mastery?.check.expectedSummary) || (mastery?.check.requiredTerms?.length ?? 0) > 0;
+    const hasCriteriaDisclosure = canUseAuthorTools
+      ? hasAuthorCheckDetails || requiresVerifierEvidence
+      : requiresVerifierEvidence;
     const criteriaDisclosureLabel = canUseAuthorTools ? 'Детали проверки' : 'Почему этого достаточно';
     const evidenceLabel = canUseAuthorTools ? 'Подтверждение проверки' : 'Почему получилось';
 
@@ -2117,12 +2135,12 @@ export const NavigationView = ({
                     <details className="navigation-lesson-disclosure" open={canUseAuthorTools}>
                       <summary>{criteriaDisclosureLabel}</summary>
                       <div className="navigation-lesson-disclosure__body">
-                        {mastery?.check.expectedSummary ? (
+                        {canUseAuthorTools && mastery?.check.expectedSummary ? (
                           <PixelText as="p" size="xs" color="textMuted" style={{ margin: 0 }}>
                             Ожидаемый результат: {mastery.check.expectedSummary}
                           </PixelText>
                         ) : null}
-                        {(mastery?.check.requiredTerms?.length ?? 0) > 0 ? (
+                        {canUseAuthorTools && (mastery?.check.requiredTerms?.length ?? 0) > 0 ? (
                           <PixelText as="p" size="xs" color="textMuted" style={{ margin: 0 }}>
                             Должно быть в ответе: {mastery.check.requiredTerms?.join(', ')}
                           </PixelText>
@@ -2293,9 +2311,9 @@ export const NavigationView = ({
                         </div>
                       </div>
                     ) : null}
-                    {mastery.latestAttempt?.feedback_summary ? (
+                    {latestAttemptFeedbackSummary ? (
                       <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
-                        {mastery.latestAttempt.feedback_summary}
+                        {latestAttemptFeedbackSummary}
                       </PixelText>
                     ) : null}
                     <PixelButton
@@ -2446,9 +2464,9 @@ export const NavigationView = ({
                       <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
                         {latestAttemptResultCopy?.message ?? 'Попытка сохранена.'}
                       </PixelText>
-                      {mastery.latestAttempt.feedback_summary ? (
+                      {latestAttemptFeedbackSummary ? (
                         <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 4 }}>
-                          {mastery.latestAttempt.feedback_summary}
+                          {latestAttemptFeedbackSummary}
                         </PixelText>
                       ) : null}
                       {canEditChecks && mastery.latestAttempt.evidence_payload ? (
