@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -21,3 +21,9 @@ Make checks usable on a 390px wide mobile viewport.
 - mobile check flow has no document-level horizontal overflow
 - buttons and input text fit
 - check result is visible without confusing scroll jumps
+
+## Result
+
+- Browser QA at 390x844 reported no document-level horizontal overflow.
+- Mobile screenshots cover AI-assisted and checklist check panels.
+- Long Russian button labels and helper text wrapped inside the inspector without a layout break.

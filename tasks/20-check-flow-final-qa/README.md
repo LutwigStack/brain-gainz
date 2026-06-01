@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -38,7 +38,11 @@ Excludes:
 
 ## Workstreams
 
-- `planned` - [workstreams/01-manual-check-flow.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/20-check-flow-final-qa/workstreams/01-manual-check-flow.md)
-- `planned` - [workstreams/02-ai-assisted-check-flow.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/20-check-flow-final-qa/workstreams/02-ai-assisted-check-flow.md)
-- `planned` - [workstreams/03-mobile-check-layout.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/20-check-flow-final-qa/workstreams/03-mobile-check-layout.md)
-- `planned` - [workstreams/04-full-check-qa-matrix.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/20-check-flow-final-qa/workstreams/04-full-check-qa-matrix.md)
+- `done` - [workstreams/01-manual-check-flow.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/20-check-flow-final-qa/workstreams/01-manual-check-flow.md)
+- `done` - [workstreams/02-ai-assisted-check-flow.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/20-check-flow-final-qa/workstreams/02-ai-assisted-check-flow.md)
+- `done` - [workstreams/03-mobile-check-layout.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/20-check-flow-final-qa/workstreams/03-mobile-check-layout.md)
+- `done` - [workstreams/04-full-check-qa-matrix.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/20-check-flow-final-qa/workstreams/04-full-check-qa-matrix.md)
+
+## QA Artifact
+
+[check-flow-final-qa.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/20-check-flow-final-qa/check-flow-final-qa.md)

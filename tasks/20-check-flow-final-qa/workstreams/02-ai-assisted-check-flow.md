@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -21,3 +21,9 @@ Make AI-assisted checks understandable without exposing raw internal terms.
 - the AI-assisted path is browser-tested
 - disabled and result states are clear
 - no raw internal label dominates the main UI
+
+## Result
+
+- AI-assisted checks explain that the learner must add an AI result or a short verification note before confirmed progress can be saved.
+- Failed AI-assisted attempts are saved as learning attempts without XP.
+- The selected AI-assisted method now persists after saving a failed or passed attempt.

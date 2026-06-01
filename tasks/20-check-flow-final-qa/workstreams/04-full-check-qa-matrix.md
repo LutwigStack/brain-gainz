@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -28,3 +28,7 @@ Create:
 - every check type has a browser-tested result
 - remaining issues are listed by severity
 - tests, lint, and build pass
+
+## Result
+
+Completed in [check-flow-final-qa.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/20-check-flow-final-qa/check-flow-final-qa.md).
