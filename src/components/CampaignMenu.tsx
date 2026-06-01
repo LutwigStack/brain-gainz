@@ -1,7 +1,6 @@
 import {
   Archive,
   BookOpen,
-  Flag,
   MoreHorizontal,
   Play,
   Plus,
@@ -109,6 +108,119 @@ const courseDescription = (campaign: CampaignSummary) =>
 const courseTypeLabel = (campaign: CampaignSummary) =>
   campaign.slug?.includes('nlh-cash') ? 'Стратегия и практика' : 'Готовая программа';
 
+type CampaignProgramTone = 'cs' | 'materials' | 'strategy' | 'biology' | 'math' | 'ml' | 'neutral';
+
+const courseToneKey = (campaign: CampaignSummary): CampaignProgramTone => {
+  const slug = campaign.slug ?? '';
+
+  if (slug.includes('materials-science')) {
+    return 'materials';
+  }
+  if (slug.includes('nlh-cash')) {
+    return 'strategy';
+  }
+  if (slug.includes('biology')) {
+    return 'biology';
+  }
+  if (slug.includes('applied-math')) {
+    return 'math';
+  }
+  if (slug.includes('ml-ai')) {
+    return 'ml';
+  }
+  if (slug.includes('cs-bachelor')) {
+    return 'cs';
+  }
+
+  return 'neutral';
+};
+
+const courseToneClass = (campaign: CampaignSummary) => `campaign-course-card--${courseToneKey(campaign)}`;
+
+const CampaignProgramEmblemGlyph = ({ tone }: { tone: CampaignProgramTone }) => (
+  <svg viewBox="0 0 48 48" focusable="false">
+    <rect className="campaign-program-emblem__frame" x="8" y="8" width="32" height="32" rx="6" />
+    {tone === 'materials' ? (
+      <>
+        <path className="campaign-program-emblem__line" d="M15 24h18M24 15v18M17 17l14 14M31 17 17 31" />
+        <path className="campaign-program-emblem__core" d="M24 13 35 24 24 35 13 24Z" />
+        <circle className="campaign-program-emblem__dot" cx="24" cy="24" r="3.5" />
+      </>
+    ) : tone === 'strategy' ? (
+      <>
+        <path className="campaign-program-emblem__line" d="M15 32c5-10 12-16 21-18M14 18h10v14H14zM28 24h7v8h-7z" />
+        <circle className="campaign-program-emblem__dot" cx="17" cy="21" r="1.6" />
+        <circle className="campaign-program-emblem__dot" cx="21" cy="29" r="1.6" />
+        <path className="campaign-program-emblem__core" d="M31 13 36 18 31 23 26 18Z" />
+      </>
+    ) : tone === 'biology' ? (
+      <>
+        <path className="campaign-program-emblem__line" d="M18 13c12 6 12 16 0 22M30 13c-12 6-12 16 0 22M19 18h10M17 24h14M19 30h10" />
+        <path className="campaign-program-emblem__core" d="M24 16c7 5 7 11 0 16-7-5-7-11 0-16Z" />
+        <circle className="campaign-program-emblem__dot" cx="24" cy="24" r="2.5" />
+      </>
+    ) : tone === 'math' ? (
+      <>
+        <path className="campaign-program-emblem__line" d="M13 32h22M16 35V15M16 29c4-10 8-13 12-8s6 4 8-4" />
+        <path className="campaign-program-emblem__core" d="M15 30 22 23 27 27 35 17" />
+        <circle className="campaign-program-emblem__dot" cx="22" cy="23" r="2" />
+        <circle className="campaign-program-emblem__dot" cx="35" cy="17" r="2" />
+      </>
+    ) : tone === 'ml' ? (
+      <>
+        <path className="campaign-program-emblem__line" d="M16 17l8 7-8 7M32 17l-8 7 8 7M16 17h16M16 31h16" />
+        <circle className="campaign-program-emblem__dot" cx="16" cy="17" r="3" />
+        <circle className="campaign-program-emblem__dot" cx="16" cy="31" r="3" />
+        <circle className="campaign-program-emblem__dot" cx="32" cy="17" r="3" />
+        <circle className="campaign-program-emblem__dot" cx="32" cy="31" r="3" />
+        <circle className="campaign-program-emblem__core" cx="24" cy="24" r="4" />
+      </>
+    ) : (
+      <>
+        <path className="campaign-program-emblem__line" d="M17 16h14M17 24h14M17 32h14M20 16v16M28 16v16" />
+        <path className="campaign-program-emblem__core" d="M16 19 24 13 32 19v14H16Z" />
+        <circle className="campaign-program-emblem__dot" cx="24" cy="24" r="2.5" />
+      </>
+    )}
+  </svg>
+);
+
+const courseEmblemAsset = (tone: CampaignProgramTone) => {
+  switch (tone) {
+    case 'materials':
+      return csBachelorReferenceAssets.programEmblem.materialsScience;
+    case 'strategy':
+      return csBachelorReferenceAssets.programEmblem.nlhCash;
+    case 'biology':
+      return csBachelorReferenceAssets.programEmblem.biology;
+    case 'math':
+      return csBachelorReferenceAssets.programEmblem.appliedMath;
+    case 'ml':
+      return csBachelorReferenceAssets.programEmblem.mlAi;
+    case 'cs':
+      return csBachelorReferenceAssets.programEmblem.csBachelor;
+    default:
+      return null;
+  }
+};
+
+const CampaignProgramEmblem = ({
+  tone,
+  className = '',
+}: {
+  tone: CampaignProgramTone;
+  className?: string;
+}) => (
+  <span className={`campaign-program-emblem campaign-program-emblem--${tone} ${className}`.trim()} aria-hidden="true">
+    <ReferenceAssetImage
+      asset={courseEmblemAsset(tone)}
+      decorative
+      className="campaign-program-emblem__image"
+      fallback={<CampaignProgramEmblemGlyph tone={tone} />}
+    />
+  </span>
+);
+
 const CampaignSection = ({
   title,
   children,
@@ -130,54 +242,59 @@ const CampaignSection = ({
   </section>
 );
 
-const CampaignAsset = ({
-  campaign,
-  identityCampaign = campaign,
-  className = '',
-}: {
-  campaign: CampaignSummary;
-  identityCampaign?: CampaignSummary;
-  className?: string;
-}) => {
-  const identityAsset = resolveCampaignCardAsset(identityCampaign);
-
-  return (
-    <span className={`campaign-card__asset ${className}`.trim()} aria-hidden="true">
-      {isCsBachelorCampaign(identityCampaign) ? (
-        <ReferenceAssetImage
-          asset={csBachelorReferenceAssets.campaign.crest}
-          decorative
-          className="campaign-card__asset-image"
-          fallback={<Flag size={22} />}
-        />
-      ) : identityAsset ? (
-        <ReferenceAssetImage
-          asset={identityAsset}
-          decorative
-          className="campaign-card__asset-image"
-          fallback={<Flag size={22} />}
-        />
-      ) : (
-        <Flag size={22} />
-      )}
-    </span>
-  );
-};
-
 const CampaignStatPill = ({ label }: { label: string }) => (
   <PixelText as="span" readable size="xs" color="textMuted" className="campaign-stat-pill">
     {label}
   </PixelText>
 );
 
-const CampaignSaveSlotMetric = ({ label, value }: { label: string; value: string }) => (
+const CampaignMetricIcon = ({ type }: { type: 'nodes' | 'xp' | 'status' }) => (
+  <span className={`campaign-save-slot__metric-art campaign-save-slot__metric-art--${type}`} aria-hidden="true">
+    {type === 'nodes' ? (
+      <svg viewBox="0 0 48 48" focusable="false">
+        <path className="campaign-metric-icon__line" d="M14 15h20M14 33h20M15 15l18 18M33 15 15 33M24 10v28" />
+        <circle className="campaign-metric-icon__node campaign-metric-icon__node--core" cx="24" cy="24" r="5" />
+        <circle className="campaign-metric-icon__node" cx="14" cy="15" r="3.5" />
+        <circle className="campaign-metric-icon__node" cx="34" cy="15" r="3.5" />
+        <circle className="campaign-metric-icon__node" cx="14" cy="33" r="3.5" />
+        <circle className="campaign-metric-icon__node" cx="34" cy="33" r="3.5" />
+      </svg>
+    ) : type === 'xp' ? (
+      <svg viewBox="0 0 48 48" focusable="false">
+        <path className="campaign-metric-icon__flame" d="M25 6c5 7-2 10 5 16 3 3 5 6 5 10 0 7-5 12-12 12S11 39 11 32c0-6 4-10 8-14 3-3 4-7 6-12Z" />
+        <path className="campaign-metric-icon__crystal" d="M24 18 32 29 24 40 16 29Z" />
+        <path className="campaign-metric-icon__spark" d="M10 16h6M13 13v6M35 13h5M37.5 10.5v5M36 36h6M39 33v6" />
+      </svg>
+    ) : (
+      <svg viewBox="0 0 48 48" focusable="false">
+        <circle className="campaign-metric-icon__ring" cx="24" cy="28" r="14" />
+        <path className="campaign-metric-icon__compass" d="M24 41V13M24 13l15 7-15 7V13Z" />
+        <path className="campaign-metric-icon__route" d="M11 29c5-5 10-5 13-1s8 4 13-1" />
+        <circle className="campaign-metric-icon__beacon" cx="24" cy="13" r="3" />
+      </svg>
+    )}
+  </span>
+);
+
+const CampaignSaveSlotMetric = ({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon: 'nodes' | 'xp' | 'status';
+}) => (
   <div className="campaign-save-slot__metric">
+    <CampaignMetricIcon type={icon} />
+    <span className="campaign-save-slot__metric-copy">
     <PixelText as="span" size="xs" color="textDim" uppercase>
       {label}
     </PixelText>
     <PixelText as="strong" readable size="sm">
       {value}
     </PixelText>
+    </span>
   </div>
 );
 
@@ -197,7 +314,9 @@ const CampaignSaveSlot = ({
   const progress = campaignProgressPercent(campaign);
   const nodeCount = Number(campaign.node_count ?? 0);
   const totalXp = Number(campaign.total_xp ?? 0);
-  const heroAsset = isCsBachelorCampaign(identityCampaign)
+  const tone = courseToneKey(identityCampaign);
+  const usesDedicatedHeroAsset = isCsBachelorCampaign(identityCampaign);
+  const heroAsset = usesDedicatedHeroAsset
     ? csBachelorReferenceAssets.city.coreCsCitadel
     : resolveCampaignCardAsset(identityCampaign);
 
@@ -205,56 +324,72 @@ const CampaignSaveSlot = ({
     <PixelSurface
       frame="secondary"
       padding="lg"
-      className={`campaign-save-slot ${heroAsset ? 'campaign-save-slot--with-art' : ''}`.trim()}
+      className={`campaign-save-slot ${courseToneClass(identityCampaign)} ${heroAsset ? 'campaign-save-slot--with-art' : ''} ${
+        heroAsset && !usesDedicatedHeroAsset ? 'campaign-save-slot--mirrored-card-art' : ''
+      }`.trim()}
     >
-      {heroAsset ? (
-        <ReferenceAssetImage
-          asset={heroAsset}
-          decorative
-          className="campaign-save-slot__backdrop"
-          fallback={<span className="campaign-save-slot__backdrop-fallback" />}
-        />
-      ) : (
-        <span className="campaign-save-slot__backdrop-fallback" aria-hidden="true" />
-      )}
-      <span className="campaign-save-slot__shade" aria-hidden="true" />
+      <span className="campaign-save-slot__art" aria-hidden="true">
+        {heroAsset ? (
+          <ReferenceAssetImage
+            asset={heroAsset}
+            decorative
+            className="campaign-save-slot__backdrop"
+            fallback={<span className="campaign-save-slot__backdrop-fallback" />}
+          />
+        ) : (
+          <span className="campaign-save-slot__backdrop-fallback" aria-hidden="true" />
+        )}
+        <span className="campaign-save-slot__shade" aria-hidden="true" />
+      </span>
 
       <div className="campaign-save-slot__layout">
-        <CampaignAsset
-          campaign={campaign}
-          identityCampaign={identityCampaign}
-          className="campaign-card__asset--hero"
-        />
+        <CampaignProgramEmblem tone={tone} className="campaign-program-emblem--hero" />
 
         <div className="campaign-save-slot__main min-w-0">
-          <PixelText as="p" size="xs" color="accent" uppercase className="campaign-save-slot__eyebrow">
-            Продолжить обучение
-          </PixelText>
           <PixelText as="h3" readable size="xl" title={campaign.name} className="campaign-save-slot__title">
             {campaign.name}
           </PixelText>
-          <PixelText as="p" readable size="sm" color="textMuted" className="campaign-save-slot__status">
-            {modeLabel(campaign)} · {campaignStateLabel(campaign)}
-          </PixelText>
-          <div className="campaign-save-slot__metrics" aria-label="Сводка программы">
-            <CampaignSaveSlotMetric label="Узлы" value={`${nodeCount}`} />
-            <CampaignSaveSlotMetric label="XP" value={`${totalXp}`} />
-            <CampaignSaveSlotMetric label="Статус" value={campaignStateLabel(campaign)} />
+          <div className="campaign-save-slot__state-row">
+            <PixelText as="p" readable size="sm" color="textMuted" className="campaign-save-slot__status">
+              {modeLabel(campaign)} активен
+            </PixelText>
+            <PixelText as="span" size="xs" color="accent" uppercase className="campaign-save-slot__state-badge">
+              {campaignStateLabel(campaign)}
+            </PixelText>
           </div>
-        </div>
-
-        <div className="campaign-save-slot__actions">
           <div className="campaign-save-slot__progress" aria-label={`Прогресс программы ${progress}%`}>
-            <PixelText as="span" readable className="campaign-save-slot__progress-value">
-              {progress}%
-            </PixelText>
-            <PixelText as="span" size="xs" color="textMuted" uppercase>
-              Прогресс
-            </PixelText>
+            <div className="campaign-save-slot__progress-head">
+              <PixelText as="span" readable className="campaign-save-slot__progress-value">
+                {progress}%
+              </PixelText>
+              <PixelText as="span" size="xs" color="textMuted" uppercase>
+                Прогресс
+              </PixelText>
+            </div>
             <span className="campaign-save-slot__progress-track">
               <span style={{ width: `${progress}%` }} />
             </span>
           </div>
+          <div className="campaign-save-slot__metrics" aria-label="Сводка программы">
+            <CampaignSaveSlotMetric
+              label="Узлы"
+              value={`${nodeCount}`}
+              icon="nodes"
+            />
+            <CampaignSaveSlotMetric
+              label="XP"
+              value={`${totalXp}`}
+              icon="xp"
+            />
+            <CampaignSaveSlotMetric
+              label="Статус"
+              value={campaignStateLabel(campaign)}
+              icon="status"
+            />
+          </div>
+        </div>
+
+        <div className="campaign-save-slot__actions">
           <PixelButton
             tone="accent"
             onClick={onOpen}
@@ -332,6 +467,7 @@ const CampaignCourseCard = ({
   const { campaign } = item;
   const isRestore = item.kind === 'restore';
   const cardAsset = resolveCampaignCardAsset(campaign);
+  const tone = courseToneKey(campaign);
   const nodeCount = Number(campaign.node_count ?? 0);
   const totalXp = Number(campaign.total_xp ?? 0);
 
@@ -339,7 +475,7 @@ const CampaignCourseCard = ({
     <PixelSurface
       frame="secondary"
       padding="md"
-      className={`campaign-course-card ${isRestore ? 'campaign-course-card--restore' : ''}`.trim()}
+      className={`campaign-course-card ${courseToneClass(campaign)} ${isRestore ? 'campaign-course-card--restore' : ''}`.trim()}
     >
       {cardAsset ? (
         <ReferenceAssetImage
@@ -364,20 +500,23 @@ const CampaignCourseCard = ({
           <BookOpen size={14} /> Карта
         </PixelButton>
       ) : null}
+      <CampaignProgramEmblem tone={tone} className="campaign-program-emblem--course" />
 
       <div className="campaign-course-card__body min-w-0">
-        <PixelText as="p" size="xs" color={isRestore ? 'warning' : 'info'} uppercase className="campaign-course-card__type">
-          {isRestore ? 'В архиве' : courseTypeLabel(campaign)}
-        </PixelText>
-        <PixelText as="h3" readable size="lg" title={campaign.name} className="campaign-course-card__title">
-          {campaign.name}
-        </PixelText>
-        <PixelText as="p" readable size="sm" color="textMuted" className="campaign-course-card__copy">
-          {courseDescription(campaign)}
-        </PixelText>
-        <div className="campaign-course-card__metrics">
-          <CampaignStatPill label={`${nodeCount} узл.`} />
-          {totalXp > 0 ? <CampaignStatPill label={`${totalXp} XP`} /> : null}
+        <div className="campaign-course-card__copy-stack min-w-0">
+          <PixelText as="p" size="xs" color={isRestore ? 'warning' : 'info'} uppercase className="campaign-course-card__type">
+            {isRestore ? 'В архиве' : courseTypeLabel(campaign)}
+          </PixelText>
+          <PixelText as="h3" readable size="lg" title={campaign.name} className="campaign-course-card__title">
+            {campaign.name}
+          </PixelText>
+          <PixelText as="p" readable size="sm" color="textMuted" className="campaign-course-card__copy">
+            {courseDescription(campaign)}
+          </PixelText>
+          <div className="campaign-course-card__metrics">
+            <CampaignStatPill label={`${nodeCount} узл.`} />
+            {totalXp > 0 ? <CampaignStatPill label={`${totalXp} XP`} /> : null}
+          </div>
         </div>
       </div>
 

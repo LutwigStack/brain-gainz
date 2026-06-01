@@ -880,6 +880,198 @@
         ]
       },
       "notes": "Accepted campaign-card first batch; no baked text, UI copy is rendered in HTML."
+    },
+    {
+      "asset_id": "program-emblem.cs-bachelor",
+      "family": "specialization_icon",
+      "usage_surface": "campaign_menu_ready_campaign_templates",
+      "ui_slot": "Campaign Menu ready program card emblem",
+      "target_slots": [
+        "Campaign Menu ready program card emblem"
+      ],
+      "target_width": 256,
+      "target_height": 256,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/28-campaign-menu-visual-parity/README.md",
+      "raw_variant_paths": [
+        "output/generated-assets/program-emblem-first-batch/program-emblems-candidate-01.png",
+        "output/generated-assets/program-emblem-first-batch/program-emblems-candidate-02.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/program-emblem/bgz-ref-program-emblem-cs-bachelor.webp",
+      "status": "accepted",
+      "alt": "Computer Science Bachelor program emblem",
+      "fallback": "Computer science program emblem",
+      "ui_check": {
+        "component": "CampaignMenu",
+        "display_width": 68,
+        "display_height": 68,
+        "required_states": [
+          "ready campaign template",
+          "cs-bachelor"
+        ]
+      },
+      "notes": "Generated as a unified 3x2 program emblem sheet, cropped for the ready program card."
+    },
+    {
+      "asset_id": "program-emblem.materials-science",
+      "family": "specialization_icon",
+      "usage_surface": "campaign_menu_ready_campaign_templates",
+      "ui_slot": "Campaign Menu ready program card emblem",
+      "target_slots": [
+        "Campaign Menu ready program card emblem"
+      ],
+      "target_width": 256,
+      "target_height": 256,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/28-campaign-menu-visual-parity/README.md",
+      "raw_variant_paths": [
+        "output/generated-assets/program-emblem-first-batch/program-emblems-candidate-01.png",
+        "output/generated-assets/program-emblem-first-batch/program-emblems-candidate-02.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/program-emblem/bgz-ref-program-emblem-materials-science.webp",
+      "status": "accepted",
+      "alt": "Materials Science Bachelor program emblem",
+      "fallback": "Materials science program emblem",
+      "ui_check": {
+        "component": "CampaignMenu",
+        "display_width": 68,
+        "display_height": 68,
+        "required_states": [
+          "ready campaign template",
+          "materials-science"
+        ]
+      },
+      "notes": "Generated as a unified 3x2 program emblem sheet, cropped for the ready program card."
+    },
+    {
+      "asset_id": "program-emblem.nlh-cash",
+      "family": "specialization_icon",
+      "usage_surface": "campaign_menu_ready_campaign_templates",
+      "ui_slot": "Campaign Menu ready program card emblem",
+      "target_slots": [
+        "Campaign Menu ready program card emblem"
+      ],
+      "target_width": 256,
+      "target_height": 256,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/28-campaign-menu-visual-parity/README.md",
+      "raw_variant_paths": [
+        "output/generated-assets/program-emblem-first-batch/program-emblems-candidate-01.png",
+        "output/generated-assets/program-emblem-first-batch/program-emblems-candidate-02.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/program-emblem/bgz-ref-program-emblem-nlh-cash.webp",
+      "status": "accepted",
+      "alt": "NLH cash strategy program emblem",
+      "fallback": "Strategy program emblem",
+      "ui_check": {
+        "component": "CampaignMenu",
+        "display_width": 68,
+        "display_height": 68,
+        "required_states": [
+          "ready campaign template",
+          "nlh-cash"
+        ]
+      },
+      "notes": "Generated as a unified 3x2 program emblem sheet, cropped for the ready program card."
+    },
+    {
+      "asset_id": "program-emblem.biology",
+      "family": "specialization_icon",
+      "usage_surface": "campaign_menu_ready_campaign_templates",
+      "ui_slot": "Campaign Menu ready program card emblem",
+      "target_slots": [
+        "Campaign Menu ready program card emblem"
+      ],
+      "target_width": 256,
+      "target_height": 256,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/28-campaign-menu-visual-parity/README.md",
+      "raw_variant_paths": [
+        "output/generated-assets/program-emblem-first-batch/program-emblems-candidate-01.png",
+        "output/generated-assets/program-emblem-first-batch/program-emblems-candidate-02.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/program-emblem/bgz-ref-program-emblem-biology.webp",
+      "status": "accepted",
+      "alt": "Biology Bachelor program emblem",
+      "fallback": "Biology program emblem",
+      "ui_check": {
+        "component": "CampaignMenu",
+        "display_width": 68,
+        "display_height": 68,
+        "required_states": [
+          "ready campaign template",
+          "biology"
+        ]
+      },
+      "notes": "Generated as a unified 3x2 program emblem sheet, cropped for the ready program card."
+    },
+    {
+      "asset_id": "program-emblem.applied-math",
+      "family": "specialization_icon",
+      "usage_surface": "campaign_menu_ready_campaign_templates",
+      "ui_slot": "Campaign Menu ready program card emblem",
+      "target_slots": [
+        "Campaign Menu ready program card emblem"
+      ],
+      "target_width": 256,
+      "target_height": 256,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/28-campaign-menu-visual-parity/README.md",
+      "raw_variant_paths": [
+        "output/generated-assets/program-emblem-first-batch/program-emblems-candidate-01.png",
+        "output/generated-assets/program-emblem-first-batch/program-emblems-candidate-02.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/program-emblem/bgz-ref-program-emblem-applied-math.webp",
+      "status": "accepted",
+      "alt": "Applied Mathematics Bachelor program emblem",
+      "fallback": "Applied mathematics program emblem",
+      "ui_check": {
+        "component": "CampaignMenu",
+        "display_width": 68,
+        "display_height": 68,
+        "required_states": [
+          "ready campaign template",
+          "applied-math"
+        ]
+      },
+      "notes": "Generated as a unified 3x2 program emblem sheet, cropped for the ready program card."
+    },
+    {
+      "asset_id": "program-emblem.ml-ai",
+      "family": "specialization_icon",
+      "usage_surface": "campaign_menu_ready_campaign_templates",
+      "ui_slot": "Campaign Menu ready program card emblem",
+      "target_slots": [
+        "Campaign Menu ready program card emblem"
+      ],
+      "target_width": 256,
+      "target_height": 256,
+      "format": "webp",
+      "transparent_background": false,
+      "source_prompt_path": "tasks/28-campaign-menu-visual-parity/README.md",
+      "raw_variant_paths": [
+        "output/generated-assets/program-emblem-first-batch/program-emblems-candidate-01.png",
+        "output/generated-assets/program-emblem-first-batch/program-emblems-candidate-02.png"
+      ],
+      "selected_variant_path": "assets/game/reference-style-first-batch/program-emblem/bgz-ref-program-emblem-ml-ai.webp",
+      "status": "accepted",
+      "alt": "Machine Learning and AI Bachelor program emblem",
+      "fallback": "Machine learning and AI program emblem",
+      "ui_check": {
+        "component": "CampaignMenu",
+        "display_width": 68,
+        "display_height": 68,
+        "required_states": [
+          "ready campaign template",
+          "ml-ai"
+        ]
+      },
+      "notes": "Generated as a unified 3x2 program emblem sheet, cropped for the ready program card."
     }
   ]
 }

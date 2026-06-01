@@ -5,6 +5,12 @@ import campaignCardCsBachelor from '../../assets/game/reference-style-first-batc
 import campaignCardMaterialsScience from '../../assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-materials-science.webp';
 import campaignCardMlAi from '../../assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-ml-ai.webp';
 import campaignCardNlhCash from '../../assets/game/reference-style-first-batch/campaign-card/bgz-ref-campaign-card-nlh-cash.webp';
+import programEmblemAppliedMath from '../../assets/game/reference-style-first-batch/program-emblem/bgz-ref-program-emblem-applied-math.webp';
+import programEmblemBiology from '../../assets/game/reference-style-first-batch/program-emblem/bgz-ref-program-emblem-biology.webp';
+import programEmblemCsBachelor from '../../assets/game/reference-style-first-batch/program-emblem/bgz-ref-program-emblem-cs-bachelor.webp';
+import programEmblemMaterialsScience from '../../assets/game/reference-style-first-batch/program-emblem/bgz-ref-program-emblem-materials-science.webp';
+import programEmblemMlAi from '../../assets/game/reference-style-first-batch/program-emblem/bgz-ref-program-emblem-ml-ai.webp';
+import programEmblemNlhCash from '../../assets/game/reference-style-first-batch/program-emblem/bgz-ref-program-emblem-nlh-cash.webp';
 import algorithmsLandmark from '../../assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-algorithms-landmark.webp';
 import cityCard from '../../assets/game/reference-style-first-batch/city/bgz-ref-city-cs-bachelor-core-cs-citadel-card.webp';
 import databaseSystemsLandmark from '../../assets/game/reference-style-first-batch/map/bgz-ref-map-cs-bachelor-database-systems-landmark.svg';
@@ -79,6 +85,14 @@ export const csBachelorReferenceAssets = {
     biology: acceptedAsset('campaign-card.biology', campaignCardBiology),
     appliedMath: acceptedAsset('campaign-card.applied-math', campaignCardAppliedMath),
     mlAi: acceptedAsset('campaign-card.ml-ai', campaignCardMlAi),
+  },
+  programEmblem: {
+    csBachelor: acceptedAsset('program-emblem.cs-bachelor', programEmblemCsBachelor),
+    materialsScience: acceptedAsset('program-emblem.materials-science', programEmblemMaterialsScience),
+    nlhCash: acceptedAsset('program-emblem.nlh-cash', programEmblemNlhCash),
+    biology: acceptedAsset('program-emblem.biology', programEmblemBiology),
+    appliedMath: acceptedAsset('program-emblem.applied-math', programEmblemAppliedMath),
+    mlAi: acceptedAsset('program-emblem.ml-ai', programEmblemMlAi),
   },
   specialization: {
     coreCsFoundations: acceptedAsset('specialization.cs-bachelor.core-cs-foundations.emblem', specializationEmblem),
