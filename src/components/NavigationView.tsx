@@ -950,6 +950,21 @@ export const NavigationView = ({
       secondRouteNodeId: targetItem.id,
     });
   };
+  const openRouteKnowledgeMap = (nodeId: number | null | undefined = routeFocusNodeId) => {
+    const routeObject = findObjectForNode(programHierarchy, nodeId ?? routeFocusNodeId);
+    if (!canUseAuthorTools) {
+      setProgramMapLayer('knowledge_map');
+      if (routeObject?.objectKey) {
+        setSelectedProgramObjectKey(routeObject.objectKey);
+        setSelectedProgramFolderStableId(routeObject.stableId);
+      }
+    }
+    setHasManualMapViewport(false);
+    setMapCanvasMode('free');
+    setLayerParentNodeId(null);
+    setIsRouteFilterEnabled(true);
+    clearMapTransientState();
+  };
   const selectRouteItemOnMap = (item: NonNullable<TodaySnapshot['route']>['items'][number]) => {
     if (item.node_id == null) {
       return;
@@ -958,10 +973,7 @@ export const NavigationView = ({
     if (!node) {
       return;
     }
-    setMapCanvasMode('free');
-    setLayerParentNodeId(null);
-    setIsRouteFilterEnabled(true);
-    clearMapTransientState();
+    openRouteKnowledgeMap(item.node_id);
     void handleCanvasNodeSelect(node);
   };
   const baseMapModel = createGameViewModel(snapshot, focus, {
@@ -3101,11 +3113,15 @@ export const NavigationView = ({
       ? [...(layerParentEntry ? [layerParentEntry.node.id] : []), ...layerChildIds]
       : null;
   const canvasRouteNodeIds = isRouteFilterActive && mapCanvasMode === 'free' ? [...routeNodeIds] : null;
+  const isProgramObjectKnowledgeMap = !canUseAuthorTools && programMapLayer === 'knowledge_map' && Boolean(selectedProgramObject);
+  const isCsSkillAtlasMap = isProgramObjectKnowledgeMap && hasCoreCsAssets;
   const programObjectCanvasNodeIds =
-    !canUseAuthorTools && programMapLayer === 'knowledge_map' && selectedProgramObject
+    isProgramObjectKnowledgeMap && selectedProgramObject && !isCsSkillAtlasMap
       ? [...selectedProgramObjectNodeIds]
       : null;
-  const canvasVisibleNodeIds = programObjectCanvasNodeIds ?? layerNodeIds ?? canvasRouteNodeIds;
+  const canvasVisibleNodeIds = isCsSkillAtlasMap
+    ? null
+    : programObjectCanvasNodeIds ?? layerNodeIds ?? canvasRouteNodeIds;
   const layerPreviewPositions =
     mapCanvasMode === 'layers' && layerNodeIds
       ? Object.fromEntries(
@@ -3994,11 +4010,7 @@ export const NavigationView = ({
                     <PixelButton
                       tone={isRouteFilterActive ? 'accent' : 'ghost'}
                       onClick={() => {
-                        setHasManualMapViewport(false);
-                        setMapCanvasMode('free');
-                        setLayerParentNodeId(null);
-                        setIsRouteFilterEnabled(true);
-                        clearMapTransientUi();
+                        openRouteKnowledgeMap(routeFocusNodeId);
                         runMapCommand('fit-overview');
                       }}
                       disabled={routeNodeIds.size === 0}
@@ -4392,7 +4404,12 @@ export const NavigationView = ({
                 {focus?.node ? (
                   <PixelButton
                     tone="ghost"
-                    onClick={() => runMapCommand('focus-node')}
+                    onClick={() => {
+                      if (!canUseAuthorTools) {
+                        openRouteKnowledgeMap(focus.node.id);
+                      }
+                      runMapCommand('focus-node');
+                    }}
                     disabled={!hasMapNodes}
                     style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
                     title="Показать текущий узел без смены масштаба"
@@ -4453,18 +4470,20 @@ export const NavigationView = ({
                     <div className="program-object-scope__header">
                       <div>
                         <PixelText as="span" size="xs" color="accent" uppercase>
-                          Карта знаний
+                          {isCsSkillAtlasMap ? 'Атлас знаний' : 'Карта знаний'}
                         </PixelText>
                         <PixelText as="h3" readable size="lg">
-                          {selectedProgramObject.title}
+                          {isCsSkillAtlasMap ? currentCampaign?.name ?? 'Бакалавриат по информатике' : selectedProgramObject.title}
                         </PixelText>
                       </div>
                       <PixelText as="span" size="xs" color="textMuted" uppercase>
-                        {selectedProgramObject.atomicNodeCount} узл.
+                        {isCsSkillAtlasMap ? `${navigationNodeIndex.size} узл.` : `${selectedProgramObject.atomicNodeCount} узл.`}
                       </PixelText>
                     </div>
                     <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: '6px 0 0' }}>
-                      {selectedProgramObject.description}
+                      {isCsSkillAtlasMap
+                        ? `Фокус сейчас: ${selectedProgramObject.title}. Маршрут, освоение и слабые места показаны поверх атласа.`
+                        : selectedProgramObject.description}
                     </PixelText>
                     {programMapState.fallbackReason === 'route_focus_outside_object' ? (
                       <PixelButton
@@ -4481,15 +4500,24 @@ export const NavigationView = ({
                     ) : null}
                   </PixelSurface>
                 ) : null}
-              <PixelSurface frame="selected" padding="xxs" className="navigation-map-canvas-frame min-w-0 overflow-hidden">
+              <PixelSurface
+                frame="selected"
+                padding="xxs"
+                className={`navigation-map-canvas-frame min-w-0 overflow-hidden${
+                  isCsSkillAtlasMap ? ' navigation-map-canvas-frame--atlas' : ''
+                }`}
+              >
                   <GameMapCanvas
                     snapshot={snapshot}
                     focus={focus}
-                    visibleSphereId={isRouteFilterActive && mapCanvasMode === 'free' ? null : selectedSphereId}
-                    visibleSkillId={isRouteFilterActive && mapCanvasMode === 'free' ? null : visibleSkillId}
+                    visibleSphereId={isCsSkillAtlasMap || (isRouteFilterActive && mapCanvasMode === 'free') ? null : selectedSphereId}
+                    visibleSkillId={isCsSkillAtlasMap || (isRouteFilterActive && mapCanvasMode === 'free') ? null : visibleSkillId}
                     canvasMode={mapCanvasMode}
                     visibleNodeIds={canvasVisibleNodeIds}
+                    forceNodeLabels={isProgramObjectKnowledgeMap && !isCsSkillAtlasMap}
+                    minFitZoom={isCsSkillAtlasMap ? 0.28 : isProgramObjectKnowledgeMap ? 0.62 : undefined}
                     routeNodeMetadata={routeNodeMetadata}
+                    presentation={isCsSkillAtlasMap ? 'cs-atlas' : 'graph'}
                     onSelectNode={handleCanvasNodeSelect}
                     onFocusChange={setIsMapFocused}
                     onUserCameraControl={() => setHasManualMapViewport(true)}

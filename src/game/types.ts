@@ -1,6 +1,16 @@
 export type GameNodeState = 'locked' | 'available' | 'active' | 'completed' | 'paused';
 export type GameNodeControlState = 'unclaimed' | 'scouted' | 'controlled' | 'fortified' | 'weakened' | 'contested' | 'lost';
 export type CanvasInteractionMode = 'free-edit' | 'layer-edit' | 'readonly';
+export type GameMapPresentation = 'graph' | 'cs-atlas';
+export type SkillAtlasNodeType =
+  | 'root'
+  | 'domain_hub'
+  | 'course_hub'
+  | 'topic_node'
+  | 'atomic_node'
+  | 'practice_node'
+  | 'review_node'
+  | 'boss_node';
 
 export interface GamePoint {
   x: number;
@@ -33,6 +43,12 @@ export interface GameNode {
   routeStage?: string | null;
   routeRequiredMasteryLevel?: string | null;
   routeCurrentMasteryRank?: number;
+  atlasNodeType?: SkillAtlasNodeType;
+  atlasIconKey?: string;
+  atlasGroupKey?: string;
+  atlasRing?: number;
+  atlasAngle?: number;
+  atlasSectorColor?: number;
 }
 
 export interface GameEdge {

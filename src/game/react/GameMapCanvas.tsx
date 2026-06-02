@@ -9,7 +9,8 @@ import { createGameViewModel } from '../create-game-view-model';
 import { createQuadraticRoute, getPointToPolylineDistance } from '../edge-geometry';
 import { getNodeGateAnchor, resolveNodeBox } from '../layers/map-layer';
 import { applyRouteOverlayToModel, type RouteNodeCanvasMetadata } from '../route-overlay-model';
-import type { CanvasInteractionMode, GameBounds, GamePoint, GameSceneModel } from '../types';
+import { applySkillAtlasLayoutToModel } from '../skill-atlas-layout';
+import type { CanvasInteractionMode, GameBounds, GameMapPresentation, GamePoint, GameSceneModel } from '../types';
 import { getViewportWorldBounds, screenToWorld, worldToScreen, type ViewportCamera } from '../viewport';
 
 interface GameMapCanvasProps {
@@ -31,7 +32,10 @@ interface GameMapCanvasProps {
   visibleSkillId?: number | null;
   canvasMode?: 'free' | 'layers';
   visibleNodeIds?: number[] | null;
+  forceNodeLabels?: boolean;
+  minFitZoom?: number;
   routeNodeMetadata?: RouteNodeCanvasMetadata[] | null;
+  presentation?: GameMapPresentation;
   mapCommand?: { id: number; type: 'focus-node' | 'fit-graph' | 'fit-overview' | 'center-layer' | 'reset-camera' } | null;
   onCreateEdge?: (input: {
     sourceNodeId: number;
@@ -209,7 +213,10 @@ export const GameMapCanvas = ({
   visibleSkillId = null,
   canvasMode = 'free',
   visibleNodeIds = null,
+  forceNodeLabels = false,
+  minFitZoom,
   routeNodeMetadata = null,
+  presentation = 'graph',
   mapCommand = null,
   onCanvasContextMenu,
   onCanvasDoubleClick,
@@ -242,6 +249,11 @@ export const GameMapCanvas = ({
   const suppressNextContextMenuRef = useRef(false);
   const [viewportCamera, setViewportCamera] = useState<ViewportCamera | null>(null);
   const [hostSize, setHostSize] = useState({ width: 0, height: 0 });
+  const [hoveredNode, setHoveredNode] = useState<{
+    nodeId: number;
+    screenX: number;
+    screenY: number;
+  } | null>(null);
   const handleViewportChange = useEffectEvent((camera: ViewportCamera) => {
     viewportCameraRef.current = camera;
     setViewportCamera((current) =>
@@ -276,6 +288,19 @@ export const GameMapCanvas = ({
   const onSelectEdgeEvent = useEffectEvent((edgeId: number) => {
     onSelectEdge?.(edgeId);
   });
+  const onNodeHoverEvent = useEffectEvent((nodeId: number | null, input?: { screenX: number; screenY: number }) => {
+    if (nodeId == null || !input) {
+      setHoveredNode(null);
+      return;
+    }
+
+    const rect = hostRef.current?.getBoundingClientRect();
+    setHoveredNode({
+      nodeId,
+      screenX: rect ? rect.left + input.screenX : input.screenX,
+      screenY: rect ? rect.top + input.screenY : input.screenY,
+    });
+  });
   const onCreateEdgeEvent = useEffectEvent((input: {
     sourceNodeId: number;
     targetNodeId: number;
@@ -303,26 +328,37 @@ export const GameMapCanvas = ({
   });
 
   const model = useMemo(
-    () =>
-      filterModelToVisibleNodes(
+    () => {
+      const baseModel = createGameViewModel(snapshot, focus, { visibleSphereId, visibleSkillId });
+      const presentationModel =
+        presentation === 'cs-atlas' && snapshot
+          ? applySkillAtlasLayoutToModel(snapshot, baseModel)
+          : baseModel;
+
+      return filterModelToVisibleNodes(
         applyRouteOverlayToModel(
-          applyPreviewToModel(createGameViewModel(snapshot, focus, { visibleSphereId, visibleSkillId }), previewNodePositions),
+          applyPreviewToModel(presentationModel, previewNodePositions),
           routeNodeMetadata,
         ),
         visibleNodeIds,
-      ),
-    [focus, previewNodePositions, routeNodeMetadata, snapshot, visibleNodeIds, visibleSphereId, visibleSkillId],
+      );
+    },
+    [focus, presentation, previewNodePositions, routeNodeMetadata, snapshot, visibleNodeIds, visibleSphereId, visibleSkillId],
   );
   const hasVisibleNodeFilter = Boolean(visibleNodeIds && visibleNodeIds.length > 0);
   const shouldRenderOverview = Boolean(
     model.isLargeGraph &&
+      presentation !== 'cs-atlas' &&
       canvasMode === 'free' &&
       !hasVisibleNodeFilter &&
       !createMode &&
       connectSourceNodeId == null,
   );
   const shouldRenderOverviewRef = useRef(shouldRenderOverview);
-  const viewportModeKey = `${visibleSphereId ?? 'all'}:${visibleSkillId ?? 'all'}:${canvasMode}:${shouldRenderOverview ? 'overview' : 'detail'}:${visibleNodeIds?.join(',') ?? 'all'}`;
+  const forceNodeLabelsRef = useRef(forceNodeLabels);
+  const minFitZoomRef = useRef(minFitZoom);
+  const presentationRef = useRef(presentation);
+  const viewportModeKey = `${presentation}:${visibleSphereId ?? 'all'}:${visibleSkillId ?? 'all'}:${canvasMode}:${shouldRenderOverview ? 'overview' : 'detail'}:${visibleNodeIds?.join(',') ?? 'all'}:${minFitZoom ?? 'auto'}`;
   const getNodeRenderPosition = useCallback(
     (node: GameSceneModel['nodes'][number]) => (shouldRenderOverview ? node.overviewPosition : null) ?? node.position,
     [shouldRenderOverview],
@@ -372,6 +408,12 @@ export const GameMapCanvas = ({
   }, [shouldRenderOverview]);
 
   useEffect(() => {
+    forceNodeLabelsRef.current = forceNodeLabels;
+    minFitZoomRef.current = minFitZoom;
+    presentationRef.current = presentation;
+  }, [forceNodeLabels, minFitZoom, presentation]);
+
+  useEffect(() => {
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
     let removeWheelListener: (() => void) | null = null;
@@ -404,6 +446,7 @@ export const GameMapCanvas = ({
         modelRef.current,
           {
             onNodeSelect: onSelectNodeEvent,
+            onNodeHover: onNodeHoverEvent,
             onNodeMove: onMoveNodeEvent,
             onCreateNodeAt: onCreateNodeAtEvent,
             onCreateChildNodeAt: onCreateChildNodeAtEvent,
@@ -417,6 +460,9 @@ export const GameMapCanvas = ({
             connectSourceNodeId: connectSourceNodeIdRef.current,
             connectEdgeType: connectEdgeTypeRef.current,
             overviewMode: shouldRenderOverviewRef.current,
+            forceNodeLabels: forceNodeLabelsRef.current,
+            minFitZoom: minFitZoomRef.current,
+            presentation: presentationRef.current,
         },
         {
           preserveViewport: false,
@@ -496,6 +542,7 @@ export const GameMapCanvas = ({
       model,
         {
           onNodeSelect: onSelectNodeEvent,
+          onNodeHover: onNodeHoverEvent,
           onNodeMove: onMoveNodeEvent,
           onCreateNodeAt: onCreateNodeAtEvent,
           onCreateChildNodeAt: onCreateChildNodeAtEvent,
@@ -509,6 +556,9 @@ export const GameMapCanvas = ({
           connectSourceNodeId,
           connectEdgeType,
           overviewMode: shouldRenderOverview,
+          forceNodeLabels,
+          minFitZoom,
+          presentation,
       },
       {
         preserveViewport: shouldPreserveViewport || hasUserControlledViewportRef.current,
@@ -516,7 +566,7 @@ export const GameMapCanvas = ({
         onUserViewportChange: handleUserViewportChange,
       },
     );
-  }, [connectEdgeType, connectSourceNodeId, createMode, interactionMode, model, selectedEdgeId, shouldRenderOverview, snapToGrid, viewportModeKey]);
+  }, [connectEdgeType, connectSourceNodeId, createMode, forceNodeLabels, interactionMode, minFitZoom, model, presentation, selectedEdgeId, shouldRenderOverview, snapToGrid, viewportModeKey]);
 
   const minimap = useMemo(() => {
     if (!viewportCamera || hostSize.width <= 0 || hostSize.height <= 0) {
@@ -570,6 +620,8 @@ export const GameMapCanvas = ({
     highlightedNode != null ? (shouldRenderOverview ? highlightedNode.overviewPosition : null) ?? highlightedNode.position : null;
   const isEmptyMap = model.nodes.length === 0;
   const shouldShowZoomEditHint = Boolean(model.isLargeGraph && viewportCamera && viewportCamera.zoom < 0.24);
+  const tooltipNode =
+    hoveredNode != null ? model.nodes.find((node) => node.id === hoveredNode.nodeId) ?? null : null;
 
   const resolveCanvasHit = useCallback((clientX: number, clientY: number) => {
     if (!hostRef.current || !viewportCameraRef.current) {
@@ -962,6 +1014,41 @@ export const GameMapCanvas = ({
             <PixelText as="span" size="xs" color="textMuted" uppercase>
               Приблизьте для редактирования
             </PixelText>
+          </PixelSurface>
+        </div>
+      ) : null}
+
+      {presentation === 'cs-atlas' && tooltipNode && hoveredNode ? (
+        <div
+          className="pointer-events-none fixed z-50 max-w-[280px]"
+          style={{
+            left: Math.min(window.innerWidth - 296, hoveredNode.screenX + 16),
+            top: Math.max(12, Math.min(window.innerHeight - 160, hoveredNode.screenY + 16)),
+          }}
+        >
+          <PixelSurface frame="selected" padding="sm" className="shadow-[0_18px_44px_rgba(0,0,0,0.42)]">
+            <PixelText as="p" size="xs" color="accent" uppercase>
+              {tooltipNode.isCurrentRouteTarget
+                ? 'Текущий шаг'
+                : tooltipNode.isRouteComplete
+                  ? 'Освоено'
+                  : tooltipNode.isWeakRouteNode
+                    ? 'Нужно повторить'
+                    : tooltipNode.controlState === 'contested' || tooltipNode.controlState === 'lost'
+                      ? 'Под давлением'
+                      : 'Узел карты'}
+            </PixelText>
+            <PixelText as="p" readable size="sm" style={{ marginTop: 6 }}>
+              {tooltipNode.title}
+            </PixelText>
+            <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 6 }}>
+              {tooltipNode.subtitle}
+            </PixelText>
+            {tooltipNode.nextActionTitle ? (
+              <PixelText as="p" readable size="xs" color="accent" style={{ marginTop: 8 }}>
+                {tooltipNode.nextActionTitle}
+              </PixelText>
+            ) : null}
           </PixelSurface>
         </div>
       ) : null}

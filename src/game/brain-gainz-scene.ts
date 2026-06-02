@@ -5,7 +5,7 @@ import { snapPointToGrid } from './layout-helpers';
 import { EffectsLayer } from './layers/effects-layer';
 import { HeroLayer } from './layers/hero-layer';
 import { getNodeGateAnchor, MapLayer, resolveNodeBox, type ConnectPreviewState, type NodeGate } from './layers/map-layer';
-import type { CanvasInteractionMode, GamePoint, GameSceneModel } from './types';
+import type { CanvasInteractionMode, GameMapPresentation, GamePoint, GameSceneModel } from './types';
 import {
   centerCameraOnPoint,
   DEFAULT_ZOOM,
@@ -45,6 +45,7 @@ interface GateDragState extends SceneInteractionState {
 
 interface SceneCallbacks {
   onNodeSelect: (nodeId: number, input?: { screenX: number; screenY: number }) => void;
+  onNodeHover?: (nodeId: number | null, input?: { screenX: number; screenY: number }) => void;
   onEdgeSelect?: (edgeId: number) => void;
   onNodeMove?: (nodeId: number, position: GamePoint) => void | Promise<void>;
   onCreateNodeAt?: (position: GamePoint) => void | Promise<boolean>;
@@ -62,6 +63,9 @@ interface SceneCallbacks {
   connectSourceNodeId?: number | null;
   connectEdgeType?: 'requires' | 'supports' | 'relates_to' | null;
   overviewMode?: boolean;
+  forceNodeLabels?: boolean;
+  minFitZoom?: number;
+  presentation?: GameMapPresentation;
 }
 
 export class BrainGainzScene {
@@ -129,12 +133,16 @@ export class BrainGainzScene {
         ? fitCameraToBounds(initialBounds, { width, height }, callbacks.overviewMode ? 64 : 96, {
             focusPoint: this.getHighlightedRenderPosition(),
             focusMargin: callbacks.overviewMode ? 128 : 144,
+            minZoom: callbacks.minFitZoom,
           })
         : centerCameraOnPoint(initialBounds.center, { width, height }, this.currentCamera?.zoom ?? DEFAULT_ZOOM);
     }
 
     this.mapLayer.render(model, {
       onNodePointerDown: this.handleNodePointerDown,
+      onNodePointerOver: (nodeId, event) =>
+        callbacks.onNodeHover?.(nodeId, { screenX: event.global.x, screenY: event.global.y }),
+      onNodePointerOut: () => callbacks.onNodeHover?.(null),
       onNodeGatePointerDown: this.handleNodeGatePointerDown,
       onEdgePointerDown: this.handleEdgePointerDown,
       selectedEdgeId: callbacks.selectedEdgeId ?? null,
@@ -144,6 +152,8 @@ export class BrainGainzScene {
       connectEdgeType: callbacks.connectEdgeType ?? null,
       connectPreviewState: this.connectPreviewState,
       overviewMode: callbacks.overviewMode ?? false,
+      forceNodeLabels: callbacks.forceNodeLabels ?? false,
+      presentation: callbacks.presentation ?? 'graph',
     });
     this.effectsLayer.render(model, width, height);
     this.heroLayer.render(model);
@@ -172,6 +182,7 @@ export class BrainGainzScene {
     }, undefined, {
       focusPoint: this.getHighlightedRenderPosition(),
       focusMargin: 144,
+      minZoom: this.currentCallbacks?.minFitZoom,
     });
     this.applyViewport();
     return this.currentCamera;
@@ -188,6 +199,7 @@ export class BrainGainzScene {
     }, 64, {
       focusPoint: this.getHighlightedRenderPosition(),
       focusMargin: 128,
+      minZoom: this.currentCallbacks?.minFitZoom,
     });
     this.applyViewport();
     return this.currentCamera;

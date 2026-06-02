@@ -24,6 +24,7 @@ export interface FitCameraOptions {
   focusPoint?: GamePoint | null;
   focusMargin?: number;
   maxZoom?: number;
+  minZoom?: number;
 }
 
 export const worldToScreen = (
@@ -88,10 +89,11 @@ export const fitCameraToBounds = (
 ): ViewportCamera => {
   const availableWidth = Math.max(1, size.width - padding * 2);
   const availableHeight = Math.max(1, size.height - padding * 2);
-  const fittedZoom = Math.min(
+  const rawFittedZoom = Math.min(
     options.maxZoom ?? MAX_ZOOM,
     Math.min(availableWidth / Math.max(bounds.width, 1), availableHeight / Math.max(bounds.height, 1)),
   );
+  const fittedZoom = Math.max(options.minZoom ?? 0, rawFittedZoom);
   const camera = {
     zoom: fittedZoom,
     x: size.width / 2 - bounds.center.x * fittedZoom,

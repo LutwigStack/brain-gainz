@@ -5122,6 +5122,11 @@ textarea:disabled {
     min-height: 208px;
   }
 
+  .navigation-map-canvas-frame--atlas .navigation-map-canvas {
+    height: 360px !important;
+    min-height: 320px;
+  }
+
   .navigation-focused-check-flow {
     padding: 10px !important;
   }
