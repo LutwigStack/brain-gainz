@@ -54,4 +54,4 @@ Everything else must be `planned`, `done`, or `parked`.
 - [27 Campaign Menu Intent Split](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/27-campaign-menu-intent-split/README.md)
 - [28 Campaign Menu Visual Parity](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/28-campaign-menu-visual-parity/README.md)
 - [29 Knowledge City Control MVP](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/README.md)
-- [29 Knowledge City Control MVP](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/README.md)
+- [30 Program Map Layers And CS Content](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/30-program-map-layers-and-cs-content/README.md)

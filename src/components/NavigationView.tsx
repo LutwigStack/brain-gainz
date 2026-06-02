@@ -55,6 +55,13 @@ import { shouldAutoDisableRouteFilter } from '../application/learner-map-overvie
 import { resolveMapShortcutIntent } from '../application/map-shortcuts';
 import { buildGraphHierarchyIndex } from '../application/graph-hierarchy';
 import {
+  buildInfrastructureObjects,
+  buildProgramHierarchy,
+  findObjectForNode,
+  folderChildren,
+  objectNodeIds,
+} from '../application/program-hierarchy';
+import {
   getAssessmentAnswerInputCopy,
   getAssessmentAttemptResultCopy,
   getAssessmentCheckTypeLabel,
@@ -106,7 +113,11 @@ import type {
   NavigationNodeSummary,
   NavigationSnapshot,
   CareerSpecialization,
+  CampaignSummary,
   MasteryLevel,
+  ProgramHierarchyEntry,
+  ProgramMapLayerId,
+  ProgramMapLayerState,
   TodaySnapshot,
   NodeAction,
   NodeFocusSnapshot,
@@ -264,6 +275,7 @@ interface GraphRailEdgeEntry {
 }
 
 interface NavigationViewProps {
+  currentCampaign: Pick<CampaignSummary, 'id' | 'name'> | null;
   snapshot: NavigationSnapshot | null;
   focus: NodeFocusSnapshot | null;
   isLoading: boolean;
@@ -371,6 +383,7 @@ interface NavigationViewProps {
 }
 
 export const NavigationView = ({
+  currentCampaign,
   snapshot,
   focus,
   isLoading,
@@ -448,6 +461,9 @@ export const NavigationView = ({
   const [isEditorExpanded, setIsEditorExpanded] = useState(false);
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const [mapCanvasMode, setMapCanvasMode] = useState<MapCanvasMode>('free');
+  const [programMapLayer, setProgramMapLayer] = useState<ProgramMapLayerId>('city');
+  const [selectedProgramObjectKey, setSelectedProgramObjectKey] = useState<string | null>(null);
+  const [selectedProgramFolderStableId, setSelectedProgramFolderStableId] = useState<string | null>(null);
   const [layerParentNodeId, setLayerParentNodeId] = useState<LayerParentSelection>(null);
   const [canvasContextMenu, setCanvasContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [newStructureName, setNewStructureName] = useState('');
@@ -796,6 +812,83 @@ export const NavigationView = ({
       : archivedNodes.filter((node) => node.sphere_id === selectedSphereId);
   const visibleSkillId = branchFilterSkill?.skill.id ?? null;
   const routeItems = useMemo(() => currentRoute?.items ?? [], [currentRoute]);
+  const routeFocusNodeId = currentRoute?.nextItem?.node_id ?? focus?.node?.id ?? null;
+  const programHierarchy = useMemo(
+    () =>
+      buildProgramHierarchy({
+        snapshot,
+        campaign: currentCampaign,
+        routeItems,
+      }),
+    [currentCampaign, routeItems, snapshot],
+  );
+  const programRouteFocusObject = useMemo(
+    () => findObjectForNode(programHierarchy, routeFocusNodeId),
+    [programHierarchy, routeFocusNodeId],
+  );
+  const programObjects = useMemo(
+    () =>
+      buildInfrastructureObjects({
+        entries: programHierarchy,
+        routeItems,
+        routeFocusNodeId,
+      }),
+    [programHierarchy, routeFocusNodeId, routeItems],
+  );
+  const selectedProgramObject =
+    programObjects.find((object) => object.key === selectedProgramObjectKey) ??
+    programObjects.find((object) => object.key === programRouteFocusObject?.objectKey) ??
+    programObjects[0] ??
+    null;
+  const selectedProgramObjectEntry = selectedProgramObject
+    ? programHierarchy.find((entry) => entry.stableId === selectedProgramObject.entryStableId) ?? null
+    : null;
+  const selectedProgramObjectNodeIds = useMemo(
+    () => objectNodeIds(programHierarchy, selectedProgramObject?.key ?? null),
+    [programHierarchy, selectedProgramObject?.key],
+  );
+  const selectedProgramFolderEntry =
+    programHierarchy.find((entry) => entry.stableId === selectedProgramFolderStableId) ??
+    selectedProgramObjectEntry ??
+    programHierarchy.find((entry) => entry.role === 'program_root') ??
+    null;
+  const programFolderChildren = useMemo(
+    () => folderChildren(programHierarchy, selectedProgramFolderEntry?.stableId ?? null),
+    [programHierarchy, selectedProgramFolderEntry?.stableId],
+  );
+  const programMapFallbackReason =
+    programObjects.length === 0
+      ? 'no_objects'
+      : programMapLayer === 'knowledge_map' &&
+          selectedProgramObject?.key &&
+          programRouteFocusObject?.objectKey &&
+          selectedProgramObject.key !== programRouteFocusObject.objectKey
+        ? 'route_focus_outside_object'
+        : null;
+  const programMapState: ProgramMapLayerState = {
+    layer: programMapLayer,
+    selectedObjectKey: selectedProgramObject?.key ?? null,
+    selectedFolderStableId: selectedProgramFolderEntry?.stableId ?? null,
+    selectedEntryStableId: selectedProgramFolderEntry?.stableId ?? selectedProgramObjectEntry?.stableId ?? null,
+    selectedNodeId: focus?.node?.id ?? routeFocusNodeId,
+    routeFocusNodeId,
+    fallbackReason: programMapFallbackReason,
+  };
+  useEffect(() => {
+    if (selectedProgramObjectKey && programObjects.some((object) => object.key === selectedProgramObjectKey)) {
+      return;
+    }
+
+    const nextObjectKey = programRouteFocusObject?.objectKey ?? programObjects[0]?.key ?? null;
+    setSelectedProgramObjectKey(nextObjectKey);
+  }, [programObjects, programRouteFocusObject?.objectKey, selectedProgramObjectKey]);
+  useEffect(() => {
+    if (selectedProgramFolderStableId && programHierarchy.some((entry) => entry.stableId === selectedProgramFolderStableId)) {
+      return;
+    }
+
+    setSelectedProgramFolderStableId(selectedProgramObjectEntry?.stableId ?? null);
+  }, [programHierarchy, selectedProgramFolderStableId, selectedProgramObjectEntry?.stableId]);
   const routeItemsByNodeId = useMemo(() => {
     const items = new globalThis.Map<number, NonNullable<TodaySnapshot['route']>['items'][number]>();
     for (const item of routeItems) {
@@ -3008,7 +3101,11 @@ export const NavigationView = ({
       ? [...(layerParentEntry ? [layerParentEntry.node.id] : []), ...layerChildIds]
       : null;
   const canvasRouteNodeIds = isRouteFilterActive && mapCanvasMode === 'free' ? [...routeNodeIds] : null;
-  const canvasVisibleNodeIds = layerNodeIds ?? canvasRouteNodeIds;
+  const programObjectCanvasNodeIds =
+    !canUseAuthorTools && programMapLayer === 'knowledge_map' && selectedProgramObject
+      ? [...selectedProgramObjectNodeIds]
+      : null;
+  const canvasVisibleNodeIds = programObjectCanvasNodeIds ?? layerNodeIds ?? canvasRouteNodeIds;
   const layerPreviewPositions =
     mapCanvasMode === 'layers' && layerNodeIds
       ? Object.fromEntries(
@@ -3033,9 +3130,194 @@ export const NavigationView = ({
     selectedSphereId ?? 'all',
     visibleSkillId ?? 'all',
     mapCanvasMode,
+    programMapLayer,
+    selectedProgramObject?.key ?? 'no-object',
     isRouteFilterActive ? 'route' : 'map',
     canvasVisibleNodeIds?.join(',') ?? 'all',
   ].join(':');
+
+  const openProgramObject = (objectKey: string, layer: ProgramMapLayerId = 'knowledge_map') => {
+    const object = programObjects.find((item) => item.key === objectKey);
+    setSelectedProgramObjectKey(objectKey);
+    setSelectedProgramFolderStableId(object?.entryStableId ?? null);
+    setProgramMapLayer(layer);
+    setMapCanvasMode('free');
+    setLayerParentNodeId(null);
+    setIsRouteFilterEnabled(false);
+    setHasManualMapViewport(false);
+    clearMapTransientUi();
+  };
+
+  const openProgramFolder = (entry: ProgramHierarchyEntry) => {
+    setSelectedProgramFolderStableId(entry.stableId);
+    setProgramMapLayer('folders');
+    if (entry.objectKey) {
+      setSelectedProgramObjectKey(entry.objectKey);
+    }
+    clearMapTransientUi();
+  };
+
+  const renderProgramCityLayer = () => (
+    <PixelSurface frame="inset" padding="sm" className="program-map-city-layer">
+      <div className="program-map-layer-header">
+        <div>
+          <PixelText as="span" size="xs" color="accent" uppercase>
+            Город
+          </PixelText>
+          <PixelText as="h3" readable size="lg">
+            Объекты программы
+          </PixelText>
+        </div>
+        <PixelText as="span" size="xs" color="textMuted" uppercase>
+          {programObjects.length} объектов
+        </PixelText>
+      </div>
+      {programObjects.length === 0 ? (
+        <PixelSurface frame="ghost" padding="md">
+          <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: 0 }}>
+            В программе пока нет крупных учебных объектов.
+          </PixelText>
+        </PixelSurface>
+      ) : (
+        <div className="program-city-grid">
+          {programObjects.map((object) => (
+            <button
+              key={object.key}
+              type="button"
+              className={`program-city-card program-city-card--${object.controlTone}${
+                object.key === selectedProgramObject?.key ? ' program-city-card--selected' : ''
+              }${object.isRouteFocus ? ' program-city-card--route-focus' : ''}`}
+              onClick={() => openProgramObject(object.key)}
+            >
+              <span className="program-city-card__beacon" aria-hidden="true" />
+              <span className="program-city-card__meta">
+                <span>{object.sourceTitle}</span>
+                <strong>{object.controlLabel}</strong>
+              </span>
+              <strong className="program-city-card__title">{object.title}</strong>
+              <span className="program-city-card__description">{object.description}</span>
+              <span className="program-city-card__stats">
+                <span>{object.atomicNodeCount} узл.</span>
+                <span>{object.routeNodeCount} в маршруте</span>
+                <span>{object.pressureLabel}</span>
+              </span>
+              <span className="program-city-card__meter" aria-hidden="true">
+                <span style={{ width: `${object.progressPercent}%` }} />
+              </span>
+              <span className="program-city-card__cta">
+                <MapIcon size={14} /> Открыть карту знаний
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </PixelSurface>
+  );
+
+  const renderProgramFolderCard = (entry: ProgramHierarchyEntry) => {
+    const children = folderChildren(programHierarchy, entry.stableId);
+    const isObject = entry.role === 'infrastructure_object';
+    const object = entry.objectKey ? programObjects.find((item) => item.key === entry.objectKey) ?? null : null;
+    const node = entry.sourceKind === 'node' ? navigationNodeIndex.get(Number(entry.sourceId)) ?? null : null;
+    const title = isObject ? object?.title ?? entry.title : entry.title;
+    const description =
+      isObject && object
+        ? object.description
+        : entry.description ?? (entry.role === 'atomic_node' ? 'Учебный узел внутри объекта.' : 'Контейнер учебной структуры.');
+
+    return (
+      <button
+        key={entry.stableId}
+        type="button"
+        className={`program-folder-card program-folder-card--${entry.role}${
+          entry.stableId === selectedProgramFolderEntry?.stableId ? ' program-folder-card--selected' : ''
+        }`}
+        onClick={() => {
+          if (entry.role === 'atomic_node' && node) {
+            void handleCanvasNodeSelect(node);
+            setProgramMapLayer('knowledge_map');
+            if (entry.objectKey) {
+              setSelectedProgramObjectKey(entry.objectKey);
+            }
+            return;
+          }
+
+          if (isObject && entry.objectKey) {
+            openProgramObject(entry.objectKey, 'folders');
+            return;
+          }
+
+          openProgramFolder(entry);
+        }}
+      >
+        <span className="program-folder-card__icon" aria-hidden="true">
+          {entry.role === 'atomic_node' ? '•' : isObject ? '◆' : '▣'}
+        </span>
+        <span className="program-folder-card__body">
+          <strong>{title}</strong>
+          <small>{description}</small>
+          <span>
+            {entry.atomicDescendantCount} узл. · {children.length} влож.
+          </span>
+        </span>
+        <span className="program-folder-card__action">
+          {entry.role === 'atomic_node' ? 'Открыть узел' : isObject ? 'Открыть объект' : 'Открыть'}
+        </span>
+      </button>
+    );
+  };
+
+  const renderProgramFoldersLayer = () => {
+    const rootEntry = programHierarchy.find((entry) => entry.role === 'program_root') ?? null;
+    const folderPath: ProgramHierarchyEntry[] = [];
+    let cursor = selectedProgramFolderEntry;
+    while (cursor) {
+      folderPath.unshift(cursor);
+      cursor = cursor.parentStableId
+        ? programHierarchy.find((entry) => entry.stableId === cursor?.parentStableId) ?? null
+        : null;
+    }
+
+    return (
+      <PixelSurface frame="inset" padding="sm" className="program-map-folders-layer">
+        <div className="program-map-layer-header">
+          <div>
+            <PixelText as="span" size="xs" color="accent" uppercase>
+              Папки
+            </PixelText>
+            <PixelText as="h3" readable size="lg">
+              {selectedProgramFolderEntry?.title ?? rootEntry?.title ?? 'Структура программы'}
+            </PixelText>
+          </div>
+          <PixelButton
+            tone="ghost"
+            onClick={() => setSelectedProgramFolderStableId(selectedProgramObjectEntry?.stableId ?? rootEntry?.stableId ?? null)}
+            style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+          >
+            <Compass size={14} /> К объекту
+          </PixelButton>
+        </div>
+        <div className="program-folder-breadcrumbs">
+          {folderPath.map((entry) => (
+            <button key={entry.stableId} type="button" onClick={() => setSelectedProgramFolderStableId(entry.stableId)}>
+              {entry.title}
+            </button>
+          ))}
+        </div>
+        {programFolderChildren.length > 0 ? (
+          <div className="program-folder-grid">
+            {programFolderChildren.map((entry) => renderProgramFolderCard(entry))}
+          </div>
+        ) : (
+          <PixelSurface frame="ghost" padding="md">
+            <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: 0 }}>
+              Внутри нет вложенных папок. Перейдите на карту знаний, чтобы открыть узлы объекта.
+            </PixelText>
+          </PixelSurface>
+        )}
+      </PixelSurface>
+    );
+  };
 
   useEffect(() => {
     if (!hasMapNodes || handledVisibleMapFitKey.current === visibleMapFitKey) {
@@ -3592,7 +3874,70 @@ export const NavigationView = ({
                   ) : null}
                 </div>
                 ) : (
-                <div className="navigation-learner-map-overview">
+                <div className="navigation-learner-map-overview navigation-learner-map-overview--program">
+                  <div className="program-map-layer-switcher">
+                    <div className="program-map-layer-switcher__tabs" role="tablist" aria-label="Слои карты программы">
+                      {([
+                        ['city', 'Город', MapIcon],
+                        ['knowledge_map', 'Карта знаний', Target],
+                        ['folders', 'Папки', GitBranch],
+                      ] as const).map(([layer, label, Icon]) => (
+                        <button
+                          key={layer}
+                          type="button"
+                          className={`program-map-layer-switcher__tab${
+                            programMapLayer === layer ? ' program-map-layer-switcher__tab--active' : ''
+                          }`}
+                          onClick={() => {
+                            setProgramMapLayer(layer);
+                            if (layer === 'knowledge_map') {
+                              setMapCanvasMode('free');
+                              setIsRouteFilterEnabled(false);
+                              setLayerParentNodeId(null);
+                              setHasManualMapViewport(false);
+                            }
+                            if (layer === 'folders' && !selectedProgramFolderStableId) {
+                              setSelectedProgramFolderStableId(selectedProgramObjectEntry?.stableId ?? null);
+                            }
+                            clearMapTransientUi();
+                          }}
+                          disabled={layer !== 'city' && programObjects.length === 0}
+                        >
+                          <Icon size={14} /> {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="program-map-layer-switcher__summary">
+                      <PixelText as="span" size="xs" color="textDim" uppercase>
+                        {programMapLayer === 'city' ? 'Объекты' : programMapLayer === 'knowledge_map' ? 'Выбранный объект' : 'Структура'}
+                      </PixelText>
+                      <PixelText as="span" readable size="sm">
+                        {programMapLayer === 'city'
+                          ? `${programObjects.length} учебных объектов`
+                          : selectedProgramObject?.title ?? selectedProgramFolderEntry?.title ?? 'Нет объекта'}
+                      </PixelText>
+                      <PixelText as="span" size="xs" color={programMapState.fallbackReason ? 'warning' : 'textMuted'}>
+                        {programMapState.fallbackReason === 'route_focus_outside_object'
+                          ? 'Текущий шаг находится в другом объекте.'
+                          : programMapState.fallbackReason === 'no_objects'
+                            ? 'В программе пока нет объектов для карты.'
+                            : programMapLayer === 'knowledge_map'
+                              ? `${selectedProgramObject?.atomicNodeCount ?? 0} узл. внутри объекта`
+                              : programMapLayer === 'folders'
+                                ? `${programFolderChildren.length} вложенных элементов`
+                                : 'Город показывает крупные части программы, а не все узлы сразу.'}
+                      </PixelText>
+                    </div>
+                    {programRouteFocusObject?.objectKey && programRouteFocusObject.objectKey !== selectedProgramObject?.key ? (
+                      <PixelButton
+                        tone="ghost"
+                        onClick={() => openProgramObject(programRouteFocusObject.objectKey as string)}
+                        style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                      >
+                        <Compass size={14} /> К текущему шагу
+                      </PixelButton>
+                    ) : null}
+                  </div>
                   <div className="navigation-learner-map-overview__orientation" aria-label="Текущий и следующий шаг маршрута">
                     {routeOrientationItems.map((item) => (
                       <button
@@ -3687,7 +4032,10 @@ export const NavigationView = ({
                 )}
               </PixelSurface>
 
-              {isRouteFilterActive && routeOverviewStages.length > 0 ? (
+              {!canUseAuthorTools && programMapLayer === 'city' ? renderProgramCityLayer() : null}
+              {!canUseAuthorTools && programMapLayer === 'folders' ? renderProgramFoldersLayer() : null}
+
+              {(canUseAuthorTools || programMapLayer === 'knowledge_map') && isRouteFilterActive && routeOverviewStages.length > 0 ? (
                 <PixelSurface frame="inset" padding="sm" className="navigation-route-overview">
                   <div className="navigation-route-overview__header">
                     <PixelText as="span" size="xs" color="accent" uppercase>
@@ -4098,7 +4446,41 @@ export const NavigationView = ({
 
               {showFocusedLearnerCheckFlow && focus?.node ? (
                 renderLearnerFocusedCheckFlow(focus)
-              ) : (
+              ) : !canUseAuthorTools && programMapLayer !== 'knowledge_map' ? null : (
+              <>
+                {!canUseAuthorTools && selectedProgramObject ? (
+                  <PixelSurface frame="inset" padding="sm" className="program-object-scope">
+                    <div className="program-object-scope__header">
+                      <div>
+                        <PixelText as="span" size="xs" color="accent" uppercase>
+                          Карта знаний
+                        </PixelText>
+                        <PixelText as="h3" readable size="lg">
+                          {selectedProgramObject.title}
+                        </PixelText>
+                      </div>
+                      <PixelText as="span" size="xs" color="textMuted" uppercase>
+                        {selectedProgramObject.atomicNodeCount} узл.
+                      </PixelText>
+                    </div>
+                    <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: '6px 0 0' }}>
+                      {selectedProgramObject.description}
+                    </PixelText>
+                    {programMapState.fallbackReason === 'route_focus_outside_object' ? (
+                      <PixelButton
+                        tone="ghost"
+                        onClick={() => {
+                          if (programRouteFocusObject?.objectKey) {
+                            openProgramObject(programRouteFocusObject.objectKey);
+                          }
+                        }}
+                        style={{ marginTop: 10, minHeight: 30, padding: '6px 10px', gap: 6 }}
+                      >
+                        <Compass size={14} /> Перейти к объекту текущего шага
+                      </PixelButton>
+                    ) : null}
+                  </PixelSurface>
+                ) : null}
               <PixelSurface frame="selected" padding="xxs" className="navigation-map-canvas-frame min-w-0 overflow-hidden">
                   <GameMapCanvas
                     snapshot={snapshot}
@@ -4243,6 +4625,7 @@ export const NavigationView = ({
                   className={mapCanvasClassName}
                 />
               </PixelSurface>
+              </>
               )}
 
               {canUseAuthorTools && inlineNodeEditor ? (

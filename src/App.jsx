@@ -2571,6 +2571,7 @@ export default function App() {
 
         {selectedCampaign && normalizedActiveTab === 'map' && (
           <NavigationView
+            currentCampaign={selectedCampaign}
             snapshot={navigationSnapshot}
             focus={navigationFocus}
             isLoading={navigationLoading}

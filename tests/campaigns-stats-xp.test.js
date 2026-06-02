@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { bootstrapDatabase } from '../src/database/bootstrap.js';
+import { buildInfrastructureObjects, buildProgramHierarchy, findObjectForNode } from '../src/application/program-hierarchy.ts';
 import { createNowService } from '../src/application/now-service.js';
 import { createCampaignStore } from '../src/stores/campaign-store.js';
 import { createDailySessionStore } from '../src/stores/daily-session-store.js';
@@ -317,6 +318,22 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
   );
   assert.equal(navigation.edges.filter((edge) => edge.edge_type === 'requires').length > 50, true);
   assert.equal(navigation.edges.some((edge) => edge.edge_type === 'supports'), true);
+
+  const programHierarchy = buildProgramHierarchy({
+    snapshot: navigation,
+    routeItems: dashboard.today.route.items,
+  });
+  const routeFocusNodeId = dashboard.today.route.nextItem?.node_id ?? null;
+  const infrastructureObjects = buildInfrastructureObjects({
+    entries: programHierarchy,
+    routeItems: dashboard.today.route.items,
+    routeFocusNodeId,
+  });
+  assert.equal(infrastructureObjects.length, 8);
+  assert.equal(programHierarchy.filter((entry) => entry.role === 'atomic_node').length, 86);
+  assert.equal(infrastructureObjects.some((object) => object.title === 'Мастерская кода'), true);
+  assert.equal(infrastructureObjects.some((object) => object.title === 'Архив структур'), true);
+  assert.equal(findObjectForNode(programHierarchy, routeFocusNodeId)?.objectKey, infrastructureObjects[0].key);
 
   const routeEdges = await database.select(
     `

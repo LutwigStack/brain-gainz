@@ -102,6 +102,43 @@ export type DailyRunTaskOutcome = 'pending' | 'completed' | 'failed' | 'skipped'
 export type NodeControlState = 'unclaimed' | 'scouted' | 'controlled' | 'fortified' | 'weakened' | 'contested' | 'lost';
 export type ObjectControlState = 'secure' | 'developing' | 'weakening' | 'contested' | 'lost_ground';
 export type OpponentPressureLevel = 'calm' | 'watch' | 'attack' | 'breach';
+export type ProgramHierarchySourceKind = 'campaign' | 'sphere' | 'direction' | 'skill' | 'node' | 'virtual';
+export type ProgramHierarchyRole = 'program_root' | 'domain' | 'module' | 'infrastructure_object' | 'atomic_node';
+export type ProgramMapLayerId = 'city' | 'knowledge_map' | 'folders';
+export type ProgramMapLayerFallbackReason =
+  | 'route_focus_outside_object'
+  | 'object_missing'
+  | 'node_missing'
+  | 'no_objects'
+  | null;
+
+export interface ProgramHierarchyEntry {
+  stableId: string;
+  sourceKind: ProgramHierarchySourceKind;
+  sourceId: number | string;
+  parentStableId: string | null;
+  role: ProgramHierarchyRole;
+  depth: number;
+  title: string;
+  description: string | null;
+  atomicDescendantCount: number;
+  childContainerCount: number;
+  objectKey: string | null;
+  isInfrastructureObjectCandidate: boolean;
+  routeNodeIds: number[];
+  graphNodeIds: number[];
+  reason: string;
+}
+
+export interface ProgramMapLayerState {
+  layer: ProgramMapLayerId;
+  selectedObjectKey: string | null;
+  selectedFolderStableId: string | null;
+  selectedEntryStableId: string | null;
+  selectedNodeId: number | null;
+  routeFocusNodeId: number | null;
+  fallbackReason: ProgramMapLayerFallbackReason;
+}
 
 export interface DailyRunTask {
   id: number;
