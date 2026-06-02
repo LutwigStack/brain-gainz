@@ -58,3 +58,4 @@ Everything else must be `planned`, `done`, or `parked`.
 - [31 CS Skill Atlas POE Map](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/31-cs-skill-atlas-poe-map/README.md)
 - [32 CS Bachelor Course Catalog](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/32-cs-bachelor-course-catalog/README.md)
 - [33 NLH Cash Course Catalog](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/33-nlh-cash-course-catalog/README.md)
+- [34 Map First Atlas Workspace](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/README.md)

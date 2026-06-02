@@ -847,11 +847,10 @@ export const NavigationView = ({
     () => objectNodeIds(programHierarchy, selectedProgramObject?.key ?? null),
     [programHierarchy, selectedProgramObject?.key],
   );
+  const programRootEntry = programHierarchy.find((entry) => entry.role === 'program_root') ?? null;
   const selectedProgramFolderEntry =
     programHierarchy.find((entry) => entry.stableId === selectedProgramFolderStableId) ??
-    selectedProgramObjectEntry ??
-    programHierarchy.find((entry) => entry.role === 'program_root') ??
-    null;
+    programRootEntry;
   const programFolderChildren = useMemo(
     () => folderChildren(programHierarchy, selectedProgramFolderEntry?.stableId ?? null),
     [programHierarchy, selectedProgramFolderEntry?.stableId],
@@ -887,8 +886,8 @@ export const NavigationView = ({
       return;
     }
 
-    setSelectedProgramFolderStableId(selectedProgramObjectEntry?.stableId ?? null);
-  }, [programHierarchy, selectedProgramFolderStableId, selectedProgramObjectEntry?.stableId]);
+    setSelectedProgramFolderStableId(programRootEntry?.stableId ?? null);
+  }, [programHierarchy, programRootEntry?.stableId, selectedProgramFolderStableId]);
   const routeItemsByNodeId = useMemo(() => {
     const items = new globalThis.Map<number, NonNullable<TodaySnapshot['route']>['items'][number]>();
     for (const item of routeItems) {
@@ -3115,8 +3114,8 @@ export const NavigationView = ({
   const canvasRouteNodeIds = isRouteFilterActive && mapCanvasMode === 'free' ? [...routeNodeIds] : null;
   const isProgramObjectKnowledgeMap = !canUseAuthorTools && programMapLayer === 'knowledge_map' && Boolean(selectedProgramObject);
   const courseCatalogCourseCount = programHierarchy.filter((entry) => entry.role === 'course_hub').length;
-  const isSkillAtlasProgram = courseCatalogCourseCount > 0;
-  const isSkillAtlasMap = isProgramObjectKnowledgeMap && isSkillAtlasProgram;
+  const isCourseCatalogProgram = courseCatalogCourseCount > 0;
+  const isSkillAtlasMap = isProgramObjectKnowledgeMap;
   const programObjectCanvasNodeIds =
     isProgramObjectKnowledgeMap && selectedProgramObject && !isSkillAtlasMap
       ? [...selectedProgramObjectNodeIds]
@@ -3180,14 +3179,14 @@ export const NavigationView = ({
       <div className="program-map-layer-header">
         <div>
           <PixelText as="span" size="xs" color="accent" uppercase>
-            Город
+            {isCourseCatalogProgram ? 'Регионы' : 'Город'}
           </PixelText>
           <PixelText as="h3" readable size="lg">
-            Объекты программы
+            {isCourseCatalogProgram ? 'Регионы программы' : 'Объекты программы'}
           </PixelText>
         </div>
         <PixelText as="span" size="xs" color="textMuted" uppercase>
-          {programObjects.length} объектов
+          {isCourseCatalogProgram ? `${programObjects.length} регионов` : `${programObjects.length} объектов`}
         </PixelText>
       </div>
       {programObjects.length === 0 ? (
@@ -3253,17 +3252,22 @@ export const NavigationView = ({
           entry.stableId === selectedProgramFolderEntry?.stableId ? ' program-folder-card--selected' : ''
         }`}
         onClick={() => {
+          if (children.length > 0) {
+            openProgramFolder(entry);
+            return;
+          }
+
+          if (isObject && entry.objectKey) {
+            openProgramObject(entry.objectKey, 'folders');
+            return;
+          }
+
           if (isOpenableNode && node) {
             void handleCanvasNodeSelect(node);
             setProgramMapLayer('knowledge_map');
             if (entry.objectKey) {
               setSelectedProgramObjectKey(entry.objectKey);
             }
-            return;
-          }
-
-          if (isObject && entry.objectKey) {
-            openProgramObject(entry.objectKey, 'folders');
             return;
           }
 
@@ -3281,7 +3285,13 @@ export const NavigationView = ({
           </span>
         </span>
         <span className="program-folder-card__action">
-          {entry.role === 'atomic_node' ? 'Открыть узел' : isObject ? 'Открыть объект' : 'Открыть'}
+          {children.length > 0
+            ? 'Внутрь'
+            : entry.role === 'atomic_node' || entry.role === 'course_hub'
+              ? 'Открыть карту'
+              : isObject
+                ? 'Открыть объект'
+                : 'Открыть'}
         </span>
       </button>
     );
@@ -3311,10 +3321,10 @@ export const NavigationView = ({
           </div>
           <PixelButton
             tone="ghost"
-            onClick={() => setSelectedProgramFolderStableId(selectedProgramObjectEntry?.stableId ?? rootEntry?.stableId ?? null)}
+            onClick={() => setSelectedProgramFolderStableId(rootEntry?.stableId ?? null)}
             style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
           >
-            <Compass size={14} /> К объекту
+            <Compass size={14} /> К началу
           </PixelButton>
         </div>
         <div className="program-folder-breadcrumbs">
@@ -3917,8 +3927,8 @@ export const NavigationView = ({
                               setLayerParentNodeId(null);
                               setHasManualMapViewport(false);
                             }
-                            if (layer === 'folders' && !selectedProgramFolderStableId) {
-                              setSelectedProgramFolderStableId(selectedProgramObjectEntry?.stableId ?? null);
+                            if (layer === 'folders') {
+                              setSelectedProgramFolderStableId(programRootEntry?.stableId ?? null);
                             }
                             clearMapTransientUi();
                           }}
@@ -3934,8 +3944,12 @@ export const NavigationView = ({
                       </PixelText>
                       <PixelText as="span" readable size="sm">
                         {programMapLayer === 'city'
-                          ? `${programObjects.length} учебных объектов`
-                          : selectedProgramObject?.title ?? selectedProgramFolderEntry?.title ?? 'Нет объекта'}
+                          ? isCourseCatalogProgram
+                            ? `${programObjects.length} регионов программы`
+                            : `${programObjects.length} учебных объектов`
+                          : programMapLayer === 'folders'
+                            ? selectedProgramFolderEntry?.title ?? 'Структура программы'
+                            : selectedProgramObject?.title ?? 'Нет объекта'}
                       </PixelText>
                       <PixelText as="span" size="xs" color={programMapState.fallbackReason ? 'warning' : 'textMuted'}>
                         {programMapState.fallbackReason === 'route_focus_outside_object'
@@ -4052,7 +4066,7 @@ export const NavigationView = ({
               {!canUseAuthorTools && programMapLayer === 'city' ? renderProgramCityLayer() : null}
               {!canUseAuthorTools && programMapLayer === 'folders' ? renderProgramFoldersLayer() : null}
 
-              {(canUseAuthorTools || programMapLayer === 'knowledge_map') && isRouteFilterActive && routeOverviewStages.length > 0 ? (
+              {canUseAuthorTools && isRouteFilterActive && routeOverviewStages.length > 0 ? (
                 <PixelSurface frame="inset" padding="sm" className="navigation-route-overview">
                   <div className="navigation-route-overview__header">
                     <PixelText as="span" size="xs" color="accent" uppercase>

@@ -417,6 +417,19 @@ const upsertCourseStructure = async (database, regionsByKey, statsByKey, timesta
 const upsertRoute = async (database, campaign, nodesByCourseKey, timestamp) => {
   await database.execute(
     `
+      UPDATE career_specializations
+      SET status = 'archived',
+          completed_at = COALESCE(completed_at, ?),
+          updated_at = ?
+      WHERE campaign_id = ?
+        AND key != ?
+        AND status = 'active'
+    `,
+    [timestamp, timestamp, campaign.id, CS_BACHELOR_ROUTE_KEY],
+  );
+
+  await database.execute(
+    `
       INSERT INTO career_specializations (
         campaign_id,
         name,

@@ -330,11 +330,11 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
     routeItems: dashboard.today.route.items,
     routeFocusNodeId,
   });
-  assert.equal(infrastructureObjects.length, 54);
+  assert.equal(infrastructureObjects.length, 8);
   assert.equal(programHierarchy.filter((entry) => entry.role === 'course_hub').length, 54);
   assert.equal(programHierarchy.filter((entry) => entry.role === 'atomic_node').length, 0);
-  assert.equal(infrastructureObjects.some((object) => object.title === 'Введение в программирование'), true);
-  assert.equal(infrastructureObjects.some((object) => object.title === 'Выпускной проект / диплом'), true);
+  assert.equal(infrastructureObjects.reduce((sum, object) => sum + object.nodeIds.length, 0), 54);
+  assert.equal(infrastructureObjects.some((object) => object.nodeIds.length > 1), true);
   assert.equal(findObjectForNode(programHierarchy, routeFocusNodeId)?.objectKey, infrastructureObjects[0].key);
 
   const routeEdges = await database.select(

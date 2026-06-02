@@ -188,14 +188,15 @@ test('course catalog folders collapse synthetic course directions and wrapper sk
   assert.deepEqual(rootChildren.map((entry) => entry.stableId), ['sphere:1']);
   assert.deepEqual(regionChildren.map((entry) => entry.stableId), ['node:10']);
   assert.equal(entries.some((entry) => entry.stableId === 'direction:10'), false);
-  assert.equal(hiddenWrapper?.role, 'infrastructure_object');
+  assert.equal(hiddenWrapper?.role, 'module');
   assert.equal(hiddenWrapper?.parentStableId, null);
   assert.equal(course?.role, 'course_hub');
   assert.equal(course?.parentStableId, 'sphere:1');
 
   const objects = buildInfrastructureObjects({ entries, routeItems: [] });
   assert.equal(objects.length, 1);
-  assert.equal(objects[0].title, 'Введение в программирование');
+  assert.equal(objects[0].title, 'Программирование');
+  assert.deepEqual(objects[0].nodeIds, [10]);
 });
 
 test('empty hierarchy produces deterministic no-object layer state', () => {

@@ -368,6 +368,19 @@ const upsertRoute = async (database, campaign, template, nodesBySlug, timestamp)
 
   await database.execute(
     `
+      UPDATE career_specializations
+      SET status = 'archived',
+          completed_at = COALESCE(completed_at, ?),
+          updated_at = ?
+      WHERE campaign_id = ?
+        AND key != ?
+        AND status = 'active'
+    `,
+    [timestamp, timestamp, campaign.id, routeKey],
+  );
+
+  await database.execute(
+    `
       INSERT INTO career_specializations (
         campaign_id,
         name,

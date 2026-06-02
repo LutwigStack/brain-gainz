@@ -9,6 +9,7 @@ import {
 } from '../src/application/nlh-cash-course-catalog.ts';
 import { buildInfrastructureObjects, buildProgramHierarchy } from '../src/application/program-hierarchy.ts';
 import { bootstrapDatabase } from '../src/database/bootstrap.js';
+import { seedNlhCashTemplate } from '../src/database/nlh-cash-template-seed.js';
 import { createNowService } from '../src/application/now-service.js';
 import { createCampaignStore } from '../src/stores/campaign-store.js';
 import { createDailySessionStore } from '../src/stores/daily-session-store.js';
@@ -179,6 +180,48 @@ test('NLH cash reseed archives stats outside the current catalog', async (t) => 
   assert.equal(legacyStat.is_archived, 1);
 });
 
+test('NLH cash reseed archives legacy active template route before activating current route', async (t) => {
+  const database = await setupDatabase();
+  t.after(() => database.close());
+
+  const [campaign] = await database.select("SELECT * FROM campaigns WHERE slug = 'template-nlh-cash' LIMIT 1");
+  await database.execute(
+    `
+      UPDATE career_specializations
+      SET status = 'archived',
+          completed_at = '2026-01-01T00:00:00.000Z',
+          updated_at = '2026-01-01T00:00:00.000Z'
+      WHERE campaign_id = ?
+        AND status = 'active'
+    `,
+    [campaign.id],
+  );
+  await database.execute(
+    `
+      INSERT INTO career_specializations (campaign_id, name, key, domain, length, status, started_at, completed_at, created_at, updated_at)
+      VALUES (?, 'Legacy NLH route', 'route-nlh-cash', 'Legacy NLH', 'short', 'active', '2026-01-01T00:00:00.000Z', NULL, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')
+    `,
+    [campaign.id],
+  );
+
+  await seedNlhCashTemplate(database);
+
+  const activeRoutes = await database.select(
+    "SELECT key FROM career_specializations WHERE campaign_id = ? AND status = 'active' ORDER BY key ASC",
+    [campaign.id],
+  );
+  assert.deepEqual(
+    activeRoutes.map((row) => row.key),
+    ['route-nlh-cash-study'],
+  );
+
+  const [legacyRoute] = await database.select(
+    "SELECT status FROM career_specializations WHERE campaign_id = ? AND key = 'route-nlh-cash' LIMIT 1",
+    [campaign.id],
+  );
+  assert.equal(legacyRoute.status, 'archived');
+});
+
 test('NLH cash route fork and program hierarchy are course-hub first', async (t) => {
   const database = await setupDatabase();
   t.after(() => database.close());
@@ -222,5 +265,6 @@ test('NLH cash route fork and program hierarchy are course-hub first', async (t)
 
   assert.equal(entries.filter((entry) => entry.role === 'course_hub').length, 72);
   assert.equal(entries.filter((entry) => entry.role === 'atomic_node').length, 0);
-  assert.equal(objects.length, 72);
+  assert.equal(objects.length, 10);
+  assert.equal(objects.reduce((sum, object) => sum + object.nodeIds.length, 0), 72);
 });

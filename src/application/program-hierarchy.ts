@@ -144,6 +144,8 @@ export const buildProgramHierarchy = ({
 
   for (const sphere of snapshot?.spheres ?? []) {
     const sphereStableId = stableId('sphere', sphere.id);
+    const isCourseCatalogSphere = sphere.directions.some((direction) => isSyntheticCourseDirection(direction));
+    const sphereObjectKey = isCourseCatalogSphere ? `${sphereStableId}:${objectSlug(sphere.name)}` : null;
     entries.push({
       stableId: sphereStableId,
       sourceKind: 'sphere',
@@ -155,11 +157,11 @@ export const buildProgramHierarchy = ({
       description: null,
       atomicDescendantCount: 0,
       childContainerCount: sphere.directions.length,
-      objectKey: null,
-      isInfrastructureObjectCandidate: false,
+      objectKey: sphereObjectKey,
+      isInfrastructureObjectCandidate: isCourseCatalogSphere,
       routeNodeIds: [],
       graphNodeIds: [],
-      reason: 'top-level content container',
+      reason: isCourseCatalogSphere ? 'course catalog city region' : 'top-level content container',
     });
     childContainerCountByEntry.set(rootStableId, (childContainerCountByEntry.get(rootStableId) ?? 0) + 1);
 
@@ -193,7 +195,7 @@ export const buildProgramHierarchy = ({
         const hideCourseWrapper = collapseCourseDirection && isCourseHubSkill;
         const isLargeObjectCandidate = skill.nodes.length >= MIN_OBJECT_ATOMIC_DESCENDANTS;
         const hasKnownObjectMapping = hasKnownInfrastructureObjectMapping(skill.name);
-        const isObjectCandidate = isCourseHubSkill || isLargeObjectCandidate || (skill.nodes.length > 0 && hasKnownObjectMapping);
+        const isObjectCandidate = !isCourseHubSkill && (isLargeObjectCandidate || (skill.nodes.length > 0 && hasKnownObjectMapping));
         const objectKey = isObjectCandidate ? `skill:${skill.id}:${objectSlug(skill.name)}` : null;
         entries.push({
           stableId: skillStableId,
@@ -212,9 +214,7 @@ export const buildProgramHierarchy = ({
           graphNodeIds: skill.nodes.map((node) => node.id),
           reason: isLargeObjectCandidate
             ? 'skill has enough atomic descendants for a city object'
-            : isCourseHubSkill
-              ? 'course-level hub in the bachelor catalog'
-              : hasKnownObjectMapping
+            : hasKnownObjectMapping
               ? 'calibrated program object mapping'
               : skill.nodes.length > 0
                 ? 'small module grouped under parent'
@@ -228,6 +228,7 @@ export const buildProgramHierarchy = ({
           const nodeStableId = stableId('node', node.id);
           const routeItem = routeItemsByNodeId.get(node.id);
           const courseNode = isCourseNode(node);
+          const nodeObjectKey = courseNode && sphereObjectKey ? sphereObjectKey : objectKey;
           entries.push({
             stableId: nodeStableId,
             sourceKind: 'node',
@@ -239,7 +240,7 @@ export const buildProgramHierarchy = ({
             description: null,
             atomicDescendantCount: 1,
             childContainerCount: 0,
-            objectKey,
+            objectKey: nodeObjectKey,
             isInfrastructureObjectCandidate: false,
             routeNodeIds: routeItem ? [routeItem.id] : [],
             graphNodeIds: [node.id],
@@ -280,7 +281,7 @@ export const findObjectForNode = (entries: ProgramHierarchyEntry[], nodeId: numb
   if (!nodeEntry?.objectKey) {
     return null;
   }
-  return entries.find((entry) => entry.objectKey === nodeEntry.objectKey && entry.role === 'infrastructure_object') ?? null;
+  return entries.find((entry) => entry.objectKey === nodeEntry.objectKey && entry.isInfrastructureObjectCandidate) ?? null;
 };
 
 const findEntryForNode = (entries: ProgramHierarchyEntry[], nodeId: number | null | undefined) => {
@@ -308,7 +309,7 @@ export const buildInitialProgramMapLayerState = ({
   entries: ProgramHierarchyEntry[];
   routeFocusNodeId?: number | null;
 }): ProgramMapLayerState => {
-  const objects = entries.filter((entry) => entry.role === 'infrastructure_object');
+  const objects = entries.filter((entry) => entry.objectKey && entry.isInfrastructureObjectCandidate);
   const routeObject = findObjectForNode(entries, routeFocusNodeId);
   const routeNodeEntry = findEntryForNode(entries, routeFocusNodeId);
   const routeFolderEntry = routeNodeEntry?.parentStableId
@@ -337,7 +338,7 @@ export const buildInfrastructureObjects = ({
 }): InfrastructureObjectViewModel[] => {
   const routeItemsByNodeId = routeByNodeId(routeItems ?? []);
   return entries
-    .filter((entry) => entry.role === 'infrastructure_object' && entry.objectKey)
+    .filter((entry) => entry.objectKey && entry.isInfrastructureObjectCandidate)
     .map((entry) => {
       const nodeIds = [...objectNodeIds(entries, entry.objectKey)];
       const objectRouteItems = nodeIds.flatMap((nodeId) => {
