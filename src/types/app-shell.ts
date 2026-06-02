@@ -103,7 +103,13 @@ export type NodeControlState = 'unclaimed' | 'scouted' | 'controlled' | 'fortifi
 export type ObjectControlState = 'secure' | 'developing' | 'weakening' | 'contested' | 'lost_ground';
 export type OpponentPressureLevel = 'calm' | 'watch' | 'attack' | 'breach';
 export type ProgramHierarchySourceKind = 'campaign' | 'sphere' | 'direction' | 'skill' | 'node' | 'virtual';
-export type ProgramHierarchyRole = 'program_root' | 'domain' | 'module' | 'infrastructure_object' | 'atomic_node';
+export type ProgramHierarchyRole =
+  | 'program_root'
+  | 'domain'
+  | 'module'
+  | 'infrastructure_object'
+  | 'course_hub'
+  | 'atomic_node';
 export type ProgramMapLayerId = 'city' | 'knowledge_map' | 'folders';
 export type ProgramMapLayerFallbackReason =
   | 'route_focus_outside_object'
@@ -650,6 +656,8 @@ export interface NavigationNodeSummary {
   title: string;
   type: string;
   status: string;
+  slug?: string | null;
+  links?: string | null;
   x?: number | null;
   y?: number | null;
   open_action_count: number;

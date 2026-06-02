@@ -3114,12 +3114,14 @@ export const NavigationView = ({
       : null;
   const canvasRouteNodeIds = isRouteFilterActive && mapCanvasMode === 'free' ? [...routeNodeIds] : null;
   const isProgramObjectKnowledgeMap = !canUseAuthorTools && programMapLayer === 'knowledge_map' && Boolean(selectedProgramObject);
-  const isCsSkillAtlasMap = isProgramObjectKnowledgeMap && hasCoreCsAssets;
+  const courseCatalogCourseCount = programHierarchy.filter((entry) => entry.role === 'course_hub').length;
+  const isSkillAtlasProgram = courseCatalogCourseCount > 0;
+  const isSkillAtlasMap = isProgramObjectKnowledgeMap && isSkillAtlasProgram;
   const programObjectCanvasNodeIds =
-    isProgramObjectKnowledgeMap && selectedProgramObject && !isCsSkillAtlasMap
+    isProgramObjectKnowledgeMap && selectedProgramObject && !isSkillAtlasMap
       ? [...selectedProgramObjectNodeIds]
       : null;
-  const canvasVisibleNodeIds = isCsSkillAtlasMap
+  const canvasVisibleNodeIds = isSkillAtlasMap
     ? null
     : programObjectCanvasNodeIds ?? layerNodeIds ?? canvasRouteNodeIds;
   const layerPreviewPositions =
@@ -3233,6 +3235,7 @@ export const NavigationView = ({
   const renderProgramFolderCard = (entry: ProgramHierarchyEntry) => {
     const children = folderChildren(programHierarchy, entry.stableId);
     const isObject = entry.role === 'infrastructure_object';
+    const isOpenableNode = entry.role === 'atomic_node' || entry.role === 'course_hub';
     const object = entry.objectKey ? programObjects.find((item) => item.key === entry.objectKey) ?? null : null;
     const node = entry.sourceKind === 'node' ? navigationNodeIndex.get(Number(entry.sourceId)) ?? null : null;
     const title = isObject ? object?.title ?? entry.title : entry.title;
@@ -3240,6 +3243,7 @@ export const NavigationView = ({
       isObject && object
         ? object.description
         : entry.description ?? (entry.role === 'atomic_node' ? 'Учебный узел внутри объекта.' : 'Контейнер учебной структуры.');
+    const displayDescription = entry.role === 'course_hub' ? 'Курс верхнего уровня в программе.' : description;
 
     return (
       <button
@@ -3249,7 +3253,7 @@ export const NavigationView = ({
           entry.stableId === selectedProgramFolderEntry?.stableId ? ' program-folder-card--selected' : ''
         }`}
         onClick={() => {
-          if (entry.role === 'atomic_node' && node) {
+          if (isOpenableNode && node) {
             void handleCanvasNodeSelect(node);
             setProgramMapLayer('knowledge_map');
             if (entry.objectKey) {
@@ -3271,7 +3275,7 @@ export const NavigationView = ({
         </span>
         <span className="program-folder-card__body">
           <strong>{title}</strong>
-          <small>{description}</small>
+          <small>{displayDescription}</small>
           <span>
             {entry.atomicDescendantCount} узл. · {children.length} влож.
           </span>
@@ -3734,13 +3738,14 @@ export const NavigationView = ({
           ) : (
           <PixelSurface frame="secondary" padding="md" className="navigation-map-panel">
             <PixelPanelHeader
-              eyebrow={canUseAuthorTools ? 'Граф' : 'Карта'}
+              eyebrow={canUseAuthorTools ? 'Граф' : isSkillAtlasMap ? 'Атлас' : 'Карта'}
               title={
                 <span className="flex flex-wrap items-center gap-2">
-                  <MapIcon size={20} className="text-[var(--pixel-accent)]" /> Карта задач
+                  <MapIcon size={20} className="text-[var(--pixel-accent)]" />{' '}
+                  {isSkillAtlasMap ? 'Атлас знаний' : canUseAuthorTools ? 'Карта задач' : 'Карта программы'}
                 </span>
               }
-              description={`${mapFocusTitle} · ${mapFocusPath}`}
+              description={isSkillAtlasMap ? currentCampaign?.name ?? selectedProgramObject?.title ?? mapFocusTitle : `${mapFocusTitle} · ${mapFocusPath}`}
               aside={
                 <div className="flex flex-wrap items-center gap-2">
                   <PixelButton
@@ -4470,18 +4475,18 @@ export const NavigationView = ({
                     <div className="program-object-scope__header">
                       <div>
                         <PixelText as="span" size="xs" color="accent" uppercase>
-                          {isCsSkillAtlasMap ? 'Атлас знаний' : 'Карта знаний'}
+                          {isSkillAtlasMap ? 'Атлас знаний' : 'Карта знаний'}
                         </PixelText>
                         <PixelText as="h3" readable size="lg">
-                          {isCsSkillAtlasMap ? currentCampaign?.name ?? 'Бакалавриат по информатике' : selectedProgramObject.title}
+                          {isSkillAtlasMap ? currentCampaign?.name ?? selectedProgramObject.title : selectedProgramObject.title}
                         </PixelText>
                       </div>
                       <PixelText as="span" size="xs" color="textMuted" uppercase>
-                        {isCsSkillAtlasMap ? `${navigationNodeIndex.size} узл.` : `${selectedProgramObject.atomicNodeCount} узл.`}
+                        {isSkillAtlasMap ? `${navigationNodeIndex.size} узл.` : `${selectedProgramObject.atomicNodeCount} узл.`}
                       </PixelText>
                     </div>
                     <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: '6px 0 0' }}>
-                      {isCsSkillAtlasMap
+                      {isSkillAtlasMap
                         ? `Фокус сейчас: ${selectedProgramObject.title}. Маршрут, освоение и слабые места показаны поверх атласа.`
                         : selectedProgramObject.description}
                     </PixelText>
@@ -4504,20 +4509,21 @@ export const NavigationView = ({
                 frame="selected"
                 padding="xxs"
                 className={`navigation-map-canvas-frame min-w-0 overflow-hidden${
-                  isCsSkillAtlasMap ? ' navigation-map-canvas-frame--atlas' : ''
+                  isSkillAtlasMap ? ' navigation-map-canvas-frame--atlas' : ''
                 }`}
               >
                   <GameMapCanvas
                     snapshot={snapshot}
                     focus={focus}
-                    visibleSphereId={isCsSkillAtlasMap || (isRouteFilterActive && mapCanvasMode === 'free') ? null : selectedSphereId}
-                    visibleSkillId={isCsSkillAtlasMap || (isRouteFilterActive && mapCanvasMode === 'free') ? null : visibleSkillId}
+                    visibleSphereId={isSkillAtlasMap || (isRouteFilterActive && mapCanvasMode === 'free') ? null : selectedSphereId}
+                    visibleSkillId={isSkillAtlasMap || (isRouteFilterActive && mapCanvasMode === 'free') ? null : visibleSkillId}
                     canvasMode={mapCanvasMode}
                     visibleNodeIds={canvasVisibleNodeIds}
-                    forceNodeLabels={isProgramObjectKnowledgeMap && !isCsSkillAtlasMap}
-                    minFitZoom={isCsSkillAtlasMap ? 0.28 : isProgramObjectKnowledgeMap ? 0.62 : undefined}
+                    forceNodeLabels={isProgramObjectKnowledgeMap && !isSkillAtlasMap}
+                    minFitZoom={isSkillAtlasMap ? 0.28 : isProgramObjectKnowledgeMap ? 0.62 : undefined}
                     routeNodeMetadata={routeNodeMetadata}
-                    presentation={isCsSkillAtlasMap ? 'cs-atlas' : 'graph'}
+                    presentation={isSkillAtlasMap ? 'skill-atlas' : 'graph'}
+                    programTitle={isSkillAtlasMap ? currentCampaign?.name ?? selectedProgramObject.title : null}
                     onSelectNode={handleCanvasNodeSelect}
                     onFocusChange={setIsMapFocused}
                     onUserCameraControl={() => setHasManualMapViewport(true)}

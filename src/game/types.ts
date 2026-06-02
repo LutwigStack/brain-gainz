@@ -1,7 +1,7 @@
 export type GameNodeState = 'locked' | 'available' | 'active' | 'completed' | 'paused';
 export type GameNodeControlState = 'unclaimed' | 'scouted' | 'controlled' | 'fortified' | 'weakened' | 'contested' | 'lost';
 export type CanvasInteractionMode = 'free-edit' | 'layer-edit' | 'readonly';
-export type GameMapPresentation = 'graph' | 'cs-atlas';
+export type GameMapPresentation = 'graph' | 'skill-atlas';
 export type SkillAtlasNodeType =
   | 'root'
   | 'domain_hub'
@@ -11,6 +11,12 @@ export type SkillAtlasNodeType =
   | 'practice_node'
   | 'review_node'
   | 'boss_node';
+export type SkillAtlasEdgeRole =
+  | 'structure_root'
+  | 'structure_branch'
+  | 'local_cluster'
+  | 'graph'
+  | 'route_overlay';
 
 export interface GamePoint {
   x: number;
@@ -56,6 +62,7 @@ export interface GameEdge {
   fromNodeId: number;
   toNodeId: number;
   type: 'requires' | 'supports' | 'relates_to';
+  atlasEdgeRole?: SkillAtlasEdgeRole;
 }
 
 export interface GameHero {

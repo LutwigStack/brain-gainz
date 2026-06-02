@@ -6,6 +6,7 @@ import type {
   NavigationSnapshot,
   NavigationSphere,
 } from '../types/app-shell';
+import { parseCourseCatalogNodeMetadata } from '../application/course-catalog-metadata.ts';
 import type {
   GameBiome,
   GameEdge,
@@ -38,6 +39,13 @@ export type SkillAtlasNodeState =
   | 'contested'
   | 'boss';
 
+export type SkillAtlasLayoutEdgeRole =
+  | 'structure_root'
+  | 'structure_branch'
+  | 'local_cluster'
+  | 'graph'
+  | 'route_overlay';
+
 export interface SkillAtlasPoint {
   x: number;
   y: number;
@@ -63,6 +71,7 @@ export interface SkillAtlasLayoutOptions {
   contestedNodeIds?: Set<number> | number[] | null;
   bossNodeIds?: Set<number> | number[] | null;
   routeOverlay?: SkillAtlasRouteOverlayNode[] | null;
+  programTitle?: string | null;
 }
 
 export interface SkillAtlasFocusLike {
@@ -113,6 +122,7 @@ export interface SkillAtlasLayoutEdge {
   fromStableId: string;
   toStableId: string;
   edgeType: 'structure' | GraphEdgeType | 'route';
+  edgeRole: SkillAtlasLayoutEdgeRole;
   isOverlay: boolean;
   points?: SkillAtlasPoint[];
 }
@@ -155,16 +165,18 @@ interface NavigationNodeContext {
 }
 
 const ROOT_STABLE_ID = 'program:root';
+const DEFAULT_PROGRAM_TITLE = 'Программа';
 const FULL_CIRCLE = Math.PI * 2;
 const START_ANGLE = -Math.PI / 2;
 const ROOT_SIZE = 42;
 const DOMAIN_RING_RADIUS = 260;
 const COURSE_RING_RADIUS = 500;
 const TOPIC_RING_RADIUS = 720;
-const ATOMIC_RING_RADIUS = 940;
-const ATOMIC_RING_STEP = 92;
-const ATOMIC_RING_CAPACITY = 10;
-const ATOMIC_ALT_RADIUS = 18;
+const ATOMIC_CLUSTER_RADIUS = 118;
+const ATOMIC_CLUSTER_RING_STEP = 64;
+const ATOMIC_CLUSTER_CAPACITY = 10;
+const ATOMIC_CLUSTER_ALT_RADIUS = 16;
+const ATOMIC_CLUSTER_SPREAD = Math.PI * 1.45;
 const NODE_POSITION_PRECISION = 1000;
 const SECTOR_GUTTER = 0.035;
 
@@ -210,6 +222,13 @@ const polarPoint = (radius: number, angle: number): SkillAtlasPoint => ({
   y: roundPosition(Math.sin(angle) * radius),
 });
 
+const offsetPoint = (origin: SkillAtlasPoint, radius: number, angle: number): SkillAtlasPoint => ({
+  x: roundPosition(origin.x + Math.cos(angle) * radius),
+  y: roundPosition(origin.y + Math.sin(angle) * radius),
+});
+
+const pointRadius = (point: SkillAtlasPoint) => roundPosition(Math.hypot(point.x, point.y));
+
 const distributeAngle = (startAngle: number, endAngle: number, index: number, total: number) => {
   if (total <= 1) {
     return startAngle + (endAngle - startAngle) / 2;
@@ -237,6 +256,11 @@ const createSector = (sphere: NavigationSphere, index: number, total: number): S
 const normalizeNodeType = (node: NavigationNodeSummary): SkillAtlasNodeVisualType => {
   const rawType = node.type.toLowerCase();
   const title = node.title.toLowerCase();
+
+  const courseMetadata = parseCourseCatalogNodeMetadata(node.links);
+  if (courseMetadata) {
+    return courseMetadata.atlasHubType === 'project_hub' ? 'boss_node' : 'course_hub';
+  }
 
   if (rawType.includes('boss') || rawType.includes('exam') || rawType.includes('checkpoint') || title.includes('checkpoint')) {
     return 'boss_node';
@@ -476,6 +500,7 @@ const createRouteEdges = (routeOverlay: SkillAtlasRouteOverlayNode[] | null | un
     fromStableId: `node:${ordered[index].nodeId}`,
     toStableId: `node:${node.nodeId}`,
     edgeType: 'route',
+    edgeRole: 'route_overlay',
     isOverlay: true,
   }));
 };
@@ -485,6 +510,7 @@ export const createSkillAtlasLayout = (
   focus: SkillAtlasFocusLike | null = null,
   options: SkillAtlasLayoutOptions = {},
 ): SkillAtlasLayoutModel => {
+  const programTitle = options.programTitle?.trim() || DEFAULT_PROGRAM_TITLE;
   const focusedNodeId = focus?.node?.id ?? snapshot.defaultSelection?.nodeId ?? null;
   const visibleNodeIds = toIdSet(options.visibleNodeIds);
   const weakNodeIds = toIdSet(options.weakNodeIds);
@@ -527,8 +553,8 @@ export const createSkillAtlasLayout = (
       stableId: ROOT_STABLE_ID,
       sourceKind: 'program',
       sourceId: 'root',
-      title: 'Program Atlas',
-      path: 'Program Atlas',
+      title: programTitle,
+      path: programTitle,
       point: { x: 0, y: 0 },
       radius: 0,
       angle: 0,
@@ -557,6 +583,7 @@ export const createSkillAtlasLayout = (
       fromStableId: ROOT_STABLE_ID,
       toStableId: sphereStableId,
       edgeType: 'structure',
+      edgeRole: 'structure_root',
       isOverlay: false,
     });
 
@@ -576,37 +603,44 @@ export const createSkillAtlasLayout = (
         fromStableId: sphereStableId,
         toStableId: directionStableId,
         edgeType: 'structure',
+        edgeRole: 'structure_branch',
         isOverlay: false,
       });
 
       visibleSkills.forEach((skill, skillIndex) => {
         const skillAngle = distributeAngle(directionStartAngle, directionEndAngle, skillIndex, visibleSkills.length);
-        const skillSpan = Math.max(directionSpan / Math.max(visibleSkills.length, 1), 0.24);
-        const skillStartAngle = skillAngle - skillSpan / 2;
-        const skillEndAngle = skillAngle + skillSpan / 2;
         const visibleNodes = skill.nodes.filter((node) => includedNodeContexts.has(node.id));
         const childFlags: SkillAtlasNodeStateFlags[] = [];
         const skillStableId = `skill:${skill.id}`;
+        const skillPoint = polarPoint(TOPIC_RING_RADIUS, skillAngle);
+        const isCourseOnlySkill =
+          visibleNodes.length === 1 &&
+          parseCourseCatalogNodeMetadata(visibleNodes[0]?.links) !== null;
 
-        baseEdges.push({
-          id: `structure:${directionStableId}->${skillStableId}`,
-          fromStableId: directionStableId,
-          toStableId: skillStableId,
-          edgeType: 'structure',
-          isOverlay: false,
-        });
+        if (!isCourseOnlySkill) {
+          baseEdges.push({
+            id: `structure:${directionStableId}->${skillStableId}`,
+            fromStableId: directionStableId,
+            toStableId: skillStableId,
+            edgeType: 'structure',
+            edgeRole: 'structure_branch',
+            isOverlay: false,
+          });
+        }
 
         visibleNodes.forEach((node, nodeIndex) => {
-          const layer = Math.floor(nodeIndex / ATOMIC_RING_CAPACITY);
-          const layerStartIndex = layer * ATOMIC_RING_CAPACITY;
-          const layerCount = Math.min(ATOMIC_RING_CAPACITY, visibleNodes.length - layerStartIndex);
+          const layer = isCourseOnlySkill ? 0 : Math.floor(nodeIndex / ATOMIC_CLUSTER_CAPACITY);
+          const layerStartIndex = layer * ATOMIC_CLUSTER_CAPACITY;
+          const layerCount = Math.min(ATOMIC_CLUSTER_CAPACITY, visibleNodes.length - layerStartIndex);
           const indexInLayer = nodeIndex - layerStartIndex;
-          const localSpread = Math.min(skillEndAngle - skillStartAngle, Math.PI / 2.8);
-          const layerStartAngle = skillAngle - localSpread / 2;
-          const layerEndAngle = skillAngle + localSpread / 2;
-          const nodeAngle = distributeAngle(layerStartAngle, layerEndAngle, indexInLayer, layerCount);
-          const nodeRadius = ATOMIC_RING_RADIUS + layer * ATOMIC_RING_STEP + (indexInLayer % 2) * ATOMIC_ALT_RADIUS;
-          const point = polarPoint(nodeRadius, nodeAngle);
+          const layerStartAngle = skillAngle - ATOMIC_CLUSTER_SPREAD / 2;
+          const layerEndAngle = skillAngle + ATOMIC_CLUSTER_SPREAD / 2;
+          const clusterAngle = distributeAngle(layerStartAngle, layerEndAngle, indexInLayer, layerCount);
+          const clusterRadius =
+            ATOMIC_CLUSTER_RADIUS + layer * ATOMIC_CLUSTER_RING_STEP + (indexInLayer % 2) * ATOMIC_CLUSTER_ALT_RADIUS;
+          const point = isCourseOnlySkill ? skillPoint : offsetPoint(skillPoint, clusterRadius, clusterAngle);
+          const nodeAngle = Math.atan2(point.y, point.x);
+          const nodeRadius = pointRadius(point);
           const visualType = normalizeNodeType(node);
           const flags = resolveNodeFlags(
             node,
@@ -633,7 +667,7 @@ export const createSkillAtlasLayout = (
               point,
               radius: nodeRadius,
               angle: nodeAngle,
-              ring: 4 + layer,
+              ring: isCourseOnlySkill ? 3 : 4 + layer,
               sectorKey: sector.key,
               visualType,
               stateFlags: flags,
@@ -645,10 +679,13 @@ export const createSkillAtlasLayout = (
           );
 
           baseEdges.push({
-            id: `structure:${skillStableId}->${stableId}`,
-            fromStableId: skillStableId,
+            id: isCourseOnlySkill
+              ? `structure:${directionStableId}->${stableId}`
+              : `structure:${skillStableId}->${stableId}`,
+            fromStableId: isCourseOnlySkill ? directionStableId : skillStableId,
             toStableId: stableId,
             edgeType: 'structure',
+            edgeRole: isCourseOnlySkill ? 'structure_branch' : 'local_cluster',
             isOverlay: false,
           });
         });
@@ -659,6 +696,9 @@ export const createSkillAtlasLayout = (
         );
         skillFlagGroups.push(skillFlags);
         nodeFlagsByStableId.set(skillStableId, skillFlags);
+        if (isCourseOnlySkill) {
+          return;
+        }
         nodes.push(
           createLayoutNode({
             stableId: skillStableId,
@@ -666,7 +706,7 @@ export const createSkillAtlasLayout = (
             sourceId: skill.id,
             title: skill.name,
             path: `${sphere.name} / ${direction.name}`,
-            point: polarPoint(TOPIC_RING_RADIUS, skillAngle),
+            point: skillPoint,
             radius: TOPIC_RING_RADIUS,
             angle: skillAngle,
             ring: 3,
@@ -716,7 +756,7 @@ export const createSkillAtlasLayout = (
         sourceKind: 'sphere',
         sourceId: sphere.id,
         title: sphere.name,
-        path: 'Program Atlas',
+        path: programTitle,
         point: polarPoint(DOMAIN_RING_RADIUS, sector.centerAngle),
         radius: DOMAIN_RING_RADIUS,
         angle: sector.centerAngle,
@@ -743,6 +783,7 @@ export const createSkillAtlasLayout = (
       fromStableId,
       toStableId,
       edgeType: edge.edge_type,
+      edgeRole: 'graph',
       isOverlay: false,
     });
   });
@@ -805,9 +846,10 @@ const mapAtlasIcon = (iconKey: string) => {
 export const applySkillAtlasLayoutToModel = (
   snapshot: NavigationSnapshot,
   model: GameSceneModel,
+  options: Pick<SkillAtlasLayoutOptions, 'programTitle'> = {},
 ): GameSceneModel => {
   const focus = model.highlightedNodeId != null ? { node: { id: model.highlightedNodeId } } : null;
-  const layout = createSkillAtlasLayout(snapshot, focus);
+  const layout = createSkillAtlasLayout(snapshot, focus, { programTitle: options.programTitle });
   const baseNodeById = new Map(model.nodes.map((node) => [node.id, node]));
   const stableIdToNumericId = new Map<string, number>();
   const sectorIndexByKey = new Map(layout.sectors.map((sector, index) => [sector.key, index]));
@@ -863,11 +905,7 @@ export const applySkillAtlasLayoutToModel = (
   const edges: GameEdge[] = layout.edges
     .filter(
       (edge) =>
-        !(
-          edge.edgeType === 'structure' &&
-          edge.fromStableId.startsWith('skill:') &&
-          edge.toStableId.startsWith('node:')
-        ) &&
+        edge.edgeRole !== 'graph' &&
         !edge.id.startsWith('graph:'),
     )
     .map((edge) => {
@@ -882,6 +920,7 @@ export const applySkillAtlasLayoutToModel = (
         fromNodeId,
         toNodeId,
         type: edge.edgeType === 'requires' || edge.edgeType === 'relates_to' ? edge.edgeType : 'supports',
+        atlasEdgeRole: edge.edgeRole,
       } satisfies GameEdge;
     })
     .filter((edge): edge is GameEdge => edge != null);

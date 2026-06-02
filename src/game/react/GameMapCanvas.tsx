@@ -36,6 +36,7 @@ interface GameMapCanvasProps {
   minFitZoom?: number;
   routeNodeMetadata?: RouteNodeCanvasMetadata[] | null;
   presentation?: GameMapPresentation;
+  programTitle?: string | null;
   mapCommand?: { id: number; type: 'focus-node' | 'fit-graph' | 'fit-overview' | 'center-layer' | 'reset-camera' } | null;
   onCreateEdge?: (input: {
     sourceNodeId: number;
@@ -217,6 +218,7 @@ export const GameMapCanvas = ({
   minFitZoom,
   routeNodeMetadata = null,
   presentation = 'graph',
+  programTitle = null,
   mapCommand = null,
   onCanvasContextMenu,
   onCanvasDoubleClick,
@@ -331,8 +333,8 @@ export const GameMapCanvas = ({
     () => {
       const baseModel = createGameViewModel(snapshot, focus, { visibleSphereId, visibleSkillId });
       const presentationModel =
-        presentation === 'cs-atlas' && snapshot
-          ? applySkillAtlasLayoutToModel(snapshot, baseModel)
+        presentation === 'skill-atlas' && snapshot
+          ? applySkillAtlasLayoutToModel(snapshot, baseModel, { programTitle })
           : baseModel;
 
       return filterModelToVisibleNodes(
@@ -343,12 +345,12 @@ export const GameMapCanvas = ({
         visibleNodeIds,
       );
     },
-    [focus, presentation, previewNodePositions, routeNodeMetadata, snapshot, visibleNodeIds, visibleSphereId, visibleSkillId],
+    [focus, presentation, previewNodePositions, programTitle, routeNodeMetadata, snapshot, visibleNodeIds, visibleSphereId, visibleSkillId],
   );
   const hasVisibleNodeFilter = Boolean(visibleNodeIds && visibleNodeIds.length > 0);
   const shouldRenderOverview = Boolean(
     model.isLargeGraph &&
-      presentation !== 'cs-atlas' &&
+      presentation !== 'skill-atlas' &&
       canvasMode === 'free' &&
       !hasVisibleNodeFilter &&
       !createMode &&
@@ -1018,7 +1020,7 @@ export const GameMapCanvas = ({
         </div>
       ) : null}
 
-      {presentation === 'cs-atlas' && tooltipNode && hoveredNode ? (
+      {presentation === 'skill-atlas' && tooltipNode && hoveredNode ? (
         <div
           className="pointer-events-none fixed z-50 max-w-[280px]"
           style={{

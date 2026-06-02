@@ -518,6 +518,9 @@ export const seedCampaignTemplateCatalog = async (database) => {
   const timestamp = createUtcTimestamp();
 
   for (const template of TEMPLATE_CAMPAIGNS) {
+    if (template.slug === 'template-nlh-cash') {
+      continue;
+    }
     const campaign = await upsertTemplateCampaign(database, template, timestamp);
     const statsByKey = await upsertStats(database, campaign.id, template, timestamp);
     const skill = await upsertStructure(database, campaign.id, template, statsByKey, timestamp);

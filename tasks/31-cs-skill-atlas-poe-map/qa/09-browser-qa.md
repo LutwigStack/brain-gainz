@@ -8,7 +8,7 @@
 
 - URL: `http://127.0.0.1:5176/`
 - Date: `2026-06-02`
-- Scope: learner CS program, map overview, `Карта знаний` layer, desktop hover tooltip, mobile `390x844`.
+- Scope: learner CS program, map overview, `Карта знаний` layer, readability pass, route action, mobile `390x844`.
 
 ## Screenshots
 
@@ -17,12 +17,20 @@
 - `09-skill-atlas-mobile.png`
 - `09-skill-atlas-mobile-full.png`
 - `09-skill-atlas-route-action-canvas.png`
+- `10-readability-atlas-desktop.png`
+- `10-readability-atlas-canvas.png`
+- `10-readability-atlas-deep.png`
+- `10-readability-route-action-canvas.png`
+- `10-readability-atlas-mobile.png`
+- `10-readability-atlas-mobile-full.png`
+- `10-readability-explicit-stroke.png`
+- `10-readability-root-program-title-wide.png`
 
 ## Result
 
 Pass with P3 follow-ups.
 
-The CS learner map opens as an atlas instead of the old route-like line. The first view shows the whole bachelor atlas, icon nodes, limited route/current overlay, no node label clutter, and no learner-facing author handles. Hover tooltip opens with the node title, route context, and current action. Mobile has no horizontal document overflow and uses a taller atlas canvas with the selected lesson inspector below it.
+The CS learner map now reads as a skill atlas rather than a radial debug graph. Atomic nodes are clustered around their topic hubs, structure spokes are thin background threads, and the route overlay is limited and subdued. The full atlas now renders hub-to-hub connections with explicit strokes, matching the minimap hierarchy without turning the route or sector backdrop into thick spokes. The center root represents the active program instead of a technical atlas placeholder. Mobile has no horizontal document overflow and keeps the atlas canvas usable above the selected lesson inspector.
 
 ## Findings
 
@@ -33,7 +41,10 @@ The CS learner map opens as an atlas instead of the old route-like line. The fir
 ## Checks
 
 - Desktop atlas screenshot: pass.
+- Readability centered canvas screenshot: pass.
+- Full atlas backbone matches minimap hierarchy: pass.
+- Center root title is the active program, not `Program Atlas`: pass.
+- Route action keeps full atlas visible and uses route only as overlay: pass.
 - Hover tooltip screenshot: pass.
 - Mobile `390x844`: pass.
-- Route action keeps full atlas visible and uses route only as overlay: pass.
 - Console warnings/errors: `0`.

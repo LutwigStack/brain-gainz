@@ -448,7 +448,7 @@ export class MapLayer extends Container {
 
   private drawEdges(model: GameSceneModel, handlers: MapLayerHandlers) {
     this.edgeGraphics.clear();
-    if (this.presentation === 'cs-atlas') {
+    if (this.presentation === 'skill-atlas') {
       this.drawAtlasBackdrop(model);
     }
     const nodeById = new Map(
@@ -464,7 +464,7 @@ export class MapLayer extends Container {
     );
     const activeEdgeIds = new Set<number>();
     const isLargeGraphDetail = !this.overviewMode && model.nodes.length >= 40;
-    const isAtlas = this.presentation === 'cs-atlas';
+    const isAtlas = this.presentation === 'skill-atlas';
 
     model.edges.forEach((edge) => {
       const fromNode = nodeById.get(edge.fromNodeId);
@@ -518,6 +518,75 @@ export class MapLayer extends Container {
         edge.fromNodeId <= edge.toNodeId ? 1 : -1,
         semantics.canvas.bendStrength,
       );
+
+      if (isAtlas) {
+        const role = edge.atlasEdgeRole ?? 'structure_branch';
+        const atlasStrokeScale = 1 / Math.max(this.currentZoom, 0.35);
+        const atlasColor =
+          role === 'route_overlay'
+            ? 0x38bdf8
+            : role === 'structure_root'
+              ? 0x7dd3fc
+              : role === 'local_cluster'
+                ? toNode.atlasSectorColor ?? fromNode.atlasSectorColor ?? 0x94a3b8
+                : toNode.atlasSectorColor ?? fromNode.atlasSectorColor ?? 0x94a3b8;
+        const atlasWidth =
+          role === 'local_cluster'
+            ? 0.55
+            : role === 'structure_root'
+              ? 1.15
+              : 1;
+        const atlasAlpha =
+          role === 'local_cluster'
+            ? 0.08
+            : role === 'structure_root'
+              ? 0.16
+              : 0.14;
+        const focusBoost = fromNode.isCurrentRouteTarget || toNode.isCurrentRouteTarget ? 0.04 : 0;
+
+        if (role === 'structure_root' || role === 'structure_branch') {
+          drawPolyline(this.edgeGraphics, route);
+          this.edgeGraphics.stroke({
+            width: (atlasWidth + 1.4) * atlasStrokeScale,
+            color: atlasColor,
+            alpha: Math.min(0.028, atlasAlpha * 0.2),
+          });
+          drawPolyline(this.edgeGraphics, route);
+          this.edgeGraphics.stroke({
+            width: atlasWidth * atlasStrokeScale,
+            color: atlasColor,
+            alpha: Math.min(0.2, atlasAlpha + focusBoost),
+          });
+        } else {
+          drawPolyline(this.edgeGraphics, route);
+          this.edgeGraphics.stroke({
+            width: atlasWidth * atlasStrokeScale,
+            color: atlasColor,
+            alpha: Math.min(0.22, atlasAlpha + focusBoost),
+          });
+        }
+
+        const hit =
+          this.edgeHits.get(edge.id) ??
+          (() => {
+            const graphic = new Graphics();
+            graphic.eventMode = 'static';
+            graphic.cursor = 'pointer';
+            this.edgeHits.set(edge.id, graphic);
+            this.edgeHitContainer.addChild(graphic);
+            return graphic;
+          })();
+
+        hit.removeAllListeners();
+        hit.on('pointerdown', (event) => {
+          event.stopPropagation();
+          handlers.onEdgePointerDown?.(edge.id, event);
+        });
+        hit.clear();
+        drawPolyline(hit, route);
+        hit.stroke({ width: 12, color: atlasColor, alpha: 0.001 });
+        return;
+      }
 
       if (shouldDrawGlow) {
         this.edgeGraphics.setStrokeStyle({
@@ -595,7 +664,7 @@ export class MapLayer extends Container {
           const currentIndex = routeNodes.findIndex((node) => node.isCurrentRouteTarget);
           const anchorIndex = currentIndex >= 0 ? currentIndex : routeNodes.findIndex((node) => !node.isRouteComplete);
           const startIndex = Math.max(0, (anchorIndex >= 0 ? anchorIndex : 0) - 1);
-          return routeNodes.slice(startIndex, startIndex + 7);
+          return routeNodes.slice(startIndex, startIndex + 4);
         })()
       : routeNodes;
     routeOverlayNodes.slice(0, -1).forEach((fromNode, index) => {
@@ -604,14 +673,19 @@ export class MapLayer extends Container {
       const route = createQuadraticRoute(from, to, fromNode.id <= toNode.id ? 1 : -1, 0.12);
       const isCurrentSegment = Boolean(fromNode.isCurrentRouteTarget || toNode.isCurrentRouteTarget);
       const color = isCurrentSegment ? 0x38bdf8 : 0xfacc15;
+      const atlasStrokeScale = 1 / Math.max(this.currentZoom, 0.35);
 
-      this.edgeGraphics.setStrokeStyle({
-        width: isAtlas ? (isCurrentSegment ? 3.2 : 1.8) : isCurrentSegment ? 4 : 2.6,
-        color,
-        alpha: isAtlas ? (isCurrentSegment ? 0.72 : 0.32) : isCurrentSegment ? 0.68 : 0.38,
-      });
-      drawPolyline(this.edgeGraphics, route);
-      if (!isAtlas || isCurrentSegment) {
+      if (isAtlas && !isCurrentSegment) {
+        drawDottedPolyline(this.edgeGraphics, route, color, 0.045, 0.75 * atlasStrokeScale, 24);
+      } else {
+        drawPolyline(this.edgeGraphics, route);
+        this.edgeGraphics.stroke({
+          width: isAtlas ? (isCurrentSegment ? 0.8 : 0.45) * atlasStrokeScale : isCurrentSegment ? 4 : 2.6,
+          color,
+          alpha: isAtlas ? (isCurrentSegment ? 0.16 : 0.045) : isCurrentSegment ? 0.68 : 0.38,
+        });
+      }
+      if (!isAtlas) {
         drawArrowHead(
           this.edgeGraphics,
           route[route.length - 2] ?? from,
@@ -700,7 +774,7 @@ export class MapLayer extends Container {
     label: Text,
     model: GameSceneModel,
   ) {
-    if (this.presentation === 'cs-atlas') {
+    if (this.presentation === 'skill-atlas') {
       this.drawAtlasNode(node, shell, pulse, label, model);
       return;
     }
@@ -825,19 +899,46 @@ export class MapLayer extends Container {
     label.visible = this.shouldShowNodeLabel(node.id);
   }
 
+  private drawAtlasSectorWedge(centerAngle: number, sectorWidth: number, color: number, accent: number) {
+    const outerRadius = 1_070;
+    const innerRadius = 180;
+    const startAngle = centerAngle - sectorWidth / 2;
+    const endAngle = centerAngle + sectorWidth / 2;
+    const steps = 28;
+
+    this.edgeGraphics.moveTo(Math.cos(startAngle) * innerRadius, Math.sin(startAngle) * innerRadius);
+    for (let index = 0; index <= steps; index += 1) {
+      const angle = startAngle + ((endAngle - startAngle) * index) / steps;
+      this.edgeGraphics.lineTo(Math.cos(angle) * outerRadius, Math.sin(angle) * outerRadius);
+    }
+    for (let index = steps; index >= 0; index -= 1) {
+      const angle = startAngle + ((endAngle - startAngle) * index) / steps;
+      this.edgeGraphics.lineTo(Math.cos(angle) * innerRadius, Math.sin(angle) * innerRadius);
+    }
+    this.edgeGraphics.lineTo(Math.cos(startAngle) * innerRadius, Math.sin(startAngle) * innerRadius);
+    this.edgeGraphics.fill({ color, alpha: 0 });
+
+    this.edgeGraphics.moveTo(Math.cos(centerAngle) * innerRadius, Math.sin(centerAngle) * innerRadius);
+    this.edgeGraphics.lineTo(Math.cos(centerAngle) * outerRadius, Math.sin(centerAngle) * outerRadius);
+    this.edgeGraphics.stroke({ color: accent, width: 1, alpha: 0.045 });
+  }
+
   private drawAtlasBackdrop(model: GameSceneModel) {
+    const sectorWidth = model.biomes.length > 0 ? (Math.PI * 2) / model.biomes.length : Math.PI * 2;
     model.biomes.forEach((biome) => {
+      const centerAngle = Math.atan2(biome.center.y, biome.center.x);
+      this.drawAtlasSectorWedge(centerAngle, Math.max(0.34, sectorWidth * 0.88), biome.color, biome.accent);
       this.edgeGraphics.circle(biome.center.x, biome.center.y, biome.radius);
-      this.edgeGraphics.fill({ color: biome.color, alpha: 0.08 });
+      this.edgeGraphics.fill({ color: biome.color, alpha: 0.035 });
       this.edgeGraphics.circle(biome.center.x, biome.center.y, biome.radius);
-      this.edgeGraphics.stroke({ color: biome.accent, width: 2, alpha: 0.12 });
+      this.edgeGraphics.stroke({ color: biome.accent, width: 2, alpha: 0.16 });
       this.edgeGraphics.circle(biome.center.x, biome.center.y, Math.max(36, biome.radius * 0.18));
-      this.edgeGraphics.stroke({ color: biome.accent, width: 1.4, alpha: 0.2 });
+      this.edgeGraphics.stroke({ color: biome.accent, width: 1.4, alpha: 0.24 });
     });
 
-    [180, 320, 460, 600, 740].forEach((radius, index) => {
+    [180, 260, 500, 720, 900].forEach((radius, index) => {
       this.edgeGraphics.circle(0, 0, radius);
-      this.edgeGraphics.stroke({ color: index % 2 === 0 ? 0x60a5fa : 0xfbbf24, width: 1, alpha: 0.055 });
+      this.edgeGraphics.stroke({ color: index % 2 === 0 ? 0x60a5fa : 0xfbbf24, width: 1, alpha: 0.075 });
     });
   }
 
@@ -971,12 +1072,15 @@ export class MapLayer extends Container {
     const borderColor = isHighlighted || node.isCurrentRouteTarget ? routeColor : node.isRouteNode ? routeColor : accent;
     const isBoss = node.atlasNodeType === 'boss_node';
     const isReview = node.atlasNodeType === 'review_node';
+    const isRoot = node.atlasNodeType === 'root';
+    const isHub = node.atlasNodeType === 'domain_hub' || node.atlasNodeType === 'course_hub' || node.atlasNodeType === 'topic_node';
+    const isActiveBranchHub = isHub && node.isOnSelectedPath;
 
     pulse.clear();
-    pulse.circle(0, 0, radius + (isBoss ? 16 : 12));
+    pulse.circle(0, 0, radius + (isRoot ? 24 : isBoss || isHub ? 16 : 12));
     pulse.fill({
       color: node.isRouteNode ? routeColor : accent,
-      alpha: isHighlighted || node.isCurrentRouteTarget ? 0.24 : node.isRouteNode ? 0.12 : 0.045,
+      alpha: isHighlighted || node.isCurrentRouteTarget ? 0.24 : isActiveBranchHub ? 0.14 : node.isRouteNode ? 0.1 : 0.045,
     });
     pulse.position.set(node.position.x, node.position.y);
 
@@ -989,16 +1093,21 @@ export class MapLayer extends Container {
     );
     shell.circle(0, 0, radius + 8);
     shell.fill({ color: 0x020617, alpha: 0.001 });
-    shell.circle(0, 0, radius + (isBoss ? 7 : 4));
-    shell.fill({ color: accent, alpha: isBoss ? 0.12 : 0.06 });
+    shell.circle(0, 0, radius + (isRoot ? 13 : isBoss || isHub ? 7 : 4));
+    shell.fill({ color: accent, alpha: isRoot ? 0.18 : isBoss || isActiveBranchHub ? 0.12 : 0.06 });
     shell.circle(0, 0, radius);
-    shell.fill({ color: palette.fill, alpha: node.state === 'locked' ? 0.68 : 0.9 });
+    shell.fill({ color: isRoot ? 0x071426 : palette.fill, alpha: node.state === 'locked' ? 0.68 : isRoot || isHub ? 0.94 : 0.9 });
     shell.circle(0, 0, radius);
     shell.stroke({
       color: borderColor,
-      width: isHighlighted || node.isCurrentRouteTarget ? 4 : isBoss ? 3.4 : node.isRouteNode ? 3 : 2,
+      width: isHighlighted || node.isCurrentRouteTarget ? 4 : isRoot ? 3.8 : isBoss ? 3.4 : isHub ? 2.6 : node.isRouteNode ? 2.4 : 1.8,
       alpha: node.state === 'locked' ? 0.68 : 0.96,
     });
+
+    if (isRoot || isActiveBranchHub) {
+      shell.circle(0, 0, radius + (isRoot ? 18 : 10));
+      shell.stroke({ color: accent, width: isRoot ? 2.4 : 1.8, alpha: isRoot ? 0.32 : 0.24 });
+    }
 
     if (isBoss) {
       for (let index = 0; index < 8; index += 1) {
@@ -1031,6 +1140,12 @@ export class MapLayer extends Container {
     }
 
     this.drawAtlasIcon(shell, node.atlasIconKey ?? 'code', node.state === 'locked' ? 0x94a3b8 : accent, size);
+    if (isRoot) {
+      shell.circle(0, 0, Math.max(5, radius * 0.18));
+      shell.fill({ color: accent, alpha: 0.92 });
+      shell.circle(0, 0, Math.max(12, radius * 0.42));
+      shell.stroke({ color: 0xfacc15, width: 1.6, alpha: 0.42 });
+    }
     shell.position.set(node.position.x, node.position.y);
 
     label.text = '';
@@ -1076,7 +1191,7 @@ export class MapLayer extends Container {
   }
 
   private resolvePointerGate(node: GameNode, event: FederatedPointerEvent): NodeGate | null {
-    if (this.presentation === 'cs-atlas') {
+    if (this.presentation === 'skill-atlas') {
       return null;
     }
 
@@ -1092,7 +1207,7 @@ export class MapLayer extends Container {
   }
 
   private shouldShowNodeLabel(nodeId: number) {
-    if (this.presentation === 'cs-atlas') {
+    if (this.presentation === 'skill-atlas') {
       return false;
     }
 

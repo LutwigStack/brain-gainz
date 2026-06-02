@@ -56,3 +56,5 @@ Everything else must be `planned`, `done`, or `parked`.
 - [29 Knowledge City Control MVP](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/29-knowledge-city-control-mvp/README.md)
 - [30 Program Map Layers And CS Content](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/30-program-map-layers-and-cs-content/README.md)
 - [31 CS Skill Atlas POE Map](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/31-cs-skill-atlas-poe-map/README.md)
+- [32 CS Bachelor Course Catalog](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/32-cs-bachelor-course-catalog/README.md)
+- [33 NLH Cash Course Catalog](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/33-nlh-cash-course-catalog/README.md)

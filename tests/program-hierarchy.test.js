@@ -149,6 +149,55 @@ test('folder children use projection parent ids, not graph edges', () => {
   );
 });
 
+test('course catalog folders collapse synthetic course directions and wrapper skills for any course kind', () => {
+  const courseNode = {
+    ...node(10, 'Введение в программирование'),
+    type: 'theory',
+    links: JSON.stringify({ kind: 'future_program_course', courseKey: 'programming-intro' }),
+  };
+  const catalogSnapshot = {
+    spheres: [
+      {
+        id: 1,
+        name: 'Программирование',
+        node_count: 1,
+        open_action_count: 1,
+        directions: [
+          {
+            id: 10,
+            sphere_id: 1,
+            name: 'Курсы',
+            node_count: 1,
+            open_action_count: 1,
+            skills: [skill(100, 'Введение в программирование', [courseNode])],
+          },
+        ],
+      },
+    ],
+    edges: [],
+    archivedNodes: [],
+    defaultSelection: { nodeId: 10, actionId: 1010 },
+  };
+
+  const entries = buildProgramHierarchy({ snapshot: catalogSnapshot, campaign: { id: 42, name: 'CS Program' } });
+  const rootChildren = folderChildren(entries, 'campaign:42');
+  const regionChildren = folderChildren(entries, 'sphere:1');
+  const hiddenWrapper = entries.find((entry) => entry.stableId === 'skill:100');
+  const course = entries.find((entry) => entry.stableId === 'node:10');
+
+  assert.deepEqual(rootChildren.map((entry) => entry.stableId), ['sphere:1']);
+  assert.deepEqual(regionChildren.map((entry) => entry.stableId), ['node:10']);
+  assert.equal(entries.some((entry) => entry.stableId === 'direction:10'), false);
+  assert.equal(hiddenWrapper?.role, 'infrastructure_object');
+  assert.equal(hiddenWrapper?.parentStableId, null);
+  assert.equal(course?.role, 'course_hub');
+  assert.equal(course?.parentStableId, 'sphere:1');
+
+  const objects = buildInfrastructureObjects({ entries, routeItems: [] });
+  assert.equal(objects.length, 1);
+  assert.equal(objects[0].title, 'Введение в программирование');
+});
+
 test('empty hierarchy produces deterministic no-object layer state', () => {
   const entries = buildProgramHierarchy({ snapshot: { spheres: [], edges: [], archivedNodes: [], defaultSelection: null } });
   const state = buildInitialProgramMapLayerState({ entries });

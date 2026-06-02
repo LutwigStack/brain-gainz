@@ -1,30 +1,32 @@
 import {
-  CS_BACHELOR_COURSES,
-  CS_BACHELOR_REGIONS,
-  getCsBachelorCoursesInRouteOrder,
-  validateCsBachelorCatalog,
-} from '../application/cs-bachelor-course-catalog.ts';
+  NLH_CASH_COURSES,
+  NLH_CASH_REGIONS,
+  getNlhCashCoursesInRouteOrder,
+  validateNlhCashCatalog,
+} from '../application/nlh-cash-course-catalog.ts';
 import { createUtcTimestamp } from '../stores/store-helpers.js';
 
-export const CS_BACHELOR_TEMPLATE_SLUG = 'template-cs-bachelor';
+export const NLH_CASH_TEMPLATE_SLUG = 'template-nlh-cash';
 
-const CS_BACHELOR_ROUTE_KEY = 'route-core-cs-foundations';
-const CS_DOMAIN = 'Информатика';
-const CS_PROGRAM_TITLE = 'Бакалавриат по информатике';
+const NLH_CASH_ROUTE_KEY = 'route-nlh-cash-study';
+const NLH_DOMAIN = "Стратегия NLH cash";
+const NLH_PROGRAM_TITLE = 'NLH cash';
+const NLH_PROGRAM_SUMMARY =
+  "Учебная стратегия кэш-игры No-Limit Hold'em: диапазоны, математика, разбор решений и контроль риска без обещаний результата.";
 
 const selectOne = async (database, sql, params = []) => (await database.select(sql, params))[0] ?? null;
 
 const slugForRegion = (regionKey) => `region-${regionKey}`;
 const slugForCourseSkill = (courseKey) => `course-${courseKey}`;
 
-const semesterStage = (semester) => `${semester} семестр`;
+const routeStage = (course) => `${String(Math.ceil(course.orderHint / 8)).padStart(2, '0')} · ${course.level}`;
 
 const courseCoordinates = (regionIndex, courseIndex, regionCourseCount) => {
-  const angle = -Math.PI / 2 + (regionIndex / Math.max(CS_BACHELOR_REGIONS.length, 1)) * Math.PI * 2;
-  const spread = Math.min(0.7, 0.16 * Math.max(regionCourseCount - 1, 1));
+  const angle = -Math.PI / 2 + (regionIndex / Math.max(NLH_CASH_REGIONS.length, 1)) * Math.PI * 2;
+  const spread = Math.min(0.72, 0.14 * Math.max(regionCourseCount - 1, 1));
   const localAngle =
     regionCourseCount <= 1 ? angle : angle - spread / 2 + (spread * courseIndex) / Math.max(regionCourseCount - 1, 1);
-  const radius = 260 + (courseIndex % 4) * 82 + Math.floor(courseIndex / 4) * 36;
+  const radius = 270 + (courseIndex % 4) * 78 + Math.floor(courseIndex / 4) * 34;
 
   return {
     x: Math.round(Math.cos(localAngle) * radius),
@@ -36,7 +38,7 @@ const upsertCampaign = async (database, timestamp) => {
   await database.execute(
     `
       INSERT INTO campaigns (type, slug, name, icon, color, mode, career_status, is_archived, created_at, updated_at, last_opened_at)
-      VALUES ('template', ?, ?, 'brain', '#58d6ff', 'career', 'active', 0, ?, ?, NULL)
+      VALUES ('template', ?, ?, 'cards', '#f59e0b', 'career', 'active', 0, ?, ?, NULL)
       ON CONFLICT(slug) DO UPDATE SET
         type = 'template',
         name = excluded.name,
@@ -44,13 +46,14 @@ const upsertCampaign = async (database, timestamp) => {
         color = excluded.color,
         mode = excluded.mode,
         career_status = excluded.career_status,
+        source_template_id = NULL,
         is_archived = 0,
         updated_at = excluded.updated_at
     `,
-    [CS_BACHELOR_TEMPLATE_SLUG, CS_PROGRAM_TITLE, timestamp, timestamp],
+    [NLH_CASH_TEMPLATE_SLUG, NLH_PROGRAM_TITLE, timestamp, timestamp],
   );
 
-  return selectOne(database, 'SELECT * FROM campaigns WHERE slug = ? LIMIT 1', [CS_BACHELOR_TEMPLATE_SLUG]);
+  return selectOne(database, 'SELECT * FROM campaigns WHERE slug = ? LIMIT 1', [NLH_CASH_TEMPLATE_SLUG]);
 };
 
 const archiveExistingTemplateStructure = async (database, campaignId, timestamp) => {
@@ -103,7 +106,7 @@ const archiveExistingTemplateStructure = async (database, campaignId, timestamp)
 };
 
 const archiveObsoleteStats = async (database, campaignId, timestamp) => {
-  const activeRegionKeys = CS_BACHELOR_REGIONS.map((region) => region.key);
+  const activeRegionKeys = NLH_CASH_REGIONS.map((region) => region.key);
   const placeholders = activeRegionKeys.map(() => '?').join(', ');
   await database.execute(
     `
@@ -119,7 +122,7 @@ const archiveObsoleteStats = async (database, campaignId, timestamp) => {
 
 const upsertStats = async (database, campaignId, timestamp) => {
   const statsByKey = new Map();
-  for (const [index, region] of CS_BACHELOR_REGIONS.entries()) {
+  for (const [index, region] of NLH_CASH_REGIONS.entries()) {
     await database.execute(
       `
         INSERT INTO campaign_stats (campaign_id, key, title, color, icon, sort_order, is_archived, created_at, updated_at)
@@ -145,7 +148,7 @@ const upsertStats = async (database, campaignId, timestamp) => {
 
 const upsertRegions = async (database, campaignId, timestamp) => {
   const regionsByKey = new Map();
-  for (const [index, region] of CS_BACHELOR_REGIONS.entries()) {
+  for (const [index, region] of NLH_CASH_REGIONS.entries()) {
     await database.execute(
       `
         INSERT INTO spheres (campaign_id, name, slug, description, sort_order, is_archived, created_at, updated_at)
@@ -216,7 +219,7 @@ const upsertCourseNode = async (database, course, regionContext, stat, indexInRe
       course.title,
       slugForCourseSkill(course.key),
       course.description,
-      course.semesterHint * 100 + indexInRegion,
+      course.orderHint,
       timestamp,
       timestamp,
     ],
@@ -226,7 +229,7 @@ const upsertCourseNode = async (database, course, regionContext, stat, indexInRe
     slugForCourseSkill(course.key),
   ]);
 
-  const knowledgeKey = `cs-bachelor:course:${course.key}`;
+  const knowledgeKey = `nlh-cash:course:${course.key}`;
   await database.execute(
     `
       INSERT INTO knowledge_nodes (key, title, domain, summary, created_at, updated_at)
@@ -237,27 +240,27 @@ const upsertCourseNode = async (database, course, regionContext, stat, indexInRe
         summary = excluded.summary,
         updated_at = excluded.updated_at
     `,
-    [knowledgeKey, course.title, CS_DOMAIN, course.description, timestamp, timestamp],
+    [knowledgeKey, course.title, NLH_DOMAIN, course.description, timestamp, timestamp],
   );
   const knowledgeNode = await selectOne(database, 'SELECT * FROM knowledge_nodes WHERE key = ? LIMIT 1', [knowledgeKey]);
   const coordinates = courseCoordinates(
-    CS_BACHELOR_REGIONS.findIndex((region) => region.key === course.regionKey),
+    NLH_CASH_REGIONS.findIndex((region) => region.key === course.regionKey),
     indexInRegion,
     regionCourseCount,
   );
   const courseMetadata = {
-    kind: 'cs_bachelor_course',
+    kind: 'nlh_cash_course',
     courseKey: course.key,
     regionKey: course.regionKey,
     level: course.level,
-    yearHint: course.yearHint,
-    semesterHint: course.semesterHint,
+    orderHint: course.orderHint,
     prerequisiteKeys: course.prerequisiteKeys,
     followUpKeys: course.followUpKeys,
     infrastructureObjectCandidate: course.infrastructureObjectCandidate,
     infrastructureObjectName: course.infrastructureObjectName,
     atlasHubType: course.atlasHubType,
     size: course.size,
+    riskNote: course.riskNote,
   };
 
   await database.execute(
@@ -299,24 +302,24 @@ const upsertCourseNode = async (database, course, regionContext, stat, indexInRe
         is_archived = 0,
         updated_at = excluded.updated_at
     `,
-      [
-        skill.id,
-        course.level === 'project' ? 'project' : 'theory',
-        course.title,
-        course.key,
-        course.description,
-        `Понять роль курса в программе и пройти будущие темы внутри этого направления.`,
-        JSON.stringify(courseMetadata),
-        coordinates.x,
-        coordinates.y,
-        knowledgeNode.id,
-        course.size === 'capstone' || course.level === 'project' ? 'high' : course.level === 'pre-core' || course.level === 'core' ? 'high' : 'medium',
-        timestamp,
-        timestamp,
+    [
+      skill.id,
+      'theory',
+      course.title,
+      course.key,
+      course.description,
+      'Понять роль курса в программе NLH cash и подготовить будущие темы внутри этого направления.',
+      JSON.stringify(courseMetadata),
+      coordinates.x,
+      coordinates.y,
+      knowledgeNode.id,
+      course.size === 'capstone' || course.level === 'advanced' ? 'high' : course.atlasHubType === 'risk_hub' ? 'high' : 'medium',
+      timestamp,
+      timestamp,
     ],
   );
   const node = await selectOne(database, 'SELECT * FROM nodes WHERE skill_id = ? AND slug = ? LIMIT 1', [skill.id, course.key]);
-  const actionTitle = course.level === 'project' ? 'Открыть проектный курс' : 'Открыть курс';
+  const actionTitle = course.atlasHubType === 'risk_hub' ? 'Разобрать безопасно' : 'Открыть курс';
   const existingPrimaryAction = await selectOne(
     database,
     'SELECT * FROM node_actions WHERE node_id = ? AND sort_order = 0 ORDER BY id ASC LIMIT 1',
@@ -334,7 +337,7 @@ const upsertCourseNode = async (database, course, regionContext, stat, indexInRe
             updated_at = ?
         WHERE id = ?
       `,
-      [actionTitle, course.description, timestamp, existingPrimaryAction.id],
+      [actionTitle, course.riskNote ?? course.description, timestamp, existingPrimaryAction.id],
     );
   } else {
     await database.execute(
@@ -342,7 +345,7 @@ const upsertCourseNode = async (database, course, regionContext, stat, indexInRe
         INSERT INTO node_actions (node_id, title, details, status, size_hint, sort_order, is_minimum_step, is_repeatable, due_at, completed_at, created_at, updated_at)
         VALUES (?, ?, ?, 'todo', 'standard', 0, 0, 0, NULL, NULL, ?, ?)
       `,
-      [node.id, actionTitle, course.description, timestamp, timestamp],
+      [node.id, actionTitle, course.riskNote ?? course.description, timestamp, timestamp],
     );
   }
 
@@ -351,8 +354,8 @@ const upsertCourseNode = async (database, course, regionContext, stat, indexInRe
 
 const upsertCourseStructure = async (database, regionsByKey, statsByKey, timestamp) => {
   const nodesByCourseKey = new Map();
-  const coursesByRegion = new Map(CS_BACHELOR_REGIONS.map((region) => [region.key, []]));
-  for (const course of CS_BACHELOR_COURSES) {
+  const coursesByRegion = new Map(NLH_CASH_REGIONS.map((region) => [region.key, []]));
+  for (const course of NLH_CASH_COURSES) {
     coursesByRegion.get(course.regionKey)?.push(course);
   }
 
@@ -378,7 +381,7 @@ const upsertCourseStructure = async (database, regionsByKey, statsByKey, timesta
     );
   }
 
-  for (const course of CS_BACHELOR_COURSES) {
+  for (const course of NLH_CASH_COURSES) {
     const blocked = nodesByCourseKey.get(course.key);
     if (!blocked) {
       continue;
@@ -439,21 +442,19 @@ const upsertRoute = async (database, campaign, nodesByCourseKey, timestamp) => {
         completed_at = NULL,
         updated_at = excluded.updated_at
     `,
-    [campaign.id, CS_PROGRAM_TITLE, CS_BACHELOR_ROUTE_KEY, CS_DOMAIN, timestamp, timestamp, timestamp],
+    [campaign.id, 'Стратегия NLH cash', NLH_CASH_ROUTE_KEY, NLH_DOMAIN, timestamp, timestamp, timestamp],
   );
   const specialization = await selectOne(
     database,
     'SELECT * FROM career_specializations WHERE campaign_id = ? AND key = ? LIMIT 1',
-    [campaign.id, CS_BACHELOR_ROUTE_KEY],
+    [campaign.id, NLH_CASH_ROUTE_KEY],
   );
 
   await database.execute('DELETE FROM specialization_route_edges WHERE specialization_id = ?', [specialization.id]);
   await database.execute('DELETE FROM specialization_route_nodes WHERE specialization_id = ?', [specialization.id]);
 
   const routeRowsByCourseKey = new Map();
-  const routeCourses = getCsBachelorCoursesInRouteOrder();
-
-  for (const [index, course] of routeCourses.entries()) {
+  for (const [index, course] of getNlhCashCoursesInRouteOrder().entries()) {
     const node = nodesByCourseKey.get(course.key);
     if (!node) {
       continue;
@@ -474,16 +475,7 @@ const upsertRoute = async (database, campaign, nodesByCourseKey, timestamp) => {
         )
         VALUES (?, ?, ?, 'confirmed', ?, ?, ?, 1, ?, ?)
       `,
-      [
-        specialization.id,
-        node.id,
-        node.knowledge_node_id,
-        course.title,
-        index,
-        semesterStage(course.semesterHint),
-        timestamp,
-        timestamp,
-      ],
+      [specialization.id, node.id, node.knowledge_node_id, course.title, index, routeStage(course), timestamp, timestamp],
     );
     const routeRow = await selectOne(
       database,
@@ -493,7 +485,7 @@ const upsertRoute = async (database, campaign, nodesByCourseKey, timestamp) => {
     routeRowsByCourseKey.set(course.key, routeRow);
   }
 
-  for (const course of CS_BACHELOR_COURSES) {
+  for (const course of NLH_CASH_COURSES) {
     const source = routeRowsByCourseKey.get(course.key);
     if (!source) {
       continue;
@@ -555,10 +547,9 @@ const clearTemplateProgress = async (database, campaignId, timestamp) => {
     `,
     [campaignId],
   );
-  await database.execute(
-    'DELETE FROM daily_session_events WHERE session_id IN (SELECT id FROM daily_sessions WHERE campaign_id = ?)',
-    [campaignId],
-  );
+  await database.execute('DELETE FROM daily_session_events WHERE session_id IN (SELECT id FROM daily_sessions WHERE campaign_id = ?)', [
+    campaignId,
+  ]);
   await database.execute('DELETE FROM daily_sessions WHERE campaign_id = ?', [campaignId]);
   await database.execute('DELETE FROM assessment_attempts WHERE campaign_id = ?', [campaignId]);
   await database.execute('DELETE FROM mastery_events WHERE campaign_id = ?', [campaignId]);
@@ -602,10 +593,10 @@ const clearTemplateProgress = async (database, campaignId, timestamp) => {
   );
 };
 
-export const seedCsBachelorTemplate = async (database) => {
-  const validation = validateCsBachelorCatalog();
+export const seedNlhCashTemplate = async (database) => {
+  const validation = validateNlhCashCatalog();
   if (!validation.valid) {
-    throw new Error(`Invalid CS bachelor course catalog: ${JSON.stringify(validation)}`);
+    throw new Error(`Invalid NLH cash course catalog: ${JSON.stringify(validation)}`);
   }
 
   const timestamp = createUtcTimestamp();

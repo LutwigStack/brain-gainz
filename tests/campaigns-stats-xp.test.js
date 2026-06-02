@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { bootstrapDatabase } from '../src/database/bootstrap.js';
 import { buildInfrastructureObjects, buildProgramHierarchy, findObjectForNode } from '../src/application/program-hierarchy.ts';
+import { CS_BACHELOR_COURSE_KEYS, CS_BACHELOR_COURSES } from '../src/application/cs-bachelor-course-catalog.ts';
 import { createNowService } from '../src/application/now-service.js';
 import { createCampaignStore } from '../src/stores/campaign-store.js';
 import { createDailySessionStore } from '../src/stores/daily-session-store.js';
@@ -74,60 +75,61 @@ test('CS bachelor template seed is idempotent and visible as a template campaign
     `,
     [rows[0].id],
   );
-  assert.equal(Number(nodes[0].count), 86);
+  assert.equal(Number(nodes[0].count), 54);
 
-  const branchCounts = await database.select(
+  const regionCounts = await database.select(
     `
-      SELECT skills.slug, COUNT(nodes.id) AS count
-      FROM skills
-      JOIN directions ON directions.id = skills.direction_id
-      JOIN spheres ON spheres.id = directions.sphere_id
+      SELECT spheres.slug, COUNT(nodes.id) AS count
+      FROM spheres
+      JOIN directions ON directions.sphere_id = spheres.id AND directions.is_archived = 0
+      JOIN skills ON skills.direction_id = directions.id AND skills.is_archived = 0
       LEFT JOIN nodes ON nodes.skill_id = skills.id AND nodes.is_archived = 0
       WHERE spheres.campaign_id = ?
-      GROUP BY skills.slug
-      ORDER BY skills.sort_order ASC
+        AND spheres.is_archived = 0
+      GROUP BY spheres.slug
+      ORDER BY spheres.sort_order ASC
     `,
     [rows[0].id],
   );
   assert.deepEqual(
-    Object.fromEntries(branchCounts.map((row) => [row.slug, Number(row.count)])),
+    Object.fromEntries(regionCounts.map((row) => [row.slug, Number(row.count)])),
     {
-      'programming-fundamentals': 12,
-      'discrete-math': 10,
-      'data-structures': 12,
-      algorithms: 10,
-      databases: 28,
-      'debugging-and-testing': 5,
-      'math-notation-and-proof-support': 4,
-      'memory-model-intro': 5,
+      'region-programming': 8,
+      'region-mathematics': 8,
+      'region-algorithms-theory': 8,
+      'region-computer-systems': 9,
+      'region-data-ai': 7,
+      'region-software-product': 6,
+      'region-society-ethics-law': 3,
+      'region-projects': 5,
     },
   );
 
-  const checkRows = await database.select(
+  const activeNodes = await database.select(
     `
-      SELECT nodes.slug, nodes.check_metadata
+      SELECT nodes.slug, nodes.type, nodes.links, nodes.check_metadata
       FROM nodes
       JOIN skills ON skills.id = nodes.skill_id
       JOIN directions ON directions.id = skills.direction_id
       JOIN spheres ON spheres.id = directions.sphere_id
       WHERE spheres.campaign_id = ?
-        AND nodes.check_metadata IS NOT NULL
+        AND nodes.is_archived = 0
     `,
     [rows[0].id],
   );
-  const checkTypes = new Set(
-    checkRows.map((row) => {
-      const metadata = JSON.parse(row.check_metadata);
-      return metadata.check_method === 'llm_assisted' ? 'llm_assisted' : metadata.strict_check_type;
-    }),
+  assert.equal(activeNodes.length, 54);
+  assert.deepEqual(
+    activeNodes.map((row) => row.slug).sort(),
+    [...CS_BACHELOR_COURSE_KEYS].sort(),
   );
-  assert.deepEqual([...checkTypes].sort(), ['checklist', 'contains', 'exact', 'llm_assisted', 'manual_strict', 'number']);
-  assert.equal(checkRows.some((row) => JSON.parse(row.check_metadata).check_method === 'llm_assisted'), true);
+  assert.equal(activeNodes.every((row) => row.type === 'theory' || row.type === 'project'), true);
+  assert.equal(activeNodes.every((row) => row.check_metadata == null), true);
+  assert.equal(activeNodes.every((row) => JSON.parse(row.links).kind === 'cs_bachelor_course'), true);
 
   const campaigns = await campaignStore.listCampaigns();
   const templateSummary = campaigns.active.find((campaign) => campaign.slug === 'template-cs-bachelor');
   assert.equal(templateSummary?.type, 'template');
-  assert.equal(templateSummary?.node_count, 86);
+  assert.equal(templateSummary?.node_count, 54);
   assert.equal(campaigns.lastOpened?.slug, undefined);
 });
 
@@ -257,8 +259,8 @@ test('CS bachelor template can fork into a personal campaign without copying pro
       )[0].count,
     );
 
-  assert.equal(await countNodes(template.id), 86);
-  assert.equal(await countNodes(personal.id), 86);
+  assert.equal(await countNodes(template.id), 54);
+  assert.equal(await countNodes(personal.id), 54);
 
   const [personalNode] = await database.select(
     `
@@ -296,27 +298,26 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
   assert.equal(templateDashboard.today.cityControl, null);
 
   const dashboard = await nowService.getDashboard(personal.id);
-  assert.equal(dashboard.primaryRecommendation.nodeTitle, 'Среда программирования');
-  assert.equal(dashboard.primaryRecommendation.actionTitle, 'Потренировать: Среда программирования');
-  assert.equal(dashboard.today.route.routeNodeCount, 72);
+  assert.equal(dashboard.primaryRecommendation.nodeTitle, 'Введение в программирование');
+  assert.equal(dashboard.primaryRecommendation.actionTitle, 'Открыть курс');
+  assert.equal(dashboard.today.route.routeNodeCount, 54);
   assert.equal(dashboard.today.cityControl.opponent.name, 'Corvus AI');
   assert.equal(dashboard.today.cityControl.opponent.xp, 0);
   assert.equal(dashboard.today.cityControl.objects.length > 0, true);
   assert.equal(dashboard.today.route.items.every((item) => item.control_state != null), true);
-  assert.equal(dashboard.today.planner.currentStage, 'Основы программирования');
+  assert.equal(dashboard.today.planner.currentStage, '1 семестр');
   assert.deepEqual(
     dashboard.today.planner.nextItems.slice(0, 3).map((item) => item.title),
-    ['Среда программирования', 'Значения, переменные и типы', 'Выражения и операторы'],
+    ['Введение в программирование', 'Инструменты разработчика', 'Линейная алгебра'],
   );
 
   const navigation = await nowService.getNavigationSnapshot(personal.id);
-  assert.equal(navigation.spheres.length, 1);
-  assert.equal(navigation.spheres[0].directions[0].skills.length, 8);
+  assert.equal(navigation.spheres.length, 8);
   assert.equal(
-    navigation.spheres[0].directions[0].skills.reduce((sum, skill) => sum + skill.nodes.length, 0),
-    86,
+    navigation.spheres.flatMap((sphere) => sphere.directions).flatMap((direction) => direction.skills).reduce((sum, skill) => sum + skill.nodes.length, 0),
+    54,
   );
-  assert.equal(navigation.edges.filter((edge) => edge.edge_type === 'requires').length > 50, true);
+  assert.equal(navigation.edges.filter((edge) => edge.edge_type === 'requires').length > 40, true);
   assert.equal(navigation.edges.some((edge) => edge.edge_type === 'supports'), true);
 
   const programHierarchy = buildProgramHierarchy({
@@ -329,10 +330,11 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
     routeItems: dashboard.today.route.items,
     routeFocusNodeId,
   });
-  assert.equal(infrastructureObjects.length, 8);
-  assert.equal(programHierarchy.filter((entry) => entry.role === 'atomic_node').length, 86);
-  assert.equal(infrastructureObjects.some((object) => object.title === 'Мастерская кода'), true);
-  assert.equal(infrastructureObjects.some((object) => object.title === 'Архив структур'), true);
+  assert.equal(infrastructureObjects.length, 54);
+  assert.equal(programHierarchy.filter((entry) => entry.role === 'course_hub').length, 54);
+  assert.equal(programHierarchy.filter((entry) => entry.role === 'atomic_node').length, 0);
+  assert.equal(infrastructureObjects.some((object) => object.title === 'Введение в программирование'), true);
+  assert.equal(infrastructureObjects.some((object) => object.title === 'Выпускной проект / диплом'), true);
   assert.equal(findObjectForNode(programHierarchy, routeFocusNodeId)?.objectKey, infrastructureObjects[0].key);
 
   const routeEdges = await database.select(
@@ -344,55 +346,44 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
     `,
     [personal.id],
   );
-  assert.equal(Number(routeEdges[0].count), 71);
+  assert.equal(
+    Number(routeEdges[0].count),
+    CS_BACHELOR_COURSES.reduce((sum, course) => sum + course.prerequisiteKeys.length, 0),
+  );
 
   const windRose = await nowService.getWindRoseSnapshot(personal.id);
-  assert.equal(windRose.stats.length, 7);
-  assert.equal(windRose.stats.reduce((sum, stat) => sum + stat.branches.length, 0), 8);
+  assert.equal(windRose.stats.length, 8);
+  assert.equal(windRose.stats.reduce((sum, stat) => sum + stat.branches.length, 0), 54);
   assert.equal(windRose.unassignedBranches.length, 0);
   assert.equal(
-    windRose.stats.flatMap((stat) => stat.branches).some((branch) => branch.name === 'Алгоритмы' && branch.node_count === 10),
+    windRose.stats.some((stat) => stat.title === 'Код'),
     true,
   );
   assert.equal(
-    windRose.stats.flatMap((stat) => stat.branches).some((branch) => branch.name === 'Базы данных' && branch.node_count === 28),
+    windRose.stats.some((stat) => stat.title === 'Проекты'),
     true,
   );
 
-  const [tradeoffNode] = await database.select(
+  const [introCourseNode] = await database.select(
     `
-      SELECT nodes.id
+      SELECT nodes.id, nodes.links
       FROM nodes
       JOIN skills ON skills.id = nodes.skill_id
       JOIN directions ON directions.id = skills.direction_id
       JOIN spheres ON spheres.id = directions.sphere_id
       WHERE spheres.campaign_id = ?
-        AND nodes.slug = 'ds-12-data-structure-tradeoffs'
+        AND nodes.slug = 'programming-intro'
       LIMIT 1
     `,
     [personal.id],
   );
-  const tradeoffFocus = await nowService.getNodeFocus(personal.id, tradeoffNode.id, null);
-  assert.equal(tradeoffFocus.mastery.check.isStrictCheckable, false);
-  assert.equal(tradeoffFocus.mastery.check.prompt, 'Сравните массивы, хеш-таблицы и графы для конкретного сценария.');
+  assert.equal(JSON.parse(introCourseNode.links).kind, 'cs_bachelor_course');
+  const introFocus = await nowService.getNodeFocus(personal.id, introCourseNode.id, null);
+  assert.equal(introFocus.mastery.check.isStrictCheckable, false);
+  assert.equal(introFocus.mastery.check.prompt, null);
+  assert.ok(['theory', 'project'].includes(introFocus.node.type));
 
-  await database.execute(
-    'UPDATE nodes SET check_metadata = ? WHERE id = ?',
-    [
-      JSON.stringify({
-        check_method: 'llm_assisted',
-        strict_check_type: 'llm_assisted',
-        prompt: 'Legacy LLM shape',
-        expected_summary: 'Legacy forks should remain LLM-assisted.',
-      }),
-      tradeoffNode.id,
-    ],
-  );
-  const legacyTradeoffFocus = await nowService.getNodeFocus(personal.id, tradeoffNode.id, null);
-  assert.equal(legacyTradeoffFocus.mastery.check.isStrictCheckable, false);
-  assert.equal(legacyTradeoffFocus.mastery.check.prompt, 'Legacy LLM shape');
-
-  const supportEdges = await database.select(
+  const courseSupportEdges = await database.select(
     `
       SELECT source_nodes.slug AS source_slug, target_nodes.slug AS target_slug, dependencies.dependency_type
       FROM node_dependencies dependencies
@@ -408,18 +399,18 @@ test('forked CS bachelor slice feeds Today Map and Wind Rose with real route dat
     [personal.id],
   );
   assert.equal(
-    supportEdges.some(
+    courseSupportEdges.some(
       (edge) =>
-        edge.source_slug === 'mm-03-references-and-aliasing' &&
-        edge.target_slug === 'ds-03-linked-lists',
+        edge.source_slug === 'programming-practice' &&
+        edge.target_slug === 'programming-intro',
     ),
     true,
   );
   assert.equal(
-    supportEdges.some(
+    courseSupportEdges.some(
       (edge) =>
-        edge.source_slug === 'ds-03-linked-lists' &&
-        edge.target_slug === 'mm-03-references-and-aliasing',
+        edge.source_slug === 'programming-intro' &&
+        edge.target_slug === 'programming-practice',
     ),
     false,
   );
@@ -439,13 +430,16 @@ test('CS bachelor second slice becomes the Today focus after foundations are con
     `
       SELECT route_nodes.node_id, route_nodes.knowledge_node_id
       FROM specialization_route_nodes route_nodes
+      JOIN specialization_route_nodes target_route_node ON target_route_node.specialization_id = route_nodes.specialization_id
+      JOIN nodes target_nodes ON target_nodes.id = target_route_node.node_id
       WHERE route_nodes.specialization_id = ?
-        AND route_nodes.route_stage != 'Базы данных'
+        AND target_nodes.slug = 'databases'
+        AND route_nodes.route_order < target_route_node.route_order
       ORDER BY route_nodes.route_order ASC
     `,
     [specialization.id],
   );
-  assert.equal(foundationRouteNodes.length, 44);
+  assert.equal(foundationRouteNodes.length > 0 && foundationRouteNodes.length < 54, true);
   const timestamp = '2026-01-15T00:00:00.000Z';
   for (const [index, routeNode] of foundationRouteNodes.entries()) {
     await database.execute(
@@ -489,11 +483,11 @@ test('CS bachelor second slice becomes the Today focus after foundations are con
   }
 
   const dashboard = await nowService.getDashboard(personal.id);
-  assert.equal(dashboard.primaryRecommendation.nodeTitle, 'Зачем моделировать данные');
-  assert.equal(dashboard.today.planner.currentStage, 'Базы данных');
+  assert.equal(dashboard.primaryRecommendation.nodeTitle, 'Базы данных');
+  assert.equal(dashboard.today.planner.currentStage, '4 семестр');
   assert.deepEqual(
     dashboard.today.planner.nextItems.slice(0, 3).map((item) => item.title),
-    ['Зачем моделировать данные', 'Сущности, атрибуты и связи', 'Первичные ключи'],
+    ['Базы данных', 'Операционные системы', 'Анализ данных'],
   );
 });
 
@@ -528,9 +522,9 @@ test('forked CS bachelor Daily Run selects route weak due tasks and records outc
   const finished = await nowService.finishDailyRun(personal.id);
   assert.equal(finished.status, 'completed');
   assert.equal(finished.state, 'completed');
-  assert.match(finished.summary_note, /Итог дня: 1\/4 закрыто; 3 на повторении/);
+  assert.match(finished.summary_note, new RegExp(`Итог дня: 1/${session.tasks.length} закрыто; ${session.tasks.length - 1} на повторении`));
   assert.match(finished.summary_note, /Прогресс: \+25 XP/);
-  assert.match(finished.summary_note, /Закрыто: Потренировать: Среда программирования/);
+  assert.match(finished.summary_note, /Закрыто: Открыть курс/);
 
   const refreshed = await nowService.getDashboard(personal.id);
   assert.equal(refreshed.todaySession.status, 'completed');
@@ -647,15 +641,15 @@ test('Daily Run retry adds a visible recovery attempt and completion removes the
   );
 
   const finished = await nowService.finishDailyRun(personal.id);
-  assert.match(finished.summary_note, /Итог дня: 1\/6 закрыто; 0 на повторении/);
-  assert.doesNotMatch(finished.summary_note, /Итог дня: 2\/6 закрыто/);
+  assert.match(finished.summary_note, new RegExp(`Итог дня: 1/${afterCompletion.todaySession.tasks.length} закрыто; 0 на повторении`));
+  assert.doesNotMatch(finished.summary_note, new RegExp(`Итог дня: 2/${afterCompletion.todaySession.tasks.length} закрыто`));
 
   const refreshed = await nowService.getDashboard(personal.id);
   const sameWeakSpot = refreshed.today.planner.weakSpots.find((item) => item.node_id === recoveryTask.nodeId);
   assert.equal(sameWeakSpot, undefined);
 });
 
-test('passed focused assessment completes the matching active Daily Run task', async (t) => {
+test('completed CS bachelor course action completes the matching active Daily Run task', async (t) => {
   const { database, campaignStore, nowService } = await setupCampaignService();
   t.after(() => database.close());
 
@@ -665,14 +659,7 @@ test('passed focused assessment completes the matching active Daily Run task', a
   const run = await nowService.startTodaySessionFromPrimaryRecommendation(personal.id);
   const firstTask = run.tasks[0];
 
-  await nowService.submitAssessmentAttempt(personal.id, {
-    node_id: firstTask.nodeId,
-    task_id: `action:${firstTask.actionId}`,
-    check_method: 'strict',
-    target_mastery_level: 'confirmed',
-    checklist_results: { editor: true, run: true, save: true },
-    idempotency_key: `focused-assessment-pass:${personal.id}:${firstTask.actionId}`,
-  });
+  await nowService.completeActionInTodaySession(personal.id, firstTask.actionId);
 
   const refreshed = await nowService.getDashboard(personal.id);
   assert.deepEqual(

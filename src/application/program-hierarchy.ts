@@ -6,6 +6,7 @@ import type {
   ProgramMapLayerState,
   TodaySnapshot,
 } from '../types/app-shell';
+import { isCourseCatalogNodeMetadata } from './course-catalog-metadata.ts';
 
 type RouteItem = NonNullable<TodaySnapshot['route']>['items'][number];
 
@@ -85,6 +86,19 @@ const routeByNodeId = (routeItems: RouteItem[] = []) => {
   return map;
 };
 
+const isCourseNode = (node: NavigationNodeSummary | null | undefined) => {
+  if (!node) {
+    return false;
+  }
+
+  return isCourseCatalogNodeMetadata(node.links);
+};
+
+const isSyntheticCourseDirection = (direction: NavigationDirection) =>
+  normalizeTitle(direction.name) === 'курсы' &&
+  direction.skills.length > 0 &&
+  direction.skills.every((skill) => skill.nodes.length === 1 && isCourseNode(skill.nodes[0]));
+
 export const buildProgramHierarchy = ({
   snapshot,
   campaign = null,
@@ -151,38 +165,43 @@ export const buildProgramHierarchy = ({
 
     for (const direction of sphere.directions) {
       const directionStableId = stableId('direction', direction.id);
-      entries.push({
-        stableId: directionStableId,
-        sourceKind: 'direction',
-        sourceId: direction.id,
-        parentStableId: sphereStableId,
-        role: direction.skills.length > 1 ? 'domain' : 'module',
-        depth: 2,
-        title: direction.name,
-        description: null,
-        atomicDescendantCount: 0,
-        childContainerCount: direction.skills.length,
-        objectKey: null,
-        isInfrastructureObjectCandidate: false,
-        routeNodeIds: [],
-        graphNodeIds: [],
-        reason: direction.skills.length > 1 ? 'groups multiple modules' : 'single module branch',
-      });
-      childContainerCountByEntry.set(sphereStableId, (childContainerCountByEntry.get(sphereStableId) ?? 0) + 1);
+      const collapseCourseDirection = isSyntheticCourseDirection(direction);
+      if (!collapseCourseDirection) {
+        entries.push({
+          stableId: directionStableId,
+          sourceKind: 'direction',
+          sourceId: direction.id,
+          parentStableId: sphereStableId,
+          role: direction.skills.length > 1 ? 'domain' : 'module',
+          depth: 2,
+          title: direction.name,
+          description: null,
+          atomicDescendantCount: 0,
+          childContainerCount: direction.skills.length,
+          objectKey: null,
+          isInfrastructureObjectCandidate: false,
+          routeNodeIds: [],
+          graphNodeIds: [],
+          reason: direction.skills.length > 1 ? 'groups multiple modules' : 'single module branch',
+        });
+        childContainerCountByEntry.set(sphereStableId, (childContainerCountByEntry.get(sphereStableId) ?? 0) + 1);
+      }
 
       for (const skill of direction.skills) {
         const skillStableId = stableId('skill', skill.id);
+        const isCourseHubSkill = skill.nodes.length === 1 && isCourseNode(skill.nodes[0]);
+        const hideCourseWrapper = collapseCourseDirection && isCourseHubSkill;
         const isLargeObjectCandidate = skill.nodes.length >= MIN_OBJECT_ATOMIC_DESCENDANTS;
         const hasKnownObjectMapping = hasKnownInfrastructureObjectMapping(skill.name);
-        const isObjectCandidate = isLargeObjectCandidate || (skill.nodes.length > 0 && hasKnownObjectMapping);
+        const isObjectCandidate = isCourseHubSkill || isLargeObjectCandidate || (skill.nodes.length > 0 && hasKnownObjectMapping);
         const objectKey = isObjectCandidate ? `skill:${skill.id}:${objectSlug(skill.name)}` : null;
         entries.push({
           stableId: skillStableId,
           sourceKind: 'skill',
           sourceId: skill.id,
-          parentStableId: directionStableId,
+          parentStableId: hideCourseWrapper ? null : directionStableId,
           role: isObjectCandidate ? 'infrastructure_object' : 'module',
-          depth: 3,
+          depth: hideCourseWrapper ? 2 : 3,
           title: skill.name,
           description: null,
           atomicDescendantCount: skill.nodes.length,
@@ -193,24 +212,29 @@ export const buildProgramHierarchy = ({
           graphNodeIds: skill.nodes.map((node) => node.id),
           reason: isLargeObjectCandidate
             ? 'skill has enough atomic descendants for a city object'
-            : hasKnownObjectMapping
+            : isCourseHubSkill
+              ? 'course-level hub in the bachelor catalog'
+              : hasKnownObjectMapping
               ? 'calibrated program object mapping'
               : skill.nodes.length > 0
                 ? 'small module grouped under parent'
                 : 'empty module',
         });
-        childContainerCountByEntry.set(directionStableId, (childContainerCountByEntry.get(directionStableId) ?? 0) + 1);
+        if (!hideCourseWrapper) {
+          childContainerCountByEntry.set(directionStableId, (childContainerCountByEntry.get(directionStableId) ?? 0) + 1);
+        }
 
         for (const node of skill.nodes) {
           const nodeStableId = stableId('node', node.id);
           const routeItem = routeItemsByNodeId.get(node.id);
+          const courseNode = isCourseNode(node);
           entries.push({
             stableId: nodeStableId,
             sourceKind: 'node',
             sourceId: node.id,
-            parentStableId: skillStableId,
-            role: 'atomic_node',
-            depth: 4,
+            parentStableId: hideCourseWrapper ? sphereStableId : skillStableId,
+            role: courseNode ? 'course_hub' : 'atomic_node',
+            depth: hideCourseWrapper ? 2 : 4,
             title: node.title,
             description: null,
             atomicDescendantCount: 1,
@@ -219,10 +243,14 @@ export const buildProgramHierarchy = ({
             isInfrastructureObjectCandidate: false,
             routeNodeIds: routeItem ? [routeItem.id] : [],
             graphNodeIds: [node.id],
-            reason: 'leaf learning/check unit',
+            reason: courseNode ? 'course-level catalog hub' : 'leaf learning/check unit',
           });
 
-          for (const ancestorId of [rootStableId, sphereStableId, directionStableId, skillStableId]) {
+          if (hideCourseWrapper) {
+            childContainerCountByEntry.set(sphereStableId, (childContainerCountByEntry.get(sphereStableId) ?? 0) + 1);
+          }
+
+          for (const ancestorId of collapseCourseDirection ? [rootStableId, sphereStableId, skillStableId] : [rootStableId, sphereStableId, directionStableId, skillStableId]) {
             registerDescendant(ancestorId, node);
           }
         }
@@ -235,7 +263,8 @@ export const buildProgramHierarchy = ({
     const routeIds = routeNodeIdsByEntry.get(entry.stableId);
     return {
       ...entry,
-      atomicDescendantCount: entry.role === 'atomic_node' ? 1 : descendants?.size ?? entry.atomicDescendantCount,
+      atomicDescendantCount:
+        entry.role === 'atomic_node' || entry.role === 'course_hub' ? 1 : descendants?.size ?? entry.atomicDescendantCount,
       childContainerCount: childContainerCountByEntry.get(entry.stableId) ?? entry.childContainerCount,
       routeNodeIds: entry.routeNodeIds.length ? entry.routeNodeIds : [...(routeIds ?? [])],
       graphNodeIds: entry.graphNodeIds.length ? entry.graphNodeIds : [...(descendants ?? [])],
@@ -254,10 +283,17 @@ export const findObjectForNode = (entries: ProgramHierarchyEntry[], nodeId: numb
   return entries.find((entry) => entry.objectKey === nodeEntry.objectKey && entry.role === 'infrastructure_object') ?? null;
 };
 
+const findEntryForNode = (entries: ProgramHierarchyEntry[], nodeId: number | null | undefined) => {
+  if (nodeId == null) {
+    return null;
+  }
+  return entries.find((entry) => entry.sourceKind === 'node' && Number(entry.sourceId) === Number(nodeId)) ?? null;
+};
+
 export const objectNodeIds = (entries: ProgramHierarchyEntry[], objectKey: string | null | undefined) =>
   new Set(
     entries
-      .filter((entry) => entry.role === 'atomic_node' && entry.objectKey === objectKey)
+      .filter((entry) => (entry.role === 'atomic_node' || entry.role === 'course_hub') && entry.objectKey === objectKey)
       .map((entry) => Number(entry.sourceId))
       .filter((id) => Number.isFinite(id)),
   );
@@ -274,12 +310,16 @@ export const buildInitialProgramMapLayerState = ({
 }): ProgramMapLayerState => {
   const objects = entries.filter((entry) => entry.role === 'infrastructure_object');
   const routeObject = findObjectForNode(entries, routeFocusNodeId);
+  const routeNodeEntry = findEntryForNode(entries, routeFocusNodeId);
+  const routeFolderEntry = routeNodeEntry?.parentStableId
+    ? entries.find((entry) => entry.stableId === routeNodeEntry.parentStableId) ?? null
+    : null;
   const fallbackReason: ProgramMapLayerFallbackReason = objects.length === 0 ? 'no_objects' : null;
   return {
     layer: 'city',
     selectedObjectKey: routeObject?.objectKey ?? objects[0]?.objectKey ?? null,
-    selectedFolderStableId: routeObject?.stableId ?? objects[0]?.stableId ?? null,
-    selectedEntryStableId: routeObject?.stableId ?? objects[0]?.stableId ?? null,
+    selectedFolderStableId: routeFolderEntry?.stableId ?? routeObject?.stableId ?? objects[0]?.stableId ?? null,
+    selectedEntryStableId: routeNodeEntry?.stableId ?? routeObject?.stableId ?? objects[0]?.stableId ?? null,
     selectedNodeId: routeFocusNodeId,
     routeFocusNodeId,
     fallbackReason,

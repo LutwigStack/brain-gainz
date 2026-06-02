@@ -1,6 +1,7 @@
 import { createUtcTimestamp } from '../stores/store-helpers.js';
 import { seedCampaignTemplateCatalog } from './campaign-template-catalog-seed.js';
 import { seedCsBachelorTemplate } from './cs-bachelor-template-seed.js';
+import { seedNlhCashTemplate } from './nlh-cash-template-seed.js';
 
 export const DEVELOPER_MAIN_CAMPAIGN_SLUG = 'developer-main';
 
@@ -804,6 +805,7 @@ export const runCampaignMigrations = async (database) => {
   await repairCampaignModeForCurrentSpecializations(database);
   await backfillLegacyMasteryEvents(database);
   await seedCsBachelorTemplate(database);
+  await seedNlhCashTemplate(database);
   await seedCampaignTemplateCatalog(database);
   await backfillCampaignTemplateSources(database);
 
