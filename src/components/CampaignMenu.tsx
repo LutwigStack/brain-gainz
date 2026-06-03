@@ -4,6 +4,7 @@ import {
   MoreHorizontal,
   Play,
   Plus,
+  RefreshCw,
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
@@ -25,7 +26,7 @@ import {
   resolveCampaignCardAsset,
 } from '../assets/referenceStyleAssets';
 import type { CampaignListSnapshot, CampaignSummary } from '../types/app-shell';
-import { splitTemplateCampaignsForMenu } from './campaign-menu-model';
+import { findTemplateForPersonalCopy, splitTemplateCampaignsForMenu } from './campaign-menu-model';
 
 interface CampaignMenuNotice {
   message: string;
@@ -43,6 +44,7 @@ interface CampaignMenuProps {
   onNewCampaignNameChange: (value: string) => void;
   onOpenCampaign: (campaign: CampaignSummary) => void;
   onForkTemplate: (campaign: CampaignSummary) => void;
+  onUpdateCampaignFromTemplate: (campaign: CampaignSummary, template: CampaignSummary) => void;
   onCreateCampaign: () => void;
   onCreateCampaignDetailed: () => void;
   onArchiveCampaign: (campaign: CampaignSummary) => void;
@@ -303,12 +305,14 @@ const CampaignSaveSlot = ({
   identityCampaign = campaign,
   isMutating,
   onOpen,
+  onUpdateFromTemplate,
   onArchive,
 }: {
   campaign: CampaignSummary;
   identityCampaign?: CampaignSummary;
   isMutating: boolean;
   onOpen: () => void;
+  onUpdateFromTemplate?: () => void;
   onArchive: () => void;
 }) => {
   const progress = campaignProgressPercent(campaign);
@@ -406,6 +410,18 @@ const CampaignSaveSlot = ({
               <MoreHorizontal size={17} />
             </summary>
             <div className="campaign-save-slot__more-menu">
+              {onUpdateFromTemplate ? (
+                <PixelButton
+                  tone="ghost"
+                  onClick={onUpdateFromTemplate}
+                  disabled={isMutating}
+                  aria-label={`Обновить программу ${campaign.name} до новой версии`}
+                  className="campaign-save-slot__update"
+                  style={{ minHeight: 32, padding: '6px 10px', gap: 6 }}
+                >
+                  <RefreshCw size={14} /> Обновить программу
+                </PixelButton>
+              ) : null}
               <PixelButton
                 tone="ghost"
                 onClick={onArchive}
@@ -662,6 +678,7 @@ export const CampaignMenu = ({
   onNewCampaignNameChange,
   onOpenCampaign,
   onForkTemplate,
+  onUpdateCampaignFromTemplate,
   onCreateCampaign,
   onCreateCampaignDetailed,
   onArchiveCampaign,
@@ -674,11 +691,14 @@ export const CampaignMenu = ({
   const [selectedPrimaryCampaignId, setSelectedPrimaryCampaignId] = useState<number | null>(null);
   const templateCampaigns = sortTemplateCampaigns(activeCampaigns.filter((campaign) => campaign.type === 'template'));
   const templateCampaignById = new Map(templateCampaigns.map((campaign) => [Number(campaign.id), campaign]));
-  const { availableTemplates, archivedTemplateCopies } = splitTemplateCampaignsForMenu({
+  const { availableTemplates, archivedTemplateCopies, upgradeableTemplateCopies } = splitTemplateCampaignsForMenu({
     templates: templateCampaigns,
     activeUserCampaigns: userCampaigns,
     archivedCampaigns,
   });
+  const upgradeTemplateByCampaignId = new Map(
+    upgradeableTemplateCopies.map(({ campaign, template }) => [Number(campaign.id), template]),
+  );
   const selectedPrimaryCampaign =
     selectedPrimaryCampaignId == null
       ? null
@@ -687,7 +707,11 @@ export const CampaignMenu = ({
   const primaryCampaignIdentity =
     primaryCampaign?.source_template_id != null
       ? templateCampaignById.get(Number(primaryCampaign.source_template_id)) ?? primaryCampaign
-      : primaryCampaign;
+      : primaryCampaign
+        ? findTemplateForPersonalCopy(primaryCampaign, templateCampaigns) ?? primaryCampaign
+        : primaryCampaign;
+  const primaryCampaignUpgradeTemplate =
+    primaryCampaign == null ? null : upgradeTemplateByCampaignId.get(Number(primaryCampaign.id)) ?? null;
   const secondaryUserCampaigns = primaryCampaign
     ? userCampaigns.filter((campaign) => campaign.id !== primaryCampaign.id)
     : userCampaigns;
@@ -743,6 +767,11 @@ export const CampaignMenu = ({
               identityCampaign={primaryCampaignIdentity ?? primaryCampaign}
               isMutating={mutationDisabled}
               onOpen={() => onOpenCampaign(primaryCampaign)}
+              onUpdateFromTemplate={
+                primaryCampaignUpgradeTemplate
+                  ? () => onUpdateCampaignFromTemplate(primaryCampaign, primaryCampaignUpgradeTemplate)
+                  : undefined
+              }
               onArchive={() => onArchiveCampaign(primaryCampaign)}
             />
           ) : null}

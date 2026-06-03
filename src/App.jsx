@@ -481,6 +481,18 @@ export default function App() {
     }
   };
 
+  const handleUpdateCampaignFromTemplate = async (campaign, template) => {
+    if (
+      !globalThis.confirm(
+        `Создать новую версию программы “${template.name}”? Старая версия “${campaign.name}” останется доступной, прогресс не удалится.`,
+      )
+    ) {
+      return;
+    }
+
+    await handleForkTemplateCampaign(template);
+  };
+
   const handleArchiveCampaign = async (campaign) => {
     if (
       requiresAuthorConfirmation('archive-campaign') &&
@@ -2527,6 +2539,7 @@ export default function App() {
             onNewCampaignNameChange={setNewCampaignName}
             onOpenCampaign={handleOpenCampaign}
             onForkTemplate={handleForkTemplateCampaign}
+            onUpdateCampaignFromTemplate={handleUpdateCampaignFromTemplate}
             onCreateCampaign={handleCreateCampaign}
             onCreateCampaignDetailed={() => handleCreateCampaign({ openAuthorSettings: true })}
             onArchiveCampaign={handleArchiveCampaign}

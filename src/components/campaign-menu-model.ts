@@ -17,6 +17,28 @@ export const isPersonalCopyOfTemplate = (campaign: CampaignSummary, template: Ca
   return normalizeTemplateKey(campaign.name) === normalizeTemplateKey(template.name);
 };
 
+export const findTemplateForPersonalCopy = (campaign: CampaignSummary, templates: CampaignSummary[]) =>
+  templates.find((template) => isPersonalCopyOfTemplate(campaign, template)) ?? null;
+
+export const getTemplateUpgradeForCampaign = (campaign: CampaignSummary, templates: CampaignSummary[]) => {
+  const template = findTemplateForPersonalCopy(campaign, templates);
+  if (!template) {
+    return null;
+  }
+
+  const campaignNodeCount = Number(campaign.node_count ?? 0);
+  const templateNodeCount = Number(template.node_count ?? 0);
+  if (templateNodeCount <= campaignNodeCount) {
+    return null;
+  }
+
+  return {
+    campaign,
+    template,
+    reason: campaign.source_template_id == null ? 'legacy-copy' : 'newer-template',
+  } as const;
+};
+
 export const splitTemplateCampaignsForMenu = ({
   templates,
   activeUserCampaigns,
@@ -28,10 +50,19 @@ export const splitTemplateCampaignsForMenu = ({
 }) => {
   const availableTemplates: CampaignSummary[] = [];
   const archivedTemplateCopies: Array<{ template: CampaignSummary; campaign: CampaignSummary }> = [];
+  const upgradeableTemplateCopies: Array<{
+    template: CampaignSummary;
+    campaign: CampaignSummary;
+    reason: 'legacy-copy' | 'newer-template';
+  }> = [];
 
   for (const template of templates) {
     const activeCopy = activeUserCampaigns.find((campaign) => isPersonalCopyOfTemplate(campaign, template));
     if (activeCopy) {
+      const upgrade = getTemplateUpgradeForCampaign(activeCopy, [template]);
+      if (upgrade) {
+        upgradeableTemplateCopies.push(upgrade);
+      }
       continue;
     }
 
@@ -44,5 +75,5 @@ export const splitTemplateCampaignsForMenu = ({
     availableTemplates.push(template);
   }
 
-  return { availableTemplates, archivedTemplateCopies };
+  return { availableTemplates, archivedTemplateCopies, upgradeableTemplateCopies };
 };

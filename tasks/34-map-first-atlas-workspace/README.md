@@ -2,7 +2,7 @@
 
 ## Status
 
-`planned`
+`done`
 
 ## Goal
 
@@ -163,14 +163,14 @@ Excludes:
 
 ## Workstreams
 
-- `planned` - [workstreams/01-layout-rules-and-state-model.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/01-layout-rules-and-state-model.md)
-- `planned` - [workstreams/02-compact-map-hud.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/02-compact-map-hud.md)
-- `planned` - [workstreams/03-map-focus-mode.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/03-map-focus-mode.md)
-- `planned` - [workstreams/04-inspector-drawer.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/04-inspector-drawer.md)
-- `planned` - [workstreams/05-floating-node-card.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/05-floating-node-card.md)
-- `planned` - [workstreams/06-bottom-route-strip.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/06-bottom-route-strip.md)
-- `planned` - [workstreams/07-mobile-map-first-flow.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/07-mobile-map-first-flow.md)
-- `planned` - [workstreams/08-browser-qa.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/08-browser-qa.md)
+- `done` - [workstreams/01-layout-rules-and-state-model.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/01-layout-rules-and-state-model.md)
+- `done` - [workstreams/02-compact-map-hud.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/02-compact-map-hud.md)
+- `done` - [workstreams/03-map-focus-mode.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/03-map-focus-mode.md)
+- `done` - [workstreams/04-inspector-drawer.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/04-inspector-drawer.md)
+- `done` - [workstreams/05-floating-node-card.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/05-floating-node-card.md)
+- `done` - [workstreams/06-bottom-route-strip.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/06-bottom-route-strip.md)
+- `done` - [workstreams/07-mobile-map-first-flow.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/07-mobile-map-first-flow.md)
+- `done` - [workstreams/08-browser-qa.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/34-map-first-atlas-workspace/workstreams/08-browser-qa.md)
 
 ## Suggested Sequence
 

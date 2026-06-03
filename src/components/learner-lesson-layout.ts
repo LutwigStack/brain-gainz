@@ -7,6 +7,7 @@ export type FocusedLearnerLessonScreenInput = {
 export type NavigationLessonLayoutInput = {
   isFocusedLearnerLessonScreen: boolean;
   isInspectorCollapsed: boolean;
+  isMapFirstWorkspace?: boolean;
 };
 
 export type PassedAssessmentResultStateInput = {
@@ -44,13 +45,17 @@ export const shouldUseFocusedLearnerLessonScreen = ({
 export const getNavigationMapShellClassName = ({
   isFocusedLearnerLessonScreen,
   isInspectorCollapsed,
+  isMapFirstWorkspace = false,
 }: NavigationLessonLayoutInput) =>
-  isFocusedLearnerLessonScreen || isInspectorCollapsed ? singleColumnMapShellClassName : splitMapShellClassName;
+  isFocusedLearnerLessonScreen || isInspectorCollapsed || isMapFirstWorkspace
+    ? singleColumnMapShellClassName
+    : splitMapShellClassName;
 
 export const shouldShowNavigationInspectorRail = ({
   isFocusedLearnerLessonScreen,
   isInspectorCollapsed,
-}: NavigationLessonLayoutInput) => !isFocusedLearnerLessonScreen && !isInspectorCollapsed;
+  isMapFirstWorkspace = false,
+}: NavigationLessonLayoutInput) => !isFocusedLearnerLessonScreen && !isInspectorCollapsed && !isMapFirstWorkspace;
 
 export const getPassedAssessmentResultState = ({
   targetMasteryLabel,

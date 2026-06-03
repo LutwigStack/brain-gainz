@@ -464,6 +464,8 @@ export const NavigationView = ({
   const [programMapLayer, setProgramMapLayer] = useState<ProgramMapLayerId>('city');
   const [selectedProgramObjectKey, setSelectedProgramObjectKey] = useState<string | null>(null);
   const [selectedProgramFolderStableId, setSelectedProgramFolderStableId] = useState<string | null>(null);
+  const [isMapDrawerOpen, setIsMapDrawerOpen] = useState(false);
+  const [isMapFocusMode, setIsMapFocusMode] = useState(false);
   const [layerParentNodeId, setLayerParentNodeId] = useState<LayerParentSelection>(null);
   const [canvasContextMenu, setCanvasContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [newStructureName, setNewStructureName] = useState('');
@@ -641,12 +643,14 @@ export const NavigationView = ({
 
   const openAssessmentStep = () => {
     resetAssessmentDraft();
+    setIsMapDrawerOpen(true);
     handleInspectorModeChange('assessment');
   };
 
   const startAssessmentRetry = (attemptId: number | null | undefined) => {
     resetAssessmentDraft();
     setRetryingAssessmentAttemptId(attemptId ?? null);
+    setIsMapDrawerOpen(true);
     handleInspectorModeChange('assessment');
   };
 
@@ -1455,6 +1459,10 @@ export const NavigationView = ({
         }
         return;
       }
+    }
+
+    if (!canUseAuthorTools && programMapLayer === 'knowledge_map') {
+      setIsMapDrawerOpen(true);
     }
 
     onSelectNode(node);
@@ -3116,6 +3124,7 @@ export const NavigationView = ({
   const courseCatalogCourseCount = programHierarchy.filter((entry) => entry.role === 'course_hub').length;
   const isCourseCatalogProgram = courseCatalogCourseCount > 0;
   const isSkillAtlasMap = isProgramObjectKnowledgeMap;
+  const isLearnerKnowledgeMapWorkspace = isProgramObjectKnowledgeMap;
   const programObjectCanvasNodeIds =
     isProgramObjectKnowledgeMap && selectedProgramObject && !isSkillAtlasMap
       ? [...selectedProgramObjectNodeIds]
@@ -3152,6 +3161,41 @@ export const NavigationView = ({
     isRouteFilterActive ? 'route' : 'map',
     canvasVisibleNodeIds?.join(',') ?? 'all',
   ].join(':');
+
+  useEffect(() => {
+    if (!isLearnerKnowledgeMapWorkspace) {
+      setIsMapFocusMode(false);
+      setIsMapDrawerOpen(false);
+    }
+  }, [isLearnerKnowledgeMapWorkspace]);
+
+  useEffect(() => {
+    if (!isMapFocusMode && !isMapDrawerOpen) {
+      return undefined;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      if (isMapFocusMode) {
+        setIsMapFocusMode(false);
+        return;
+      }
+
+      setIsMapDrawerOpen(false);
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isMapDrawerOpen, isMapFocusMode]);
+
+  useEffect(() => {
+    const shouldUseFocusChrome = isLearnerKnowledgeMapWorkspace && isMapFocusMode;
+    document.body.classList.toggle('map-first-focus-mode', shouldUseFocusChrome);
+    return () => document.body.classList.remove('map-first-focus-mode');
+  }, [isLearnerKnowledgeMapWorkspace, isMapFocusMode]);
 
   const openProgramObject = (objectKey: string, layer: ProgramMapLayerId = 'knowledge_map') => {
     const object = programObjects.find((item) => item.key === objectKey);
@@ -3714,19 +3758,25 @@ export const NavigationView = ({
     canUseAuthorTools,
     inspectorMode,
     hasFocusedNode: Boolean(focus?.node),
-  });
+  }) && !isLearnerKnowledgeMapWorkspace;
   const mapShellClassName = getNavigationMapShellClassName({
     isFocusedLearnerLessonScreen: showFocusedLearnerCheckFlow,
     isInspectorCollapsed,
+    isMapFirstWorkspace: isLearnerKnowledgeMapWorkspace,
   });
   const showNavigationInspectorRail = shouldShowNavigationInspectorRail({
     isFocusedLearnerLessonScreen: showFocusedLearnerCheckFlow,
     isInspectorCollapsed,
+    isMapFirstWorkspace: isLearnerKnowledgeMapWorkspace,
   });
   const inspectorRailClassName =
     'navigation-inspector-rail min-w-0 max-w-full self-start xl:sticky xl:top-3 xl:justify-self-end xl:w-[380px] 2xl:w-[420px]';
   const mapCanvasClassName = `${
-    focus?.node && !isInspectorCollapsed ? 'h-[340px]' : 'h-[420px]'
+    isLearnerKnowledgeMapWorkspace
+      ? 'h-[min(72dvh,860px)]'
+      : focus?.node && !isInspectorCollapsed
+        ? 'h-[340px]'
+        : 'h-[420px]'
   } navigation-map-canvas min-w-0 max-w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] sm:h-[clamp(680px,calc(100dvh-220px),1040px)]`;
 
   return (
@@ -3740,13 +3790,20 @@ export const NavigationView = ({
       ) : null}
 
       <section className={mapShellClassName}>
-        <div className="navigation-map-workspace min-w-0 space-y-4">
+        <div
+          className={`navigation-map-workspace min-w-0 space-y-4${
+            isLearnerKnowledgeMapWorkspace ? ' navigation-map-workspace--atlas-first' : ''
+          }${isMapFocusMode ? ' navigation-map-workspace--focus-mode' : ''}${
+            isMapDrawerOpen ? ' navigation-map-workspace--drawer-open' : ''
+          }`}
+        >
           {showFocusedLearnerCheckFlow && focus?.node ? (
             <div className="navigation-focused-lesson-screen">
               {renderLearnerFocusedCheckFlow(focus)}
             </div>
           ) : (
           <PixelSurface frame="secondary" padding="md" className="navigation-map-panel">
+            {!isLearnerKnowledgeMapWorkspace ? (
             <PixelPanelHeader
               eyebrow={canUseAuthorTools ? 'Граф' : isSkillAtlasMap ? 'Атлас' : 'Карта'}
               title={
@@ -3784,11 +3841,12 @@ export const NavigationView = ({
                 </div>
               }
             />
+            ) : null}
 
             <div
               className={`navigation-map-body mt-3 min-w-0 space-y-3${
                 showFocusedLearnerCheckFlow ? ' navigation-map-body--focused-check' : ''
-              }`}
+              }${isLearnerKnowledgeMapWorkspace ? ' navigation-map-body--map-first' : ''}`}
             >
               {canUseAuthorTools || canEditGraph ? (
               <PixelSurface frame="secondary" padding="sm" className="navigation-map-controls navigation-map-structure-controls">
@@ -4058,6 +4116,27 @@ export const NavigationView = ({
                     >
                       <Compass size={14} /> К текущему
                     </PixelButton>
+                    {isLearnerKnowledgeMapWorkspace ? (
+                      <>
+                        <PixelButton
+                          tone={isMapDrawerOpen ? 'accent' : 'ghost'}
+                          onClick={() => setIsMapDrawerOpen((value) => !value)}
+                          disabled={!focus?.node}
+                          aria-expanded={isMapDrawerOpen}
+                          aria-controls="navigation-map-drawer"
+                          style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                        >
+                          <Eye size={14} /> {isMapDrawerOpen ? 'Скрыть' : 'Детали'}
+                        </PixelButton>
+                        <PixelButton
+                          tone={isMapFocusMode ? 'accent' : 'ghost'}
+                          onClick={() => setIsMapFocusMode((value) => !value)}
+                          style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                        >
+                          <Target size={14} /> {isMapFocusMode ? 'Выйти' : 'Фокус'}
+                        </PixelButton>
+                      </>
+                    ) : null}
                   </div>
                 </div>
                 )}
@@ -4484,7 +4563,7 @@ export const NavigationView = ({
                 renderLearnerFocusedCheckFlow(focus)
               ) : !canUseAuthorTools && programMapLayer !== 'knowledge_map' ? null : (
               <>
-                {!canUseAuthorTools && selectedProgramObject ? (
+                {!canUseAuthorTools && selectedProgramObject && !isLearnerKnowledgeMapWorkspace ? (
                   <PixelSurface frame="inset" padding="sm" className="program-object-scope">
                     <div className="program-object-scope__header">
                       <div>
@@ -4673,6 +4752,85 @@ export const NavigationView = ({
                   className={mapCanvasClassName}
                 />
               </PixelSurface>
+              {isLearnerKnowledgeMapWorkspace ? (
+                <div className="navigation-map-mobile-route-strip" aria-label="Текущий и следующий шаг маршрута">
+                  {routeOrientationItems.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      className={`navigation-learner-map-overview__orientation-item navigation-learner-map-overview__orientation-item--${item.key}`}
+                      onClick={() => {
+                        if (item.key === 'current' && currentRouteOrientationItem) {
+                          selectRouteItemOnMap(currentRouteOrientationItem);
+                          return;
+                        }
+
+                        if (item.key === 'next' && nextRouteItem) {
+                          selectRouteItemOnMap(nextRouteItem);
+                          return;
+                        }
+
+                        runMapCommand('fit-overview');
+                      }}
+                    >
+                      <span>{item.label}</span>
+                      <strong>{item.title}</strong>
+                      <small>{item.meta}</small>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {isLearnerKnowledgeMapWorkspace ? (
+                <aside
+                  id="navigation-map-drawer"
+                  className={`navigation-map-drawer${isMapDrawerOpen ? ' navigation-map-drawer--open' : ''}`}
+                  aria-hidden={!isMapDrawerOpen}
+                >
+                  <div className="navigation-map-drawer__header">
+                    <div className="min-w-0">
+                      <PixelText as="span" size="xs" color="accent" uppercase>
+                        {isMapDrawerOpen ? 'Детали' : 'Выбранный узел'}
+                      </PixelText>
+                      <PixelText as="h3" readable size="md" style={{ margin: 0 }}>
+                        {focus?.node?.title ?? selectedProgramObject?.title ?? currentCampaign?.name ?? 'Карта знаний'}
+                      </PixelText>
+                    </div>
+                    <div className="navigation-map-drawer__actions">
+                      {focus?.node ? (
+                        <PixelButton
+                          tone="accent"
+                          onClick={() => setIsMapDrawerOpen(true)}
+                          style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                        >
+                          <ChevronRight size={14} /> Открыть
+                        </PixelButton>
+                      ) : null}
+                      <PixelButton
+                        tone="ghost"
+                        onClick={() => setIsMapDrawerOpen((value) => !value)}
+                        style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                      >
+                        {isMapDrawerOpen ? 'Свернуть' : 'Детали'}
+                      </PixelButton>
+                    </div>
+                  </div>
+                  {isMapDrawerOpen ? (
+                    <div className="navigation-map-drawer__body">
+                      {inspectorMode === 'assessment' && focus?.node
+                        ? renderLearnerFocusedCheckFlow(focus)
+                        : focus
+                          ? renderLearnerLessonPanel(focus)
+                          : (
+                            <PixelSurface frame="ghost" padding="sm">
+                              <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: 0 }}>
+                                Выберите узел на карте, чтобы открыть занятие или проверку.
+                              </PixelText>
+                            </PixelSurface>
+                          )}
+                    </div>
+                  ) : null}
+                </aside>
+              ) : null}
               </>
               )}
 

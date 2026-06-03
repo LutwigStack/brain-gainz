@@ -95,6 +95,33 @@ test('focused lesson layout keeps the map shell single-column', () => {
   );
 });
 
+test('map-first atlas workspace keeps learner map single-column with drawer details', () => {
+  assert.match(
+    getNavigationMapShellClassName({
+      isFocusedLearnerLessonScreen: false,
+      isInspectorCollapsed: false,
+      isMapFirstWorkspace: true,
+    }),
+    /xl:grid-cols-1/,
+  );
+  assert.doesNotMatch(
+    getNavigationMapShellClassName({
+      isFocusedLearnerLessonScreen: false,
+      isInspectorCollapsed: false,
+      isMapFirstWorkspace: true,
+    }),
+    /380px/,
+  );
+  assert.equal(
+    shouldShowNavigationInspectorRail({
+      isFocusedLearnerLessonScreen: false,
+      isInspectorCollapsed: false,
+      isMapFirstWorkspace: true,
+    }),
+    false,
+  );
+});
+
 test('passed assessment result puts progress XP and next step first', () => {
   assert.deepEqual(
     getPassedAssessmentResultState({
