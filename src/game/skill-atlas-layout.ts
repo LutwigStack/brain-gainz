@@ -173,7 +173,7 @@ const DOMAIN_RING_RADIUS = 260;
 const COURSE_RING_RADIUS = 500;
 const TOPIC_RING_RADIUS = 720;
 const COURSE_DENSE_MIN_ANGLE_STEP = 0.12;
-const COURSE_DENSE_MAX_SPAN = Math.PI * 0.68;
+const COURSE_DENSE_MAX_SPAN = Math.PI * 1.4;
 const COURSE_NODE_RADIAL_STAGGER = 58;
 const COURSE_NODE_OUTER_STEP = 86;
 const ATOMIC_CLUSTER_RADIUS = 150;
@@ -238,7 +238,7 @@ const distributeAngle = (startAngle: number, endAngle: number, index: number, to
     return startAngle + (endAngle - startAngle) / 2;
   }
 
-  const padding = Math.min((endAngle - startAngle) * 0.18, 0.22);
+  const padding = Math.min((endAngle - startAngle) * 0.05, 0.05);
   return startAngle + padding + ((endAngle - startAngle - padding * 2) * index) / (total - 1);
 };
 
