@@ -8,6 +8,7 @@ import { BrainGainzScene } from '../brain-gainz-scene';
 import { createGameViewModel } from '../create-game-view-model';
 import { createQuadraticRoute, getPointToPolylineDistance } from '../edge-geometry';
 import { getNodeGateAnchor, resolveNodeBox } from '../layers/map-layer';
+import { isUnhandledMapCameraCommand, type MapCameraCommand } from '../map-camera-command';
 import { applyRouteOverlayToModel, type RouteNodeCanvasMetadata } from '../route-overlay-model';
 import { applySkillAtlasLayoutToModel } from '../skill-atlas-layout';
 import type { CanvasInteractionMode, GameBounds, GameMapPresentation, GamePoint, GameSceneModel } from '../types';
@@ -33,11 +34,12 @@ interface GameMapCanvasProps {
   canvasMode?: 'free' | 'layers';
   visibleNodeIds?: number[] | null;
   forceNodeLabels?: boolean;
+  maxFitZoom?: number;
   minFitZoom?: number;
   routeNodeMetadata?: RouteNodeCanvasMetadata[] | null;
   presentation?: GameMapPresentation;
   programTitle?: string | null;
-  mapCommand?: { id: number; type: 'focus-node' | 'fit-graph' | 'fit-overview' | 'center-layer' | 'reset-camera' } | null;
+  mapCommand?: MapCameraCommand | null;
   onCreateEdge?: (input: {
     sourceNodeId: number;
     targetNodeId: number;
@@ -215,6 +217,7 @@ export const GameMapCanvas = ({
   canvasMode = 'free',
   visibleNodeIds = null,
   forceNodeLabels = false,
+  maxFitZoom,
   minFitZoom,
   routeNodeMetadata = null,
   presentation = 'graph',
@@ -241,6 +244,7 @@ export const GameMapCanvas = ({
   const selectedEdgeIdRef = useRef(selectedEdgeId);
   const connectSourceNodeIdRef = useRef(connectSourceNodeId);
   const connectEdgeTypeRef = useRef(connectEdgeType);
+  const lastHandledMapCommandIdRef = useRef<number | null>(null);
   const lastConnectFallbackRef = useRef<{
     sourceNodeId: number;
     targetNodeId: number;
@@ -358,9 +362,10 @@ export const GameMapCanvas = ({
   );
   const shouldRenderOverviewRef = useRef(shouldRenderOverview);
   const forceNodeLabelsRef = useRef(forceNodeLabels);
+  const maxFitZoomRef = useRef(maxFitZoom);
   const minFitZoomRef = useRef(minFitZoom);
   const presentationRef = useRef(presentation);
-  const viewportModeKey = `${presentation}:${visibleSphereId ?? 'all'}:${visibleSkillId ?? 'all'}:${canvasMode}:${shouldRenderOverview ? 'overview' : 'detail'}:${visibleNodeIds?.join(',') ?? 'all'}:${minFitZoom ?? 'auto'}`;
+  const viewportModeKey = `${presentation}:${visibleSphereId ?? 'all'}:${visibleSkillId ?? 'all'}:${canvasMode}:${shouldRenderOverview ? 'overview' : 'detail'}:${visibleNodeIds?.join(',') ?? 'all'}:${minFitZoom ?? 'auto'}:${maxFitZoom ?? 'auto'}`;
   const getNodeRenderPosition = useCallback(
     (node: GameSceneModel['nodes'][number]) => (shouldRenderOverview ? node.overviewPosition : null) ?? node.position,
     [shouldRenderOverview],
@@ -411,9 +416,10 @@ export const GameMapCanvas = ({
 
   useEffect(() => {
     forceNodeLabelsRef.current = forceNodeLabels;
+    maxFitZoomRef.current = maxFitZoom;
     minFitZoomRef.current = minFitZoom;
     presentationRef.current = presentation;
-  }, [forceNodeLabels, minFitZoom, presentation]);
+  }, [forceNodeLabels, maxFitZoom, minFitZoom, presentation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -463,6 +469,7 @@ export const GameMapCanvas = ({
             connectEdgeType: connectEdgeTypeRef.current,
             overviewMode: shouldRenderOverviewRef.current,
             forceNodeLabels: forceNodeLabelsRef.current,
+            maxFitZoom: maxFitZoomRef.current,
             minFitZoom: minFitZoomRef.current,
             presentation: presentationRef.current,
         },
@@ -559,6 +566,7 @@ export const GameMapCanvas = ({
           connectEdgeType,
           overviewMode: shouldRenderOverview,
           forceNodeLabels,
+          maxFitZoom,
           minFitZoom,
           presentation,
       },
@@ -568,7 +576,7 @@ export const GameMapCanvas = ({
         onUserViewportChange: handleUserViewportChange,
       },
     );
-  }, [connectEdgeType, connectSourceNodeId, createMode, forceNodeLabels, interactionMode, minFitZoom, model, presentation, selectedEdgeId, shouldRenderOverview, snapToGrid, viewportModeKey]);
+  }, [connectEdgeType, connectSourceNodeId, createMode, forceNodeLabels, interactionMode, maxFitZoom, minFitZoom, model, presentation, selectedEdgeId, shouldRenderOverview, snapToGrid, viewportModeKey]);
 
   const minimap = useMemo(() => {
     if (!viewportCamera || hostSize.width <= 0 || hostSize.height <= 0) {
@@ -838,35 +846,43 @@ export const GameMapCanvas = ({
   };
 
   useEffect(() => {
-    if (!sceneRef.current || !mapCommand) {
+    const scene = sceneRef.current;
+    if (!scene || !isUnhandledMapCameraCommand(mapCommand, lastHandledMapCommandIdRef.current)) {
       return;
     }
 
+    if (mapCommand.type === 'focus-node') {
+      if (!highlightedRenderPosition) {
+        return;
+      }
+
+      hasUserControlledViewportRef.current = false;
+      scene.ensurePointVisible(highlightedRenderPosition, 148);
+      lastHandledMapCommandIdRef.current = mapCommand.id;
+      return;
+    }
+
+    lastHandledMapCommandIdRef.current = mapCommand.id;
+
     switch (mapCommand.type) {
-      case 'focus-node':
-        hasUserControlledViewportRef.current = false;
-        if (highlightedRenderPosition) {
-          sceneRef.current.ensurePointVisible(highlightedRenderPosition, 148);
-        }
-        break;
       case 'fit-graph':
         hasUserControlledViewportRef.current = false;
-        sceneRef.current.fitToGraph();
+        scene.fitToGraph();
         break;
       case 'fit-overview':
         hasUserControlledViewportRef.current = false;
-        sceneRef.current.fitToOverview();
+        scene.fitToOverview();
         break;
       case 'center-layer':
         hasUserControlledViewportRef.current = false;
-        sceneRef.current.fitToGraph();
+        scene.fitToGraph();
         break;
       case 'reset-camera':
         hasUserControlledViewportRef.current = false;
         if (model.isLargeGraph || shouldRenderOverview) {
-          sceneRef.current.fitToOverview();
+          scene.fitToOverview();
         } else {
-          sceneRef.current.resetCamera();
+          scene.resetCamera();
         }
         break;
       default:

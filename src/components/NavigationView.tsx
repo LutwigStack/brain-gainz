@@ -5,7 +5,9 @@ import {
   ArrowDown,
   ArrowUp,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Compass,
   Copy,
   Eye,
@@ -498,6 +500,7 @@ export const NavigationView = ({
     id: number;
     type: 'focus-node' | 'fit-graph' | 'fit-overview' | 'center-layer' | 'reset-camera';
   } | null>(null);
+  const nextMapCommandId = useRef(0);
   const hasInitializedTreeExpansion = useRef(false);
   const handledRouteFilterRequestId = useRef<number | null>(null);
   const handledVisibleMapFitKey = useRef<string | null>(null);
@@ -1134,8 +1137,9 @@ export const NavigationView = ({
 
   const runMapCommand = useCallback((type: 'focus-node' | 'fit-graph' | 'fit-overview' | 'center-layer' | 'reset-camera') => {
     setHasManualMapViewport(false);
+    nextMapCommandId.current += 1;
     setMapCommand({
-      id: Date.now(),
+      id: nextMapCommandId.current,
       type,
     });
   }, []);
@@ -3015,23 +3019,6 @@ export const NavigationView = ({
       meta: `${routeProgressSummary.completed}/${routeItems.length || 0} закрыто`,
     },
   ];
-  const learnerRouteStatusItems = [
-    { key: 'current', label: 'Текущий', value: activeRouteTargetIndex >= 0 ? `#${activeRouteTargetIndex + 1}` : '-' },
-    { key: 'done', label: 'Готово', value: `${routeProgressSummary.completed}` },
-    {
-      key: 'controlled',
-      label: 'Под контролем',
-      value: `${routeItems.filter((item) => item.control_state === 'controlled' || item.control_state === 'fortified').length}`,
-    },
-    {
-      key: 'contested',
-      label: 'Оспаривается',
-      value: `${routeItems.filter((item) => item.control_state === 'contested' || item.control_state === 'lost').length}`,
-    },
-    { key: 'available', label: 'Доступно', value: `${routeProgressSummary.available}` },
-    { key: 'weak', label: 'Повторить', value: `${routeProgressSummary.weak}` },
-    { key: 'locked', label: 'Закрыто', value: `${routeProgressSummary.locked}` },
-  ];
   const routeOverviewNodeClassName = (item: NonNullable<TodaySnapshot['route']>['items'][number], isFront: boolean, isFocused: boolean) =>
     [
       'navigation-route-overview__node',
@@ -3114,6 +3101,15 @@ export const NavigationView = ({
     : focusedRouteItem
       ? `В маршруте #${focusedRouteIndex + 1}: ${focusedRouteItem.title}`
       : null;
+  const learnerMapRawPathParts = [
+    selectedProgramObject?.title ?? focus?.node?.sphere_name ?? currentCampaign?.name ?? 'Карта',
+    focus?.node?.skill_name ?? currentRouteOrientationItem?.route_stage ?? null,
+    focus?.node?.title ?? currentRouteOrientationItem?.title ?? null,
+  ].filter(Boolean);
+  const learnerMapPathParts = learnerMapRawPathParts.filter(
+    (part, index) => index === 0 || part !== learnerMapRawPathParts[index - 1],
+  );
+  const learnerMapPathLabel = learnerMapPathParts.join(' / ');
   const layerChildIds = layerParentEntry?.childIds ?? structureHierarchy.roots;
   const layerNodeIds =
     mapCanvasMode === 'layers'
@@ -3771,13 +3767,13 @@ export const NavigationView = ({
   });
   const inspectorRailClassName =
     'navigation-inspector-rail min-w-0 max-w-full self-start xl:sticky xl:top-3 xl:justify-self-end xl:w-[380px] 2xl:w-[420px]';
-  const mapCanvasClassName = `${
-    isLearnerKnowledgeMapWorkspace
-      ? 'h-[min(72dvh,860px)]'
-      : focus?.node && !isInspectorCollapsed
-        ? 'h-[340px]'
-        : 'h-[420px]'
-  } navigation-map-canvas min-w-0 max-w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] sm:h-[clamp(680px,calc(100dvh-220px),1040px)]`;
+  const mapCanvasClassName = isLearnerKnowledgeMapWorkspace
+    ? 'navigation-map-canvas min-w-0 max-w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)]'
+    : `${
+        focus?.node && !isInspectorCollapsed
+          ? 'h-[340px]'
+          : 'h-[420px]'
+      } navigation-map-canvas min-w-0 max-w-full overflow-hidden rounded-md border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] sm:h-[clamp(680px,calc(100dvh-220px),1040px)]`;
 
   return (
     <div className="space-y-3">
@@ -3900,8 +3896,8 @@ export const NavigationView = ({
               </PixelSurface>
               ) : null}
 
+              {canUseAuthorTools ? (
               <PixelSurface frame="secondary" padding="sm" className="navigation-map-controls navigation-map-view-controls">
-                {canUseAuthorTools ? (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <PixelText as="span" size="xs" color="textMuted" uppercase>
@@ -3962,9 +3958,11 @@ export const NavigationView = ({
                     </PixelText>
                   ) : null}
                 </div>
-                ) : (
-                <div className="navigation-learner-map-overview navigation-learner-map-overview--program">
-                  <div className="program-map-layer-switcher">
+              </PixelSurface>
+              ) : (
+                <div className="navigation-map-controls navigation-map-view-controls navigation-map-view-controls--overlay">
+                  <div className="navigation-map-overlay navigation-map-overlay--layers">
+                    <div className="program-map-layer-switcher">
                     <div className="program-map-layer-switcher__tabs" role="tablist" aria-label="Слои карты программы">
                       {([
                         ['city', 'Город', MapIcon],
@@ -3996,94 +3994,14 @@ export const NavigationView = ({
                         </button>
                       ))}
                     </div>
-                    <div className="program-map-layer-switcher__summary">
-                      <PixelText as="span" size="xs" color="textDim" uppercase>
-                        {programMapLayer === 'city' ? 'Объекты' : programMapLayer === 'knowledge_map' ? 'Выбранный объект' : 'Структура'}
-                      </PixelText>
-                      <PixelText as="span" readable size="sm">
-                        {programMapLayer === 'city'
-                          ? isCourseCatalogProgram
-                            ? `${programObjects.length} регионов программы`
-                            : `${programObjects.length} учебных объектов`
-                          : programMapLayer === 'folders'
-                            ? selectedProgramFolderEntry?.title ?? 'Структура программы'
-                            : selectedProgramObject?.title ?? 'Нет объекта'}
-                      </PixelText>
-                      <PixelText as="span" size="xs" color={programMapState.fallbackReason ? 'warning' : 'textMuted'}>
-                        {programMapState.fallbackReason === 'route_focus_outside_object'
-                          ? 'Текущий шаг находится в другом объекте.'
-                          : programMapState.fallbackReason === 'no_objects'
-                            ? 'В программе пока нет объектов для карты.'
-                            : programMapLayer === 'knowledge_map'
-                              ? `${selectedProgramObject?.atomicNodeCount ?? 0} узл. внутри объекта`
-                              : programMapLayer === 'folders'
-                                ? `${programFolderChildren.length} вложенных элементов`
-                                : 'Город показывает крупные части программы, а не все узлы сразу.'}
-                      </PixelText>
-                    </div>
-                    {programRouteFocusObject?.objectKey && programRouteFocusObject.objectKey !== selectedProgramObject?.key ? (
-                      <PixelButton
-                        tone="ghost"
-                        onClick={() => openProgramObject(programRouteFocusObject.objectKey as string)}
-                        style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                      >
-                        <Compass size={14} /> К текущему шагу
-                      </PixelButton>
-                    ) : null}
                   </div>
-                  <div className="navigation-learner-map-overview__orientation" aria-label="Текущий и следующий шаг маршрута">
-                    {routeOrientationItems.map((item) => (
-                      <button
-                        key={item.key}
-                        type="button"
-                        className={`navigation-learner-map-overview__orientation-item navigation-learner-map-overview__orientation-item--${item.key}`}
-                        onClick={() => {
-                          if (item.key === 'current' && currentRouteOrientationItem) {
-                            selectRouteItemOnMap(currentRouteOrientationItem);
-                            return;
-                          }
-
-                          if (item.key === 'next' && nextRouteItem) {
-                            selectRouteItemOnMap(nextRouteItem);
-                            return;
-                          }
-
-                          runMapCommand('fit-overview');
-                        }}
-                      >
-                        <span>{item.label}</span>
-                        <strong>{item.title}</strong>
-                        <small>{item.meta}</small>
-                      </button>
-                    ))}
                   </div>
-                  <div className="navigation-learner-map-overview__main">
-                    <PixelText as="span" size="xs" color="textDim" uppercase>
-                      Обзор прогресса
-                    </PixelText>
-                    <PixelText as="span" readable size="sm">
-                      {isRouteFilterActive
-                        ? currentSpecialization?.name ?? 'Текущий маршрут'
-                        : selectedSphere?.name ?? 'Вся карта'}
-                    </PixelText>
-                    <PixelText as="span" size="xs" color="textMuted">
-                      {isRouteFilterActive
-                        ? 'Карта показывает порядок маршрута, текущий шаг, готовые и закрытые узлы.'
-                        : 'Показана вся учебная карта без редакторских инструментов.'}
-                    </PixelText>
-                    <PixelText as="span" size="xs" color="accent">
-                      Нажмите узел, чтобы открыть занятие или проверку.
+                  <div className="navigation-map-overlay navigation-map-overlay--path" aria-label="Путь к текущему узлу">
+                    <PixelText as="span" readable size="sm" title={learnerMapPathLabel}>
+                      {learnerMapPathLabel}
                     </PixelText>
                   </div>
-                  <div className="navigation-learner-map-overview__legend" aria-label="Состояния узлов маршрута">
-                    {learnerRouteStatusItems.map((item) => (
-                      <span key={item.key} className={`navigation-learner-map-overview__legend-item navigation-learner-map-overview__legend-item--${item.key}`}>
-                        <strong>{item.value}</strong>
-                        {item.label}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="navigation-learner-map-overview__actions">
+                  <div className="navigation-map-overlay navigation-map-overlay--actions">
                     <PixelButton
                       tone={isRouteFilterActive ? 'accent' : 'ghost'}
                       onClick={() => {
@@ -4091,9 +4009,11 @@ export const NavigationView = ({
                         runMapCommand('fit-overview');
                       }}
                       disabled={routeNodeIds.size === 0}
-                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                      aria-label="Показать маршрут"
+                      data-tooltip="Маршрут"
+                      className="navigation-map-overlay__icon-button"
                     >
-                      <Target size={14} /> Маршрут
+                      <Target size={14} />
                     </PixelButton>
                     <PixelButton
                       tone={!isRouteFilterActive ? 'accent' : 'ghost'}
@@ -4104,17 +4024,21 @@ export const NavigationView = ({
                         runMapCommand('fit-overview');
                       }}
                       disabled={!hasMapNodes}
-                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                      aria-label="Показать всю карту"
+                      data-tooltip="Вся карта"
+                      className="navigation-map-overlay__icon-button"
                     >
-                      <MapIcon size={14} /> Вся карта
+                      <MapIcon size={14} />
                     </PixelButton>
                     <PixelButton
                       tone="ghost"
                       onClick={() => runMapCommand('focus-node')}
                       disabled={!focus?.node}
-                      style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                      aria-label="Перейти к текущему узлу"
+                      data-tooltip="К текущему"
+                      className="navigation-map-overlay__icon-button"
                     >
-                      <Compass size={14} /> К текущему
+                      <Compass size={14} />
                     </PixelButton>
                     {isLearnerKnowledgeMapWorkspace ? (
                       <>
@@ -4124,23 +4048,26 @@ export const NavigationView = ({
                           disabled={!focus?.node}
                           aria-expanded={isMapDrawerOpen}
                           aria-controls="navigation-map-drawer"
-                          style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                          aria-label={isMapDrawerOpen ? 'Скрыть детали' : 'Показать детали'}
+                          data-tooltip="Детали"
+                          className="navigation-map-overlay__icon-button"
                         >
-                          <Eye size={14} /> {isMapDrawerOpen ? 'Скрыть' : 'Детали'}
+                          <Eye size={14} />
                         </PixelButton>
                         <PixelButton
                           tone={isMapFocusMode ? 'accent' : 'ghost'}
                           onClick={() => setIsMapFocusMode((value) => !value)}
-                          style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                          aria-label={isMapFocusMode ? 'Выйти из фокуса карты' : 'Включить фокус карты'}
+                          data-tooltip="Фокус"
+                          className="navigation-map-overlay__icon-button"
                         >
-                          <Target size={14} /> {isMapFocusMode ? 'Выйти' : 'Фокус'}
+                          <Target size={14} />
                         </PixelButton>
                       </>
                     ) : null}
                   </div>
                 </div>
-                )}
-              </PixelSurface>
+              )}
 
               {!canUseAuthorTools && programMapLayer === 'city' ? renderProgramCityLayer() : null}
               {!canUseAuthorTools && programMapLayer === 'folders' ? renderProgramFoldersLayer() : null}
@@ -4617,6 +4544,7 @@ export const NavigationView = ({
                     routeNodeMetadata={routeNodeMetadata}
                     presentation={isSkillAtlasMap ? 'skill-atlas' : 'graph'}
                     programTitle={isSkillAtlasMap ? currentCampaign?.name ?? selectedProgramObject.title : null}
+                    maxFitZoom={isSkillAtlasMap ? 0.36 : undefined}
                     onSelectNode={handleCanvasNodeSelect}
                     onFocusChange={setIsMapFocused}
                     onUserCameraControl={() => setHasManualMapViewport(true)}
@@ -4796,21 +4724,15 @@ export const NavigationView = ({
                       </PixelText>
                     </div>
                     <div className="navigation-map-drawer__actions">
-                      {focus?.node ? (
-                        <PixelButton
-                          tone="accent"
-                          onClick={() => setIsMapDrawerOpen(true)}
-                          style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
-                        >
-                          <ChevronRight size={14} /> Открыть
-                        </PixelButton>
-                      ) : null}
                       <PixelButton
-                        tone="ghost"
+                        tone={isMapDrawerOpen ? 'ghost' : 'accent'}
                         onClick={() => setIsMapDrawerOpen((value) => !value)}
-                        style={{ minHeight: 30, padding: '6px 10px', gap: 6 }}
+                        aria-label={isMapDrawerOpen ? 'Свернуть детали' : 'Открыть детали'}
+                        aria-expanded={isMapDrawerOpen}
+                        aria-controls="navigation-map-drawer"
+                        className="navigation-map-drawer__toggle"
                       >
-                        {isMapDrawerOpen ? 'Свернуть' : 'Детали'}
+                        {isMapDrawerOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
                       </PixelButton>
                     </div>
                   </div>

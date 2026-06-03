@@ -64,6 +64,7 @@ interface SceneCallbacks {
   connectEdgeType?: 'requires' | 'supports' | 'relates_to' | null;
   overviewMode?: boolean;
   forceNodeLabels?: boolean;
+  maxFitZoom?: number;
   minFitZoom?: number;
   presentation?: GameMapPresentation;
 }
@@ -133,6 +134,7 @@ export class BrainGainzScene {
         ? fitCameraToBounds(initialBounds, { width, height }, callbacks.overviewMode ? 64 : 96, {
             focusPoint: this.getHighlightedRenderPosition(),
             focusMargin: callbacks.overviewMode ? 128 : 144,
+            maxZoom: callbacks.maxFitZoom,
             minZoom: callbacks.minFitZoom,
           })
         : centerCameraOnPoint(initialBounds.center, { width, height }, this.currentCamera?.zoom ?? DEFAULT_ZOOM);
@@ -182,6 +184,7 @@ export class BrainGainzScene {
     }, undefined, {
       focusPoint: this.getHighlightedRenderPosition(),
       focusMargin: 144,
+      maxZoom: this.currentCallbacks?.maxFitZoom,
       minZoom: this.currentCallbacks?.minFitZoom,
     });
     this.applyViewport();
@@ -199,6 +202,7 @@ export class BrainGainzScene {
     }, 64, {
       focusPoint: this.getHighlightedRenderPosition(),
       focusMargin: 128,
+      maxZoom: this.currentCallbacks?.maxFitZoom,
       minZoom: this.currentCallbacks?.minFitZoom,
     });
     this.applyViewport();
