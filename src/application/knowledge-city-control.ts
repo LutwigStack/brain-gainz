@@ -200,7 +200,7 @@ export const deriveNodeControlState = (item: ControlRouteItem, now = new Date())
     if (unresolvedFailedAssessment || unresolvedFailedRun || risk === 'high' || (ageDays != null && ageDays >= CONTESTED_DAYS)) {
       state = 'contested';
       reason = unresolvedFailedAssessment
-        ? 'Провалена проверка'
+        ? 'Изучение не зачтено'
         : unresolvedFailedRun
           ? 'Неудачная задача дня'
           : risk === 'high'
@@ -216,7 +216,7 @@ export const deriveNodeControlState = (item: ControlRouteItem, now = new Date())
     }
   } else if (unresolvedFailedAssessment || unresolvedFailedRun) {
     state = 'contested';
-    reason = unresolvedFailedAssessment ? 'Провалена проверка' : 'Неудачная задача дня';
+    reason = unresolvedFailedAssessment ? 'Изучение не зачтено' : 'Неудачная задача дня';
     priority = 65;
   } else if (hasSelfMarked) {
     state = 'scouted';

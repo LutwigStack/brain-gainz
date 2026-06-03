@@ -452,6 +452,9 @@ const shouldIncludeNode = (
   return visibleNodeIds.has(node.id) || focusedNodeId === node.id;
 };
 
+const isCourseCatalogNode = (node: NavigationNodeSummary | null | undefined) =>
+  node != null && parseCourseCatalogNodeMetadata(node.links) !== null;
+
 const computeBounds = (nodes: SkillAtlasLayoutNode[]): SkillAtlasLayoutBounds => {
   if (nodes.length === 0) {
     return {
@@ -598,29 +601,41 @@ export const createSkillAtlasLayout = (
       const skillFlagGroups: SkillAtlasNodeStateFlags[] = [];
       const directionStableId = `direction:${direction.id}`;
 
-      baseEdges.push({
-        id: `structure:${sphereStableId}->${directionStableId}`,
-        fromStableId: sphereStableId,
-        toStableId: directionStableId,
-        edgeType: 'structure',
-        edgeRole: 'structure_branch',
-        isOverlay: false,
-      });
+      const isSyntheticCourseSkill = (skill: NavigationSkill) => {
+        const visibleNodes = skill.nodes.filter((node) => includedNodeContexts.has(node.id));
+        return visibleNodes.length === 1 && isCourseCatalogNode(visibleNodes[0]);
+      };
+      const collapseSyntheticCourseDirection =
+        visibleSkills.length > 0 && visibleSkills.every((skill) => isSyntheticCourseSkill(skill));
+      const branchParentStableId = collapseSyntheticCourseDirection ? sphereStableId : directionStableId;
+
+      if (!collapseSyntheticCourseDirection) {
+        baseEdges.push({
+          id: `structure:${sphereStableId}->${directionStableId}`,
+          fromStableId: sphereStableId,
+          toStableId: directionStableId,
+          edgeType: 'structure',
+          edgeRole: 'structure_branch',
+          isOverlay: false,
+        });
+      }
 
       visibleSkills.forEach((skill, skillIndex) => {
         const skillAngle = distributeAngle(directionStartAngle, directionEndAngle, skillIndex, visibleSkills.length);
         const visibleNodes = skill.nodes.filter((node) => includedNodeContexts.has(node.id));
         const childFlags: SkillAtlasNodeStateFlags[] = [];
         const skillStableId = `skill:${skill.id}`;
-        const skillPoint = polarPoint(TOPIC_RING_RADIUS, skillAngle);
-        const isCourseOnlySkill =
-          visibleNodes.length === 1 &&
-          parseCourseCatalogNodeMetadata(visibleNodes[0]?.links) !== null;
+        const courseOnlySkill = isSyntheticCourseSkill(skill);
+        const skillPoint = polarPoint(
+          collapseSyntheticCourseDirection && courseOnlySkill ? COURSE_RING_RADIUS : TOPIC_RING_RADIUS,
+          skillAngle,
+        );
+        const isCourseOnlySkill = courseOnlySkill;
 
         if (!isCourseOnlySkill) {
           baseEdges.push({
-            id: `structure:${directionStableId}->${skillStableId}`,
-            fromStableId: directionStableId,
+            id: `structure:${branchParentStableId}->${skillStableId}`,
+            fromStableId: branchParentStableId,
             toStableId: skillStableId,
             edgeType: 'structure',
             edgeRole: 'structure_branch',
@@ -663,11 +678,11 @@ export const createSkillAtlasLayout = (
               sourceId: node.id,
               navigationNodeId: node.id,
               title: node.title,
-              path: `${sphere.name} / ${direction.name} / ${skill.name}`,
+              path: collapseSyntheticCourseDirection ? `${sphere.name} / ${skill.name}` : `${sphere.name} / ${direction.name} / ${skill.name}`,
               point,
               radius: nodeRadius,
               angle: nodeAngle,
-              ring: isCourseOnlySkill ? 3 : 4 + layer,
+              ring: collapseSyntheticCourseDirection && isCourseOnlySkill ? 2 : isCourseOnlySkill ? 3 : 4 + layer,
               sectorKey: sector.key,
               visualType,
               stateFlags: flags,
@@ -680,9 +695,9 @@ export const createSkillAtlasLayout = (
 
           baseEdges.push({
             id: isCourseOnlySkill
-              ? `structure:${directionStableId}->${stableId}`
+              ? `structure:${branchParentStableId}->${stableId}`
               : `structure:${skillStableId}->${stableId}`,
-            fromStableId: isCourseOnlySkill ? directionStableId : skillStableId,
+            fromStableId: isCourseOnlySkill ? branchParentStableId : skillStableId,
             toStableId: stableId,
             edgeType: 'structure',
             edgeRole: isCourseOnlySkill ? 'structure_branch' : 'local_cluster',
@@ -724,6 +739,9 @@ export const createSkillAtlasLayout = (
       );
       directionFlagGroups.push(directionFlags);
       nodeFlagsByStableId.set(directionStableId, directionFlags);
+      if (collapseSyntheticCourseDirection) {
+        return;
+      }
       nodes.push(
         createLayoutNode({
           stableId: directionStableId,
@@ -893,6 +911,9 @@ export const applySkillAtlasLayoutToModel = (
       isOnSelectedPath: atlasNode.stateFlags.focused || atlasNode.stateFlags.focusedDescendant,
       controlState: baseNode?.controlState ?? (atlasNode.state === 'contested' ? 'contested' : atlasNode.state === 'weak' ? 'weakened' : null),
       atlasNodeType: atlasNode.visualType as SkillAtlasNodeType,
+      atlasStableId: atlasNode.stableId,
+      atlasSourceKind: atlasNode.sourceKind,
+      atlasSourceId: atlasNode.sourceId,
       atlasIconKey: mapAtlasIcon(atlasNode.iconKey),
       atlasGroupKey: atlasNode.sectorKey,
       atlasRing: atlasNode.ring,

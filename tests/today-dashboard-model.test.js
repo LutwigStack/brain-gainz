@@ -152,7 +152,7 @@ test('daily task cards surface weak spots as recovery opportunities', () => {
     title: 'Failed proof check',
     current_mastery_rank: 1,
     weak_spot_reason: 'failed_assessment',
-    weak_spot_reason_label: 'Проверку нужно повторить',
+    weak_spot_reason_label: 'Нужно повторить изучение',
   });
   const next = routeItem({ id: 2, title: 'Next', current_mastery_rank: 0 });
 

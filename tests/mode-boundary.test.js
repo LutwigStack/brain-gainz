@@ -37,7 +37,7 @@ test('learner mode hides author-only surfaces while author mode keeps editing po
   assert.equal(workspaceModeLabels.learner.switchLabel, 'Учусь');
   assert.equal(workspaceModeLabels.author.switchLabel, 'Настраиваю');
   assert.equal(workspaceModeLabels.learner.mapLabel, 'Обзор карты');
-  assert.equal(workspaceModeLabels.learner.assessmentLabel, 'Проверка');
+  assert.equal(workspaceModeLabels.learner.assessmentLabel, 'Изучать');
   assert.equal(workspaceModeLabels.author.mapLabel, 'Карта автора');
   assert.equal(canShowAuthorSurface('learner', 'check-metadata'), false);
   assert.equal(canShowAuthorSurface('learner', 'route-authoring'), false);

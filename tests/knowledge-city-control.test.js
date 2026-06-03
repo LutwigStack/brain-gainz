@@ -56,7 +56,7 @@ test('failed attempts and high risk make route nodes contested', () => {
   );
 
   assert.equal(contested.control_state, 'contested');
-  assert.equal(contested.control_reason, 'Провалена проверка');
+  assert.equal(contested.control_reason, 'Изучение не зачтено');
 });
 
 test('city control projection picks pressured object and opponent labels', () => {

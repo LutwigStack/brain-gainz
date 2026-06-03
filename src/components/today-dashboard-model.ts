@@ -285,7 +285,7 @@ export const buildTodayRightRail = ({
               planner?.currentStageItems.length ?? 0,
             )} этап`
           : 'этап не выбран',
-      verifyLabel: `${formatCount(planner?.readyToVerify.length ?? 0)} к проверке`,
+      verifyLabel: `${formatCount(planner?.readyToVerify.length ?? 0)} к изучению`,
       sessionLabel: todaySessionLabel(todaySession),
     },
   };

@@ -126,6 +126,7 @@ import type {
   OutcomeAction,
 } from '../types/app-shell';
 import { createGameViewModel } from '../game';
+import type { GameNode } from '../game/types';
 
 const statusLabels: Record<string, string> = {
   todo: 'когда-нибудь',
@@ -225,6 +226,20 @@ const linearAlgebraTemplateValue = 'template:linear-algebra';
 type MapCanvasMode = 'free' | 'layers';
 type MapEditTool = 'select' | 'create' | 'connect';
 type InspectorMode = 'overview' | 'route' | 'assessment' | 'graph';
+type SelectedAtlasItem = {
+  gameNodeId: number;
+  title: string;
+  path: string;
+  atlasNodeType: NonNullable<GameNode['atlasNodeType']>;
+  atlasStableId: string | null;
+  sourceKind: GameNode['atlasSourceKind'] | null;
+  sourceId: GameNode['atlasSourceId'] | null;
+  entry: ProgramHierarchyEntry | null;
+  folderEntry: ProgramHierarchyEntry | null;
+  objectKey: string | null;
+  descendantNodeIds: number[];
+  studyNode: NavigationNodeSummary | null;
+};
 type LayerParentSelection = number | 'top' | null;
 
 interface CanvasContextMenuState {
@@ -466,6 +481,7 @@ export const NavigationView = ({
   const [programMapLayer, setProgramMapLayer] = useState<ProgramMapLayerId>('city');
   const [selectedProgramObjectKey, setSelectedProgramObjectKey] = useState<string | null>(null);
   const [selectedProgramFolderStableId, setSelectedProgramFolderStableId] = useState<string | null>(null);
+  const [selectedAtlasItem, setSelectedAtlasItem] = useState<SelectedAtlasItem | null>(null);
   const [isMapDrawerOpen, setIsMapDrawerOpen] = useState(false);
   const [isMapFocusMode, setIsMapFocusMode] = useState(false);
   const [layerParentNodeId, setLayerParentNodeId] = useState<LayerParentSelection>(null);
@@ -571,7 +587,7 @@ export const NavigationView = ({
     }));
   };
 
-  const spheres = snapshot?.spheres ?? [];
+  const spheres = useMemo(() => snapshot?.spheres ?? [], [snapshot?.spheres]);
   const branchFilterSkill =
     branchFilterSkillId == null
       ? null
@@ -600,10 +616,14 @@ export const NavigationView = ({
       return;
     }
 
+    if (!canUseAuthorTools && programMapLayer === 'knowledge_map') {
+      return;
+    }
+
     setHasManualMapViewport(false);
     setLayerParentNodeId(null);
     setMapCanvasMode('free');
-  }, [selectedSphereId]);
+  }, [canUseAuthorTools, programMapLayer, selectedSphereId]);
 
   const selectedAction = focus?.selectedAction ?? null;
   const totalDirections = selectedSphere?.directions.length ?? 0;
@@ -684,7 +704,7 @@ export const NavigationView = ({
 
     let stateLabel = 'старт';
     let title = lessonAction?.title ?? nodeFocus.node.title;
-    let description = lessonAction?.details ?? nodeFocus.node.summary ?? 'Начните занятие, затем пройдите проверку.';
+    let description = lessonAction?.details ?? nodeFocus.node.summary ?? 'Начните занятие, затем перейдите к изучению.';
     let buttonLabel = isStartingSession ? 'Запускаю...' : 'Начать занятие';
     let buttonIcon: ReactNode = <Play size={15} />;
     let buttonDisabled = !canStartLesson;
@@ -696,13 +716,13 @@ export const NavigationView = ({
       description = latestAttempt.passed
         ? 'Today покажет следующий шаг.'
         : 'Попробуйте еще раз или вернитесь в Today.';
-      buttonLabel = latestAttempt.passed ? 'Следующий шаг' : 'Повторить проверку';
+      buttonLabel = latestAttempt.passed ? 'Следующий шаг' : 'Изучать заново';
       buttonIcon = latestAttempt.passed ? <ChevronRight size={15} /> : <RotateCcw size={15} />;
       buttonDisabled = false;
       buttonAction = latestAttempt.passed ? onOpenToday : () => startAssessmentRetry(latestAttempt.id);
     } else if (activeSession) {
       stateLabel = 'занятие';
-      buttonLabel = 'Перейти к проверке';
+      buttonLabel = 'Изучать';
       buttonIcon = <ShieldCheck size={15} />;
       buttonDisabled = isEditorArchived;
       buttonAction = openAssessmentStep;
@@ -780,17 +800,21 @@ export const NavigationView = ({
     setRetryingAssessmentAttemptId(null);
   }, [focus?.mastery?.latestAttempt?.evidence_payload, focus?.mastery?.latestAttempt?.id]);
 
-  const navigationNodeIndex = new globalThis.Map<number, NavigationNodeSummary>();
+  const navigationNodeIndex = useMemo(() => {
+    const index = new globalThis.Map<number, NavigationNodeSummary>();
 
-  for (const sphere of spheres) {
-    for (const direction of sphere.directions) {
-      for (const skill of direction.skills) {
-        for (const node of skill.nodes) {
-          navigationNodeIndex.set(node.id, node);
+    for (const sphere of spheres) {
+      for (const direction of sphere.directions) {
+        for (const skill of direction.skills) {
+          for (const node of skill.nodes) {
+            index.set(node.id, node);
+          }
         }
       }
     }
-  }
+
+    return index;
+  }, [spheres]);
   const graphEdges = useMemo(() => snapshot?.edges ?? [], [snapshot?.edges]);
   useEffect(() => {
     if (!pendingEdgeSelection) {
@@ -904,6 +928,77 @@ export const NavigationView = ({
     }
     return items;
   }, [routeItems]);
+
+  const resolveAtlasStudyNode = useCallback((nodeIds: number[]) => {
+    const nodes = nodeIds
+      .map((nodeId) => navigationNodeIndex.get(nodeId) ?? null)
+      .filter((node): node is NavigationNodeSummary => node != null);
+    if (nodes.length === 0) {
+      return null;
+    }
+
+    const routeCurrentNode = currentRoute?.nextItem?.node_id != null
+      ? nodes.find((node) => node.id === currentRoute.nextItem?.node_id) ?? null
+      : null;
+    if (routeCurrentNode) {
+      return routeCurrentNode;
+    }
+
+    return (
+      nodes.find((node) => node.id === routeFocusNodeId) ??
+      nodes.find((node) => node.status === 'active' || node.open_action_count > 0) ??
+      nodes[0] ??
+      null
+    );
+  }, [currentRoute?.nextItem?.node_id, navigationNodeIndex, routeFocusNodeId]);
+
+  const resolveAtlasItem = useCallback((node: GameNode): SelectedAtlasItem | null => {
+    if (!node.atlasNodeType) {
+      return null;
+    }
+
+    const atlasStableId = node.atlasStableId ?? null;
+    const directEntry = atlasStableId
+      ? programHierarchy.find((entry) => entry.stableId === atlasStableId) ?? null
+      : null;
+    const entry =
+      directEntry ??
+      (node.atlasSourceKind === 'program'
+        ? programRootEntry
+        : node.atlasSourceKind && node.atlasSourceId != null
+          ? programHierarchy.find(
+              (candidate) =>
+                candidate.sourceKind === node.atlasSourceKind &&
+                String(candidate.sourceId) === String(node.atlasSourceId),
+            ) ?? null
+          : null);
+    const descendantNodeIds =
+      entry?.graphNodeIds.length
+        ? entry.graphNodeIds
+        : node.atlasSourceKind === 'node' && typeof node.atlasSourceId === 'number'
+          ? [node.atlasSourceId]
+          : [...navigationNodeIndex.keys()];
+    const objectKey = entry?.objectKey ?? selectedProgramObject?.key ?? null;
+    const folderEntry =
+      entry?.role === 'atomic_node' || entry?.role === 'course_hub'
+        ? programHierarchy.find((candidate) => candidate.stableId === entry.parentStableId) ?? entry
+        : entry ?? programRootEntry;
+
+    return {
+      gameNodeId: node.id,
+      title: node.title,
+      path: node.subtitle,
+      atlasNodeType: node.atlasNodeType,
+      atlasStableId,
+      sourceKind: node.atlasSourceKind ?? null,
+      sourceId: node.atlasSourceId ?? null,
+      entry,
+      folderEntry,
+      objectKey,
+      descendantNodeIds,
+      studyNode: resolveAtlasStudyNode(descendantNodeIds),
+    };
+  }, [navigationNodeIndex, programHierarchy, programRootEntry, resolveAtlasStudyNode, selectedProgramObject?.key]);
   const routeNodeIds = useMemo(() => new Set(routeItemsByNodeId.keys()), [routeItemsByNodeId]);
   const isRouteFilterActive = isRouteFilterEnabled && routeNodeIds.size > 0;
   const routeNodeMetadata = useMemo(
@@ -1431,6 +1526,7 @@ export const NavigationView = ({
   };
 
   const handleCanvasNodeSelect = async (node: NavigationNodeSummary) => {
+    setSelectedAtlasItem(null);
     setSelectedEdgeId(null);
     setCanvasContextMenu(null);
     setInlineNodeEditor(null);
@@ -1467,9 +1563,133 @@ export const NavigationView = ({
 
     if (!canUseAuthorTools && programMapLayer === 'knowledge_map') {
       setIsMapDrawerOpen(true);
+      handleInspectorModeChange('assessment');
     }
 
     onSelectNode(node);
+  };
+
+  const openAtlasStudy = (item: SelectedAtlasItem | null) => {
+    const node = item?.studyNode ?? null;
+    if (!node) {
+      return;
+    }
+
+    setSelectedAtlasItem(null);
+    setIsMapDrawerOpen(true);
+    handleInspectorModeChange('assessment');
+    onSelectNode(node);
+  };
+
+  const handleCanvasAtlasItemSelect = (node: GameNode) => {
+    const item = resolveAtlasItem(node);
+    if (!item) {
+      return;
+    }
+
+    const isLearningNode =
+      item.sourceKind === 'node' &&
+      ['atomic_node', 'practice_node', 'review_node', 'boss_node'].includes(item.atlasNodeType);
+
+    if (isLearningNode && item.studyNode) {
+      openAtlasStudy(item);
+      return;
+    }
+
+    setSelectedAtlasItem(item);
+    setSelectedEdgeId(null);
+    setCanvasContextMenu(null);
+    setInlineNodeEditor(null);
+    setFloatingMapPanel(null);
+    setIsMapDrawerOpen(true);
+  };
+
+  const openAtlasItemFolder = (item: SelectedAtlasItem) => {
+    const folderEntry = item.folderEntry ?? programRootEntry;
+    if (!folderEntry) {
+      return;
+    }
+
+    setSelectedProgramFolderStableId(folderEntry.stableId);
+    if (item.objectKey) {
+      setSelectedProgramObjectKey(item.objectKey);
+    }
+    setProgramMapLayer('folders');
+    setIsMapDrawerOpen(false);
+    clearMapTransientUi();
+  };
+
+  const openAtlasItemCity = (item: SelectedAtlasItem) => {
+    if (item.objectKey) {
+      setSelectedProgramObjectKey(item.objectKey);
+    }
+    setProgramMapLayer('city');
+    setIsMapDrawerOpen(false);
+    clearMapTransientUi();
+  };
+
+  const renderAtlasItemDetails = (item: SelectedAtlasItem) => {
+    const totalNodes = item.descendantNodeIds.length;
+    const completedNodes = item.descendantNodeIds.filter((nodeId) => {
+      const routeItem = routeItemsByNodeId.get(nodeId);
+      const node = navigationNodeIndex.get(nodeId);
+      return routeItem?.is_complete === true || node?.status === 'done' || node?.status === 'completed';
+    }).length;
+    const progressLabel = totalNodes > 0 ? `${completedNodes}/${totalNodes} освоено` : 'Нет учебных узлов';
+    const description =
+      item.entry?.description ??
+      (item.atlasNodeType === 'root'
+        ? 'Вся программа целиком: регионы, темы и учебные шаги.'
+        : item.atlasNodeType === 'domain_hub'
+          ? 'Крупный регион программы с несколькими темами и занятиями.'
+          : item.atlasNodeType === 'topic_node'
+            ? 'Тема внутри региона программы.'
+            : 'Верхний учебный блок программы.');
+
+    return (
+      <PixelSurface frame="ghost" padding="sm" className="grid gap-3">
+        <div className="grid gap-1">
+          <PixelText as="span" size="xs" color="accent" uppercase>
+            Детали
+          </PixelText>
+          <PixelText as="p" readable size="sm" style={{ margin: 0 }}>
+            {description}
+          </PixelText>
+          <PixelText as="p" size="xs" color="textMuted" style={{ margin: 0 }}>
+            {item.path}
+          </PixelText>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <PixelStatCard label="Узлы" value={totalNodes} tone="inset" compact />
+          <PixelStatCard label="Прогресс" value={progressLabel} tone="inset" compact />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <PixelButton
+            tone="ghost"
+            onClick={() => openAtlasItemFolder(item)}
+            disabled={!item.folderEntry && !programRootEntry}
+            style={{ minHeight: 32, padding: '6px 8px', gap: 6 }}
+          >
+            <GitBranch size={14} /> В папке
+          </PixelButton>
+          <PixelButton
+            tone="ghost"
+            onClick={() => openAtlasItemCity(item)}
+            style={{ minHeight: 32, padding: '6px 8px', gap: 6 }}
+          >
+            <Compass size={14} /> В городе
+          </PixelButton>
+          <PixelButton
+            tone="accent"
+            onClick={() => openAtlasStudy(item)}
+            disabled={!item.studyNode}
+            style={{ minHeight: 32, padding: '6px 8px', gap: 6 }}
+          >
+            <Play size={14} /> Изучать
+          </PixelButton>
+        </div>
+      </PixelSurface>
+    );
   };
 
   const hasMapNodes = mapModel.nodes.length > 0;
@@ -2079,7 +2299,7 @@ export const NavigationView = ({
                   </PixelText>
                   <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
                     {mastery?.isVerified
-                      ? `${masteryLabel(mastery.currentLevel)} · подтверждено проверкой`
+                      ? `${masteryLabel(mastery.currentLevel)} · подтверждено`
                       : mastery?.isSelfMarkedOnly
                         ? `${masteryLabel(mastery.currentLevel)} · самооценка`
                         : 'Пока нет результата'}
@@ -2609,7 +2829,7 @@ export const NavigationView = ({
                             </>
                           ) : (
                             <>
-                              <RotateCcw size={14} /> Повторить проверку
+                              <RotateCcw size={14} /> Изучать заново
                             </>
                           )}
                         </PixelButton>
@@ -2685,7 +2905,7 @@ export const NavigationView = ({
         <PixelPanelHeader
           eyebrow={
             <span className="flex items-center gap-2">
-              <ShieldCheck size={14} className="text-[var(--pixel-accent)]" /> Проверка
+              <ShieldCheck size={14} className="text-[var(--pixel-accent)]" /> Изучать
             </span>
           }
           title={lessonTitle}
@@ -2742,7 +2962,7 @@ export const NavigationView = ({
     <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
       <PixelStack gap="xs">
         <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
-          Проверка открыта
+          Изучение открыто
         </PixelText>
         <PixelText as="p" readable size="sm" style={{ margin: 0 }}>
           {nodeFocus.selectedAction?.title ?? nodeFocus.node.title}
@@ -3149,7 +3369,7 @@ export const NavigationView = ({
         )
       : null;
   const visibleMapFitKey = [
-    selectedSphereId ?? 'all',
+    isSkillAtlasMap ? 'all' : selectedSphereId ?? 'all',
     visibleSkillId ?? 'all',
     mapCanvasMode,
     programMapLayer,
@@ -3162,6 +3382,7 @@ export const NavigationView = ({
     if (!isLearnerKnowledgeMapWorkspace) {
       setIsMapFocusMode(false);
       setIsMapDrawerOpen(false);
+      setSelectedAtlasItem(null);
     }
   }, [isLearnerKnowledgeMapWorkspace]);
 
@@ -4546,6 +4767,7 @@ export const NavigationView = ({
                     programTitle={isSkillAtlasMap ? currentCampaign?.name ?? selectedProgramObject.title : null}
                     maxFitZoom={isSkillAtlasMap ? 0.36 : undefined}
                     onSelectNode={handleCanvasNodeSelect}
+                    onSelectAtlasItem={handleCanvasAtlasItemSelect}
                     onFocusChange={setIsMapFocused}
                     onUserCameraControl={() => setHasManualMapViewport(true)}
                     onSelectEdge={canEditGraph ? (edgeId) => {
@@ -4717,10 +4939,10 @@ export const NavigationView = ({
                   <div className="navigation-map-drawer__header">
                     <div className="min-w-0">
                       <PixelText as="span" size="xs" color="accent" uppercase>
-                        {isMapDrawerOpen ? 'Детали' : 'Выбранный узел'}
+                        {isMapDrawerOpen ? 'Детали' : 'Выбрано'}
                       </PixelText>
                       <PixelText as="h3" readable size="md" style={{ margin: 0 }}>
-                        {focus?.node?.title ?? selectedProgramObject?.title ?? currentCampaign?.name ?? 'Карта знаний'}
+                        {selectedAtlasItem?.title ?? focus?.node?.title ?? selectedProgramObject?.title ?? currentCampaign?.name ?? 'Карта знаний'}
                       </PixelText>
                     </div>
                     <div className="navigation-map-drawer__actions">
@@ -4738,14 +4960,16 @@ export const NavigationView = ({
                   </div>
                   {isMapDrawerOpen ? (
                     <div className="navigation-map-drawer__body">
-                      {inspectorMode === 'assessment' && focus?.node
+                      {selectedAtlasItem
+                        ? renderAtlasItemDetails(selectedAtlasItem)
+                        : inspectorMode === 'assessment' && focus?.node
                         ? renderLearnerFocusedCheckFlow(focus)
                         : focus
                           ? renderLearnerLessonPanel(focus)
                           : (
                             <PixelSurface frame="ghost" padding="sm">
                               <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: 0 }}>
-                                Выберите узел на карте, чтобы открыть занятие или проверку.
+                                Выберите узел на карте, чтобы открыть занятие или изучение.
                               </PixelText>
                             </PixelSurface>
                           )}
@@ -5103,7 +5327,7 @@ export const NavigationView = ({
                     {([
                       { id: 'overview', label: 'Обзор' },
                       { id: 'route', label: 'Маршрут' },
-                      { id: 'assessment', label: 'Проверка' },
+                      { id: 'assessment', label: canUseAuthorTools ? 'Проверка' : 'Изучать' },
                       { id: 'graph', label: 'Граф' },
                     ] as Array<{ id: InspectorMode; label: string }>)
                       .filter((item) => {

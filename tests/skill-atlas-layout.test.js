@@ -177,6 +177,10 @@ test('skill atlas adapter preserves real learning nodes and adds non-editing atl
   assert.ok(!atlasModel.nodes.some((node) => node.atlasNodeType === 'root' && node.title === 'Program Atlas'));
   assert.ok(atlasModel.nodes.some((node) => node.id < 0 && node.atlasNodeType === 'domain_hub'));
   assert.equal(atlasModel.nodes.find((node) => node.id === 2)?.atlasNodeType, 'atomic_node');
+  assert.equal(atlasModel.nodes.find((node) => node.atlasNodeType === 'root')?.atlasStableId, 'program:root');
+  assert.equal(atlasModel.nodes.find((node) => node.atlasNodeType === 'domain_hub')?.atlasSourceKind, 'sphere');
+  assert.equal(atlasModel.nodes.find((node) => node.id === 2)?.atlasStableId, 'node:2');
+  assert.equal(atlasModel.nodes.find((node) => node.id === 2)?.atlasSourceKind, 'node');
   assert.notEqual(atlasModel.nodes.find((node) => node.id === 2)?.position.x, graphModel.nodes.find((node) => node.id === 2)?.position.x);
   assert.equal(atlasModel.isLargeGraph, false);
   assert.ok(atlasModel.edges.some((edge) => edge.fromNodeId < 0 || edge.toNodeId < 0));
@@ -227,9 +231,12 @@ test('skill atlas renders catalog courses as course hubs without duplicate skill
   const layout = createSkillAtlasLayout(courseSnapshot);
 
   assert.equal(layout.nodes.some((node) => node.stableId === 'skill:100'), false);
+  assert.equal(layout.nodes.some((node) => node.stableId === 'direction:10'), false);
   assert.equal(stableNode(layout, 'node:1').visualType, 'course_hub');
-  assert.equal(stableNode(layout, 'node:1').ring, 3);
-  assert.ok(layout.edges.some((edge) => edge.fromStableId === 'direction:10' && edge.toStableId === 'node:1'));
+  assert.equal(stableNode(layout, 'node:1').ring, 2);
+  assert.equal(stableNode(layout, 'node:1').path, 'Программирование / Введение в программирование');
+  assert.ok(layout.edges.some((edge) => edge.fromStableId === 'sphere:1' && edge.toStableId === 'node:1'));
+  assert.equal(layout.edges.some((edge) => edge.fromStableId === 'direction:10' || edge.toStableId === 'direction:10'), false);
 });
 
 test('skill atlas renders NLH cash course catalog nodes through the same course abstraction', () => {
@@ -277,10 +284,13 @@ test('skill atlas renders NLH cash course catalog nodes through the same course 
   const layout = createSkillAtlasLayout(nlhSnapshot, { node: { id: 1 } }, { programTitle: 'NLH cash' });
 
   assert.equal(layout.nodes.some((node) => node.stableId === 'skill:100'), false);
+  assert.equal(layout.nodes.some((node) => node.stableId === 'direction:10'), false);
   assert.equal(stableNode(layout, 'program:root').title, 'NLH cash');
   assert.equal(stableNode(layout, 'node:1').visualType, 'course_hub');
   assert.equal(stableNode(layout, 'node:1').state, 'current');
-  assert.ok(layout.edges.some((edge) => edge.fromStableId === 'direction:10' && edge.toStableId === 'node:1'));
+  assert.equal(stableNode(layout, 'node:1').path, 'Вход и безопасность / Что такое NLH cash');
+  assert.ok(layout.edges.some((edge) => edge.fromStableId === 'sphere:1' && edge.toStableId === 'node:1'));
+  assert.equal(layout.edges.some((edge) => edge.fromStableId === 'direction:10' || edge.toStableId === 'direction:10'), false);
 });
 
 test('route overlay can annotate atlas model without moving nodes', () => {

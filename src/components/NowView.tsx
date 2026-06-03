@@ -634,7 +634,7 @@ export const NowView = ({
                 <div className="today-run-start">
                   <div className="min-w-0">
                     <PixelText as="p" readable size="sm" className="today-secondary-title">
-                      Начните короткий набор из 3-5 задач: следующий шаг, повторение и проверки.
+                      Начните короткий набор из 3-5 задач: следующий шаг, повторение и изучение.
                     </PixelText>
                     <PixelText as="p" readable size="xs" color="textMuted">
                       Задачи сохраняются: обновление страницы не сбросит активный набор.

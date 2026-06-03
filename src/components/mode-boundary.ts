@@ -52,13 +52,13 @@ export interface AuthorActionPolicy {
 export const workspaceModeLabels: Record<WorkspaceMode, WorkspaceModeCopy> = {
   learner: {
     title: 'Режим ученика',
-    description: 'Сегодня, задачи дня, проверки, прогресс и карта',
+    description: 'Сегодня, задачи дня, изучение, прогресс и карта',
     switchLabel: 'Учусь',
     switchDescription: 'Показывает ежедневный учебный путь без редактора.',
     mapLabel: 'Обзор карты',
     mapDescription: 'Карта прогресса',
-    assessmentLabel: 'Проверка',
-    assessmentDescription: 'Ход проверки',
+    assessmentLabel: 'Изучать',
+    assessmentDescription: 'Ход изучения',
   },
   author: {
     title: 'Инструменты автора',

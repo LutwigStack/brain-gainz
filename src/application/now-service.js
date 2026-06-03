@@ -1531,8 +1531,8 @@ const dailyRunSourceLabels = {
   route_next: 'Маршрут',
   weak_spot: 'Повторение',
   recovery_retry: 'Повтор',
-  due_check: 'Проверка',
-  ready_check: 'Проверка готова',
+  due_check: 'Изучать',
+  ready_check: 'Готово к изучению',
   recommendation: 'Рекомендация',
 };
 
@@ -2386,7 +2386,7 @@ const refreshOutcomeResult = async (service, campaignId, nodeId, actionId = null
 });
 
 const dailyRunTaskOutcomeNotes = {
-  completed: 'Занятие закрыто через проверку.',
+  completed: 'Занятие закрыто через изучение.',
   failed: 'Оставлено на повторение в задачах дня.',
   skipped: 'Убрано из текущего набора задач дня.',
   deferred: 'Отложено на другой подход.',
@@ -3583,7 +3583,7 @@ const weakSpotSignalsForRouteItem = (item) => {
   ) {
     signals.push({
       source: 'failed_assessment',
-      label: 'Проверку нужно повторить',
+      label: 'Нужно повторить изучение',
       priority: 60,
     });
   }
@@ -3812,7 +3812,7 @@ const buildTodayStateProjection = ({ career, metrics, city, route, planner, prim
     'truly_empty',
     'Карта пустая',
     'Создайте первый набор',
-    'Появятся узлы, маршрут и первая проверка.',
+    'Появятся узлы, маршрут и первое занятие.',
     { action: 'create_starter', label: 'Создать набор' },
     content,
   );

@@ -349,7 +349,7 @@ test('assessment primary and failed-attempt actions describe the real outcome', 
     {
       visible: false,
       disabled: true,
-      message: 'Неверный ответ сохранится после проверки.',
+      message: 'Неверный ответ сохранится как попытка.',
     },
   );
 
@@ -398,7 +398,7 @@ test('assessment primary and failed-attempt actions describe the real outcome', 
     {
       visible: true,
       disabled: true,
-      message: 'Добавьте ответ или вывод ИИ-проверки.',
+      message: 'Добавьте ответ или результат работы.',
     },
   );
 

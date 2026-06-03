@@ -11,13 +11,14 @@ import { getNodeGateAnchor, resolveNodeBox } from '../layers/map-layer';
 import { isUnhandledMapCameraCommand, type MapCameraCommand } from '../map-camera-command';
 import { applyRouteOverlayToModel, type RouteNodeCanvasMetadata } from '../route-overlay-model';
 import { applySkillAtlasLayoutToModel } from '../skill-atlas-layout';
-import type { CanvasInteractionMode, GameBounds, GameMapPresentation, GamePoint, GameSceneModel } from '../types';
+import type { CanvasInteractionMode, GameBounds, GameMapPresentation, GameNode, GamePoint, GameSceneModel } from '../types';
 import { getViewportWorldBounds, screenToWorld, worldToScreen, type ViewportCamera } from '../viewport';
 
 interface GameMapCanvasProps {
   snapshot: NavigationSnapshot | null;
   focus: NodeFocusSnapshot | null;
   onSelectNode: (node: NavigationNodeSummary, input?: { screenX: number; screenY: number }) => void;
+  onSelectAtlasItem?: (node: GameNode, input?: { screenX: number; screenY: number }) => void;
   onSelectEdge?: (edgeId: number) => void;
   onCreateNodeAt?: (input: { x: number; y: number }) => Promise<boolean> | boolean;
   onCreateChildNodeAt?: (input: { parentNodeId: number; x: number; y: number }) => Promise<boolean> | boolean;
@@ -200,6 +201,7 @@ export const GameMapCanvas = ({
   snapshot,
   focus,
   onSelectNode,
+  onSelectAtlasItem,
   onSelectEdge,
   onCreateNodeAt,
   onCreateChildNodeAt,
@@ -371,18 +373,24 @@ export const GameMapCanvas = ({
     [shouldRenderOverview],
   );
   const onSelectNodeEvent = useEffectEvent((nodeId: number, input?: { screenX: number; screenY: number }) => {
+    const atlasNode = modelRef.current.nodes.find((node) => node.id === nodeId && node.atlasNodeType);
+    const rect = hostRef.current?.getBoundingClientRect();
+    const screenInput =
+      rect && input
+        ? {
+            screenX: rect.left + input.screenX,
+            screenY: rect.top + input.screenY,
+          }
+        : undefined;
+
+    if (atlasNode && onSelectAtlasItem) {
+      onSelectAtlasItem(atlasNode, screenInput);
+      return;
+    }
+
     const node = findNodeById(snapshot, nodeId);
     if (node) {
-      const rect = hostRef.current?.getBoundingClientRect();
-      onSelectNode(
-        node,
-        rect && input
-          ? {
-              screenX: rect.left + input.screenX,
-              screenY: rect.top + input.screenY,
-            }
-          : undefined,
-      );
+      onSelectNode(node, screenInput);
     }
   });
 

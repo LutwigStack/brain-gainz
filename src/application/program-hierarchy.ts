@@ -65,15 +65,15 @@ const hasKnownInfrastructureObjectMapping = (sourceTitle: string) => objectDispl
 
 const objectDescription = (sourceTitle: string, fallback: string | null | undefined) => {
   const text = normalizeTitle(sourceTitle);
-  if (text.includes('основ') && text.includes('программ')) return 'Практика базового кода, функций, данных и первых проверок.';
+  if (text.includes('основ') && text.includes('программ')) return 'Практика базового кода, функций, данных и первых учебных заданий.';
   if (text.includes('дискрет')) return 'Логика, множества, доказательства, подсчет и язык графов.';
   if (text.includes('структур') && text.includes('данн')) return 'Массивы, стек, очередь, деревья, хеш-таблицы, графы и компромиссы.';
   if (text.includes('алгорит')) return 'Поиск, сортировка, рекурсия, жадные решения, динамика и сложность.';
   if (text.includes('баз') && text.includes('данн')) return 'Модели данных, SQL, связи, ограничения, индексы и транзакции.';
-  if (text.includes('отлад') || text.includes('тест')) return 'Поиск ошибок, воспроизведение, проверки и восстановление после сбоев.';
+  if (text.includes('отлад') || text.includes('тест')) return 'Поиск ошибок, воспроизведение, разбор и восстановление после сбоев.';
   if (text.includes('математ') && text.includes('запис')) return 'Обозначения, формальные утверждения и каркасы доказательств.';
   if (text.includes('памят')) return 'Значения, ссылки, стек, куча, псевдонимы и стоимость изменений.';
-  return fallback ?? 'Учебный объект программы с темами, практикой и проверками.';
+  return fallback ?? 'Учебный объект программы с темами, практикой и занятиями.';
 };
 
 const routeByNodeId = (routeItems: RouteItem[] = []) => {

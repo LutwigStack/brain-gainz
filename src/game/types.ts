@@ -17,6 +17,7 @@ export type SkillAtlasEdgeRole =
   | 'local_cluster'
   | 'graph'
   | 'route_overlay';
+export type SkillAtlasSourceKind = 'program' | 'sphere' | 'direction' | 'skill' | 'node';
 
 export interface GamePoint {
   x: number;
@@ -50,6 +51,9 @@ export interface GameNode {
   routeRequiredMasteryLevel?: string | null;
   routeCurrentMasteryRank?: number;
   atlasNodeType?: SkillAtlasNodeType;
+  atlasStableId?: string;
+  atlasSourceKind?: SkillAtlasSourceKind;
+  atlasSourceId?: number | string;
   atlasIconKey?: string;
   atlasGroupKey?: string;
   atlasRing?: number;

@@ -186,7 +186,7 @@ export const getAssessmentAnswerInputCopy = ({
   if (resolvedCheckMethod === 'strict') {
     return {
       label: 'Ответ или артефакт',
-      placeholder: 'Коротко: ссылка, решение, формула или результат внешней проверки',
+      placeholder: 'Коротко: ссылка, решение, формула или результат работы',
       helperText: 'Когда все готово, сохраните результат.',
     };
   }
@@ -318,7 +318,7 @@ export const getAssessmentValidationState = ({
       ? 'Добавьте короткое объяснение, чтобы сохранить результат.'
       : resolvedCheckMethod === 'strict'
         ? 'Добавьте ответ или результат работы.'
-        : 'Добавьте ответ или вывод ИИ-проверки.',
+        : 'Добавьте ответ или результат работы.',
   };
 };
 
@@ -346,13 +346,12 @@ export const getAssessmentFailedAttemptState = ({
   isEditorArchived = false,
   hasAnswer,
   hasVerifierEvidence,
-  resolvedCheckMethod,
 }: FailedAttemptStateInput) => {
   if (isAutoStrictCheck && !isChecklistCheck) {
     return {
       visible: false,
       disabled: true,
-      message: 'Неверный ответ сохранится после проверки.',
+      message: 'Неверный ответ сохранится как попытка.',
     };
   }
 
@@ -386,10 +385,7 @@ export const getAssessmentFailedAttemptState = ({
     return {
       visible: true,
       disabled: true,
-      message:
-        resolvedCheckMethod === 'llm_assisted'
-          ? 'Добавьте ответ или вывод ИИ-проверки.'
-          : 'Добавьте ответ или результат проверки.',
+      message: 'Добавьте ответ или результат работы.',
     };
   }
 
