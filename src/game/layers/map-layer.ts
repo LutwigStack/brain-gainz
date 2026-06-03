@@ -919,11 +919,21 @@ export class MapLayer extends Container {
       this.edgeGraphics.lineTo(Math.cos(angle) * innerRadius, Math.sin(angle) * innerRadius);
     }
     this.edgeGraphics.lineTo(Math.cos(startAngle) * innerRadius, Math.sin(startAngle) * innerRadius);
-    this.edgeGraphics.fill({ color, alpha: 0 });
+    this.edgeGraphics.fill({ color, alpha: 0.07 });
 
-    this.edgeGraphics.moveTo(Math.cos(centerAngle) * innerRadius, Math.sin(centerAngle) * innerRadius);
-    this.edgeGraphics.lineTo(Math.cos(centerAngle) * outerRadius, Math.sin(centerAngle) * outerRadius);
-    this.edgeGraphics.stroke({ color: accent, width: 1, alpha: 0.045 });
+    this.edgeGraphics.moveTo(Math.cos(startAngle) * innerRadius, Math.sin(startAngle) * innerRadius);
+    for (let index = 0; index <= steps; index += 1) {
+      const angle = startAngle + ((endAngle - startAngle) * index) / steps;
+      this.edgeGraphics.lineTo(Math.cos(angle) * innerRadius, Math.sin(angle) * innerRadius);
+    }
+    this.edgeGraphics.stroke({ color: accent, width: 1.2, alpha: 0.2 });
+
+    this.edgeGraphics.moveTo(Math.cos(startAngle) * outerRadius, Math.sin(startAngle) * outerRadius);
+    for (let index = 0; index <= steps; index += 1) {
+      const angle = startAngle + ((endAngle - startAngle) * index) / steps;
+      this.edgeGraphics.lineTo(Math.cos(angle) * outerRadius, Math.sin(angle) * outerRadius);
+    }
+    this.edgeGraphics.stroke({ color: accent, width: 2, alpha: 0.12 });
   }
 
   private drawAtlasBackdrop(model: GameSceneModel) {
