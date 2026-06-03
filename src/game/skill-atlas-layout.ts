@@ -172,11 +172,15 @@ const ROOT_SIZE = 42;
 const DOMAIN_RING_RADIUS = 260;
 const COURSE_RING_RADIUS = 500;
 const TOPIC_RING_RADIUS = 720;
-const ATOMIC_CLUSTER_RADIUS = 118;
-const ATOMIC_CLUSTER_RING_STEP = 64;
-const ATOMIC_CLUSTER_CAPACITY = 10;
-const ATOMIC_CLUSTER_ALT_RADIUS = 16;
-const ATOMIC_CLUSTER_SPREAD = Math.PI * 1.45;
+const COURSE_DENSE_MIN_ANGLE_STEP = 0.12;
+const COURSE_DENSE_MAX_SPAN = Math.PI * 0.68;
+const COURSE_NODE_RADIAL_STAGGER = 58;
+const COURSE_NODE_OUTER_STEP = 86;
+const ATOMIC_CLUSTER_RADIUS = 150;
+const ATOMIC_CLUSTER_RING_STEP = 78;
+const ATOMIC_CLUSTER_CAPACITY = 8;
+const ATOMIC_CLUSTER_ALT_RADIUS = 24;
+const ATOMIC_CLUSTER_SPREAD = Math.PI * 1.62;
 const NODE_POSITION_PRECISION = 1000;
 const SECTOR_GUTTER = 0.035;
 
@@ -608,6 +612,14 @@ export const createSkillAtlasLayout = (
       const collapseSyntheticCourseDirection =
         visibleSkills.length > 0 && visibleSkills.every((skill) => isSyntheticCourseSkill(skill));
       const branchParentStableId = collapseSyntheticCourseDirection ? sphereStableId : directionStableId;
+      const denseCourseSpan = collapseSyntheticCourseDirection
+        ? Math.min(
+            COURSE_DENSE_MAX_SPAN,
+            Math.max(directionSpan, COURSE_DENSE_MIN_ANGLE_STEP * Math.max(visibleSkills.length - 1, 1) + 0.22),
+          )
+        : directionSpan;
+      const skillStartAngle = collapseSyntheticCourseDirection ? directionAngle - denseCourseSpan / 2 : directionStartAngle;
+      const skillEndAngle = collapseSyntheticCourseDirection ? directionAngle + denseCourseSpan / 2 : directionEndAngle;
 
       if (!collapseSyntheticCourseDirection) {
         baseEdges.push({
@@ -621,13 +633,17 @@ export const createSkillAtlasLayout = (
       }
 
       visibleSkills.forEach((skill, skillIndex) => {
-        const skillAngle = distributeAngle(directionStartAngle, directionEndAngle, skillIndex, visibleSkills.length);
+        const skillAngle = distributeAngle(skillStartAngle, skillEndAngle, skillIndex, visibleSkills.length);
         const visibleNodes = skill.nodes.filter((node) => includedNodeContexts.has(node.id));
         const childFlags: SkillAtlasNodeStateFlags[] = [];
         const skillStableId = `skill:${skill.id}`;
         const courseOnlySkill = isSyntheticCourseSkill(skill);
+        const courseDenseRadiusOffset =
+          collapseSyntheticCourseDirection && courseOnlySkill
+            ? (skillIndex % 2) * COURSE_NODE_RADIAL_STAGGER + Math.floor(skillIndex / 12) * COURSE_NODE_OUTER_STEP
+            : 0;
         const skillPoint = polarPoint(
-          collapseSyntheticCourseDirection && courseOnlySkill ? COURSE_RING_RADIUS : TOPIC_RING_RADIUS,
+          collapseSyntheticCourseDirection && courseOnlySkill ? COURSE_RING_RADIUS + courseDenseRadiusOffset : TOPIC_RING_RADIUS,
           skillAngle,
         );
         const isCourseOnlySkill = courseOnlySkill;

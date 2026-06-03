@@ -110,10 +110,10 @@ test('skill atlas layout is deterministic with local atomic clusters', () => {
   const programmingHub = stableNode(first, 'skill:100');
   const mathHub = stableNode(first, 'skill:200');
   [1, 2, 3, 4, 5, 6].forEach((nodeId) => {
-    assert.ok(distance(stableNode(first, `node:${nodeId}`), programmingHub) < 170);
+    assert.ok(distance(stableNode(first, `node:${nodeId}`), programmingHub) < 210);
   });
   [7, 8, 9].forEach((nodeId) => {
-    assert.ok(distance(stableNode(first, `node:${nodeId}`), mathHub) < 170);
+    assert.ok(distance(stableNode(first, `node:${nodeId}`), mathHub) < 210);
   });
 
   const visualTypes = new Set(first.nodes.map((node) => node.visualType));
@@ -291,6 +291,56 @@ test('skill atlas renders NLH cash course catalog nodes through the same course 
   assert.equal(stableNode(layout, 'node:1').path, 'Вход и безопасность / Что такое NLH cash');
   assert.ok(layout.edges.some((edge) => edge.fromStableId === 'sphere:1' && edge.toStableId === 'node:1'));
   assert.equal(layout.edges.some((edge) => edge.fromStableId === 'direction:10' || edge.toStableId === 'direction:10'), false);
+});
+
+test('skill atlas spreads dense course hubs enough for pointer selection', () => {
+  const courseLinks = JSON.stringify({
+    kind: 'nlh_cash_course',
+    courseKey: 'dense-course',
+    atlasHubType: 'course_hub',
+  });
+  const denseSnapshot = {
+    spheres: [
+      {
+        id: 1,
+        name: 'Preflop-core',
+        node_count: 9,
+        open_action_count: 9,
+        directions: [
+          {
+            id: 10,
+            name: 'Courses',
+            node_count: 9,
+            open_action_count: 9,
+            skills: Array.from({ length: 9 }, (_, index) => ({
+              id: 100 + index,
+              name: `Course ${index + 1}`,
+              node_count: 1,
+              open_action_count: 1,
+              nodes: [
+                {
+                  ...makeNode(index + 1, `Course ${index + 1}`, 'active', 1),
+                  links: courseLinks,
+                },
+              ],
+            })),
+          },
+        ],
+      },
+    ],
+    edges: [],
+    archivedNodes: [],
+    defaultSelection: { nodeId: 1, actionId: null },
+  };
+
+  const layout = createSkillAtlasLayout(denseSnapshot, { node: { id: 1 } }, { programTitle: 'NLH cash' });
+  const courseNodes = layout.nodes.filter((node) => node.visualType === 'course_hub' && node.stableId.startsWith('node:'));
+  const pairDistances = courseNodes.flatMap((node, index) =>
+    courseNodes.slice(index + 1).map((other) => distance(node, other)),
+  );
+
+  assert.equal(courseNodes.length, 9);
+  assert.ok(Math.min(...pairDistances) >= 48);
 });
 
 test('route overlay can annotate atlas model without moving nodes', () => {

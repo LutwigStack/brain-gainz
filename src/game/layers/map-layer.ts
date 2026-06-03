@@ -338,6 +338,9 @@ export class MapLayer extends Container {
       });
 
       this.drawNode(this.withRenderPosition(node), shell, pulse, label, model);
+      if (node.id === model.highlightedNodeId) {
+        this.nodeContainer.addChild(pulse, shell, label);
+      }
     });
 
     [...this.nodeShells.keys()].forEach((nodeId) => {
@@ -1137,6 +1140,13 @@ export class MapLayer extends Container {
     if (node.isCurrentRouteTarget) {
       shell.circle(0, 0, radius + 13);
       shell.stroke({ color: 0x38bdf8, width: 2, alpha: 0.54 });
+    }
+
+    if (isHighlighted) {
+      shell.circle(0, 0, radius + (isRoot ? 22 : isBoss || isHub ? 13 : 9));
+      shell.stroke({ color: 0xfef08a, width: isRoot || isHub ? 2.6 : 2.2, alpha: 0.96 });
+      shell.circle(0, 0, radius + (isRoot ? 27 : isBoss || isHub ? 17 : 12));
+      shell.stroke({ color: 0x38bdf8, width: 1.4, alpha: 0.52 });
     }
 
     this.drawAtlasIcon(shell, node.atlasIconKey ?? 'code', node.state === 'locked' ? 0x94a3b8 : accent, size);

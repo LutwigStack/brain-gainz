@@ -40,6 +40,7 @@ interface GameMapCanvasProps {
   routeNodeMetadata?: RouteNodeCanvasMetadata[] | null;
   presentation?: GameMapPresentation;
   programTitle?: string | null;
+  highlightedNodeIdOverride?: number | null;
   mapCommand?: MapCameraCommand | null;
   onCreateEdge?: (input: {
     sourceNodeId: number;
@@ -197,6 +198,20 @@ const applyPreviewToModel = (
   };
 };
 
+const applyHighlightedNodeOverride = (
+  model: GameSceneModel,
+  highlightedNodeIdOverride: number | null | undefined,
+): GameSceneModel => {
+  if (highlightedNodeIdOverride == null || !model.nodes.some((node) => node.id === highlightedNodeIdOverride)) {
+    return model;
+  }
+
+  return {
+    ...model,
+    highlightedNodeId: highlightedNodeIdOverride,
+  };
+};
+
 export const GameMapCanvas = ({
   snapshot,
   focus,
@@ -224,6 +239,7 @@ export const GameMapCanvas = ({
   routeNodeMetadata = null,
   presentation = 'graph',
   programTitle = null,
+  highlightedNodeIdOverride = null,
   mapCommand = null,
   onCanvasContextMenu,
   onCanvasDoubleClick,
@@ -343,15 +359,28 @@ export const GameMapCanvas = ({
           ? applySkillAtlasLayoutToModel(snapshot, baseModel, { programTitle })
           : baseModel;
 
-      return filterModelToVisibleNodes(
+      const filteredModel = filterModelToVisibleNodes(
         applyRouteOverlayToModel(
           applyPreviewToModel(presentationModel, previewNodePositions),
           routeNodeMetadata,
         ),
         visibleNodeIds,
       );
+
+      return applyHighlightedNodeOverride(filteredModel, highlightedNodeIdOverride);
     },
-    [focus, presentation, previewNodePositions, programTitle, routeNodeMetadata, snapshot, visibleNodeIds, visibleSphereId, visibleSkillId],
+    [
+      focus,
+      highlightedNodeIdOverride,
+      presentation,
+      previewNodePositions,
+      programTitle,
+      routeNodeMetadata,
+      snapshot,
+      visibleNodeIds,
+      visibleSphereId,
+      visibleSkillId,
+    ],
   );
   const hasVisibleNodeFilter = Boolean(visibleNodeIds && visibleNodeIds.length > 0);
   const shouldRenderOverview = Boolean(

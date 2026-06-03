@@ -3321,7 +3321,16 @@ export const NavigationView = ({
     : focusedRouteItem
       ? `В маршруте #${focusedRouteIndex + 1}: ${focusedRouteItem.title}`
       : null;
-  const learnerMapRawPathParts = [
+  const selectedAtlasPathParts = selectedAtlasItem
+    ? [
+        ...selectedAtlasItem.path
+          .split('/')
+          .map((part) => part.trim())
+          .filter(Boolean),
+        selectedAtlasItem.title,
+      ]
+    : null;
+  const learnerMapRawPathParts = selectedAtlasPathParts ?? [
     selectedProgramObject?.title ?? focus?.node?.sphere_name ?? currentCampaign?.name ?? 'Карта',
     focus?.node?.skill_name ?? currentRouteOrientationItem?.route_stage ?? null,
     focus?.node?.title ?? currentRouteOrientationItem?.title ?? null,
@@ -4765,6 +4774,7 @@ export const NavigationView = ({
                     routeNodeMetadata={routeNodeMetadata}
                     presentation={isSkillAtlasMap ? 'skill-atlas' : 'graph'}
                     programTitle={isSkillAtlasMap ? currentCampaign?.name ?? selectedProgramObject.title : null}
+                    highlightedNodeIdOverride={selectedAtlasItem?.gameNodeId ?? null}
                     maxFitZoom={isSkillAtlasMap ? 0.36 : undefined}
                     onSelectNode={handleCanvasNodeSelect}
                     onSelectAtlasItem={handleCanvasAtlasItemSelect}
