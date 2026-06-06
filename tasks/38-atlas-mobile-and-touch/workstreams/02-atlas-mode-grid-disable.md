@@ -42,3 +42,8 @@ Stop the default `effects-layer` grid from competing with the atlas rings.
 - In `graph` mode, the grid is still rendered.
 - No visual regression elsewhere.
 - Visual test screenshot stored under `qa/`.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

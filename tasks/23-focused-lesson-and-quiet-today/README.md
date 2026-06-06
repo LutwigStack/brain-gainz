@@ -71,3 +71,8 @@ Excludes:
 
 - [lesson-focus-qa.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/23-focused-lesson-and-quiet-today/lesson-focus-qa.md)
 - [qa/](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/23-focused-lesson-and-quiet-today/qa/)
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

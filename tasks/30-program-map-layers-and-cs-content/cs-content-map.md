@@ -89,3 +89,8 @@ Use `ProgramHierarchyEntry[]` as the shared source of truth for:
 - Today/current-route object focus.
 
 Keep graph edges as enrichment for mind-map layout and prerequisites only. They should not redefine folder parentage or object ownership.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

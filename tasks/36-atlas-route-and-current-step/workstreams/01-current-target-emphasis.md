@@ -44,3 +44,8 @@ Make the current route step the most readable single node on the atlas.
 - The current step node has an inner cyan pulse and an outer yellow pulse, both visibly different.
 - A small checkpoint marker sits above the node without overlapping the label.
 - Visual test screenshot stored under `qa/`.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

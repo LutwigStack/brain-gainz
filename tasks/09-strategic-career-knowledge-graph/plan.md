@@ -175,3 +175,8 @@ Use the available image generation model for game assets, but keep it controlled
 8. Visual style and AI asset pipeline.
 9. Race, city, and deterministic opponent projection.
 10. End-to-end QA and visual review.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

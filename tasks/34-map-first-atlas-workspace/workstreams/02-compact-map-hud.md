@@ -28,3 +28,8 @@ Replace stacked map header/cards with one compact HUD.
 
 - Atlas appears higher and larger on first viewport.
 - Top map chrome no longer feels like stacked cards.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

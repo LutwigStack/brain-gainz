@@ -37,3 +37,8 @@ Define the visual rules for a Path-of-Exile-like CS skill atlas without copying 
 - Agents have enough visual rules to implement without inventing a new style.
 - The target is clearly "large circular skill atlas", not "linear route map".
 
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

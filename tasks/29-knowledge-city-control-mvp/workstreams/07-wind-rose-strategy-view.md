@@ -32,3 +32,8 @@ Make Wind Rose the strategic overview of city control.
 - User can decide where to work next from Wind Rose.
 - Opponent pressure is visible at strategy level.
 - Visual hierarchy remains stronger than raw metrics.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

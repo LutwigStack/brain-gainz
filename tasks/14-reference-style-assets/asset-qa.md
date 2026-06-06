@@ -118,3 +118,8 @@ Assets improve comprehension moderately in these slots:
 ## QA Decision
 
 Keep the first CS Bachelor asset batch as the current baseline. Small state icons, the missing Algorithms route landmark, and the Daily Run -> finish -> route progress comprehension flow have been validated. Do not mark the broader asset system as production-final yet; keep it `keep-with-monitoring` while future route/task types are added.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

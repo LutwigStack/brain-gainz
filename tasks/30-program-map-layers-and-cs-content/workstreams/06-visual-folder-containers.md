@@ -40,3 +40,8 @@ Replace list-like structure browsing with visual folder containers.
 - Nested CS bachelor domains/modules can be opened visually.
 - Folder navigation and breadcrumbs stay consistent with city and mind-map selection.
 - Mobile remains usable.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

@@ -48,3 +48,8 @@ Show short node titles in `skill-atlas` mode when the learner is zoomed in or fo
 - Route nodes also show their `#N` order.
 - No label overlap on a `Бакалавриат по информатике` atlas at default zoom.
 - Visual test screenshot stored under `qa/`.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

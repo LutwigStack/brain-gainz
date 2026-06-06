@@ -60,3 +60,8 @@ It does not show `routeOrder` or mastery rank, even though both are present in `
 - Each sphere shows its name along the `centerAngle` at `zoom 0.5+`.
 - Labels do not collide with nodes on `Бакалавриат по информатике` and `NLH cash` atlases.
 - Visual test screenshot stored under `qa/`.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

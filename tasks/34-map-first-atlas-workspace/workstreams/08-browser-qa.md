@@ -43,3 +43,8 @@ Verify the map-first atlas workspace in real browser use.
 - QA artifact exists under this epic.
 - Screenshots are saved under `tasks/34-map-first-atlas-workspace/qa/`.
 - Findings are severity-ranked with fix recommendations.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

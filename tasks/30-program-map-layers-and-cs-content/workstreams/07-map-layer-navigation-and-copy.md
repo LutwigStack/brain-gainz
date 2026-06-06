@@ -78,3 +78,8 @@ Behavior:
 - Today/current route focus opens the expected object/layer.
 - Missing focus/object cases produce deterministic fallback states.
 - Existing editor powers remain available without confusing learner flow.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

@@ -51,3 +51,8 @@ Hide the minimap in `skill-atlas` mode and make it dismissible in `graph` mode.
 - In `graph` mode, the minimap is visible by default and can be dismissed with the `×` button.
 - After dismiss, the minimap stays hidden across reloads for that browser.
 - Visual test screenshot stored under `qa/`.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

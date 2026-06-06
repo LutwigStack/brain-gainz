@@ -54,3 +54,8 @@ Remove the floating `HeroLayer` from the atlas and replace it with a compact ste
 - The step indicator is visible in the bottom‑left, updates when the current step changes, and expands on hover.
 - No console errors from removed `heroLayer` references.
 - Visual test screenshot stored under `qa/`.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

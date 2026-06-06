@@ -36,3 +36,8 @@
 
 - The stale `86`-node assertions in `tests/campaigns-stats-xp.test.js` were updated to the 54-course catalog model.
 - Old localStorage on the previous `5176` origin can still contain an older personal copy with 86 nodes; fresh campaigns and fresh origins seed the new 54-course catalog.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

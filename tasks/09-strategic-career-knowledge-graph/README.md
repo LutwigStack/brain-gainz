@@ -158,3 +158,8 @@ Initial asset families:
 - The visual layer clearly communicates race, city, specialization, opponent, and next action.
 - AI-generated assets are produced through a repeatable, reviewable pipeline.
 - Free mode remains usable and gets the same game-like learning primitives where possible.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

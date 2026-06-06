@@ -84,3 +84,8 @@ Today answers:
 - `planned` - [workstreams/04-race-city-opponent-visual-cards.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/12-reference-style-game-cockpit/workstreams/04-race-city-opponent-visual-cards.md)
 - `planned` - [workstreams/05-frame-polish-assets-and-mobile.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/12-reference-style-game-cockpit/workstreams/05-frame-polish-assets-and-mobile.md)
 - `planned` - [workstreams/06-reference-cockpit-qa.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/12-reference-style-game-cockpit/workstreams/06-reference-cockpit-qa.md)
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

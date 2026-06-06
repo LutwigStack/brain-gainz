@@ -69,3 +69,8 @@ Current state has the right data, but the block still reads like a bordered row:
   - `tasks/28-campaign-menu-visual-parity/qa/01-active-hero-desktop.png`
   - `tasks/28-campaign-menu-visual-parity/qa/01-active-hero-mobile.png`
   - `tasks/28-campaign-menu-visual-parity/qa/02-non-cs-active-hero-art.png`
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

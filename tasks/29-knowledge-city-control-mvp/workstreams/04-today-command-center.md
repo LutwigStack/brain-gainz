@@ -40,3 +40,8 @@ Turn Today into the command center for city control.
 - User can understand the day's goal without reading task internals.
 - Opponent pressure is visible but not the only focus.
 - Mobile keeps the command center readable.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

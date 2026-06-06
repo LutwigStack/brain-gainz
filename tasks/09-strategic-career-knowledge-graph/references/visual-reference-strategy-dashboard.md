@@ -107,3 +107,8 @@ Generated images must not include required UI text. Text should be rendered by t
 - Keep primary next action visually dominant.
 - Test every generated asset at its real in-app size.
 - If the screen starts feeling like a settings dashboard, reduce text and increase visual state.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

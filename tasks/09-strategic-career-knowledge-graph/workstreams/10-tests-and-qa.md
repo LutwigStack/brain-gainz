@@ -82,3 +82,8 @@ Visual QA:
 - Tests cover Wind Rose and stat to branch to map compatibility after specialization changes.
 - Manual QA covers existing map free canvas and layers.
 - Visual review confirms the new game layer is readable and not text-heavy.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

@@ -62,3 +62,8 @@ Only move accepted assets into the app asset folder after QA.
 - portraits look too realistic compared with the UI
 - task icons become too detailed for small cards
 - city art becomes atmospheric but not readable as progress/civilization
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

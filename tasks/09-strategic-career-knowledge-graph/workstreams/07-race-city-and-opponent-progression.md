@@ -74,3 +74,8 @@ Continuation rule:
 - Opponent progress resets per new specialization.
 - No race bonuses, city-builder resources, or combat simulation are required in v1.
 - Race and city presentation uses visual assets, not text-heavy stats panels.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

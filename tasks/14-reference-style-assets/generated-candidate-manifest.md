@@ -58,3 +58,8 @@ All prompts followed the first-batch style bible:
 ## Reproduction Note
 
 The selected runtime assets are the reproducible repo contract. If a future agent needs to regenerate candidates, use the prompt summaries above, the style bible, and the selected-candidate rationale as the source of truth, then write raw candidates back to ignored `output/generated-assets/` and update `asset-selection.md` only when the chosen candidate changes.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

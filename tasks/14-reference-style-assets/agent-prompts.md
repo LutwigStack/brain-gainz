@@ -370,3 +370,8 @@ Verify:
 Update:
 - tasks/14-reference-style-assets/asset-qa.md or create a focused Daily Run/route QA note under the same task folder
 ```
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

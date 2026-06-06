@@ -98,3 +98,8 @@ Before app wiring, verify selected files in real component containers:
 - mini knowledge map
 
 Acceptance should stay provisional until those real-slot screenshots confirm no crowding, no overlap, no horizontal overflow, and no loss of meaning at final display sizes.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

@@ -257,3 +257,8 @@ Rules:
 - Knowledge-map layer should select the route/current object by default.
 - Folders layer should open at selected object or nearest parent container.
 - Author mode may expose old editor powers, but learner mode must not show old technical canvas/layer controls as primary navigation.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

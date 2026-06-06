@@ -379,3 +379,8 @@ Do not:
 - Add fake UI widgets inside images.
 - Rely on tiny equations, code, labels, or banners inside images.
 - Generate a full campaign art set before the first batch proves itself in the cockpit.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

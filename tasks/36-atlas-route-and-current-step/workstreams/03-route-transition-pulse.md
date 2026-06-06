@@ -45,3 +45,8 @@ When a learner completes a check and the route advances, the visual change on th
 - Advancing the route plays a visible one‑shot pulse along the new edge.
 - The pulse does not loop and does not fire on unrelated re‑renders.
 - Visual test screenshot or short video clip stored under `qa/`.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

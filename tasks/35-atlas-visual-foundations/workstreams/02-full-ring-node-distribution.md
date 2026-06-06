@@ -45,3 +45,8 @@ In `skill-atlas-layout.ts:236-243` the helper `distributeAngle` pads the availab
 - Course hubs are no longer pinned to a single quadrant of the ring.
 - Layout tests still pass.
 - Visual test screenshot stored under `qa/`.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

@@ -26,3 +26,8 @@
 - `node --test tests/learner-lesson-layout.test.js tests/program-hierarchy.test.js tests/skill-atlas-layout.test.js tests/mode-boundary.test.js tests/map-shortcuts.test.js tests/game-view-model.test.js` - 41 passed.
 - `npm run lint` - passed.
 - `npm run build` - passed.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

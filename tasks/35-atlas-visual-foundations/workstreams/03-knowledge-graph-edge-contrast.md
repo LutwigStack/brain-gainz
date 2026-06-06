@@ -51,3 +51,8 @@ At `zoom 0.5` on a `1280x900` desktop view, the baseline graph is barely visible
 - The baseline graph is visible at `zoom 0.5` on desktop without zooming in.
 - The selected path reads as brighter than the rest of the graph.
 - Visual test screenshot stored under `qa/`.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

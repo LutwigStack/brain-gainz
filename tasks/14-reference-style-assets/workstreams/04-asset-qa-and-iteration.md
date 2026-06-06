@@ -48,3 +48,8 @@ Include:
 - QA artifact is current
 - major issues are filed as follow-up task notes
 - accepted assets are ready to become the baseline for future campaign asset packs
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

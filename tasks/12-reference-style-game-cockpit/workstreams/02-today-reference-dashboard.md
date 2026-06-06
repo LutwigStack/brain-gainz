@@ -57,3 +57,8 @@ The first scan should show:
 - projection/model tests for dashboard sections
 - browser screenshot QA for Today with system template
 - browser screenshot QA for a personal populated campaign if available
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

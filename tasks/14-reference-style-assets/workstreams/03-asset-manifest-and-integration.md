@@ -42,3 +42,8 @@ Wire accepted assets into the real UI through a stable manifest instead of hardc
 - hardcoded paths become difficult to replace
 - images compete with primary CTAs
 - mobile first viewport loses useful actions
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

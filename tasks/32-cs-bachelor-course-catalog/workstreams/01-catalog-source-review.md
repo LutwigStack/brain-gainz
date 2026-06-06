@@ -28,3 +28,8 @@ Validate the course catalog against strong real-world CS program patterns.
 - Any missing major CS area is identified.
 - Duplicate/overlapping courses are either justified or merged.
 - The canonical list in [course-catalog.md](C:/Users/Andr3y/projects/javascript_projects/brain-gainz/tasks/32-cs-bachelor-course-catalog/course-catalog.md) is accepted or updated.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

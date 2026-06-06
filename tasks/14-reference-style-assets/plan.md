@@ -55,3 +55,8 @@ Generating art before slot definitions is risky because the current UI has stric
 - mobile screenshot `390x844`
 - no new horizontal overflow
 - no console warnings/errors caused by asset loading
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

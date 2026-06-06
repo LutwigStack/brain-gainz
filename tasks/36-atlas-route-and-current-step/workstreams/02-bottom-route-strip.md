@@ -63,3 +63,8 @@ The `layout-rules.md` from epic 34 specifies a route strip in section 6, but the
 - Mobile shows a horizontally scrollable strip with the same data.
 - Clicking a chip centers the camera on the corresponding node.
 - Visual test screenshot stored under `qa/`.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

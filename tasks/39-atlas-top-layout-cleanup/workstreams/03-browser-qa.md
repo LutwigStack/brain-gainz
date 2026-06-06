@@ -42,3 +42,8 @@ Verify the top layout cleanup end‑to‑end on real data and viewports.
 - QA artifacts exist under `qa/`.
 - Findings are severity‑ranked with fix recommendations.
 - `npm run lint`, `npm run test`, and `npm run build` all pass.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

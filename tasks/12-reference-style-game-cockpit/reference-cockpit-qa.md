@@ -81,3 +81,8 @@ Date: 2026-05-16
 - The mini map correctly differs from the full Map editor: Today shows only a preview plus navigation to the map, while destructive/editing tools remain on the dedicated Map screen.
 - Current data is in free mode with a sparse route, so the mini map shows `Маршрут еще не собран` instead of the populated giant knowledge map shown in the reference. This is a data-state delta, not a broken layout.
 - Mobile preserves the Today hierarchy through vertical stacking. The first viewport prioritizes context and the main goal; lower sections are reachable by scroll.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.

@@ -47,3 +47,8 @@ Mobile `390x844` was not re-run in this pass because the in-app browser does not
 - Browser smoke on the knowledge-map path confirmed `АТЛАС / Атлас знаний`, `NLH cash`, `72 УЗЛ.`, and no legacy `Карта задач` title.
 - Screenshot: `09-nlh-campaign-menu-desktop.png`.
 - Screenshot: `09-nlh-shared-skill-atlas-desktop.png`.
+
+
+## Legacy naming
+
+This file uses legacy terms (`atlas`, `city`, `POE`, `Карта задач`, `Атлас знаний`, `город`) that were current before the cosmic direction was confirmed in epic 40. The user-facing language is now `Карта знаний`; see epic 48 (this epic) for the documentation migration. The file is kept for context and is superseded by epics 40 and 47.
