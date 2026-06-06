@@ -45,6 +45,8 @@ src-tauri/bin
 .playwright-cli/
 .playwright-mcp/
 .agent/
+.mavis/
+.opencode/
 
 # Local QA screenshots and review scratch files
 map-*.png
