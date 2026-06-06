@@ -92,6 +92,15 @@ import {
   type CheckMetadataKind,
 } from './navigation-editor-draft';
 import {
+  getMasteryStepById,
+  masteryHelperLine,
+  masterySteps,
+} from './galaxy/mastery-steps';
+import { SphereMiniPreview } from './galaxy/SphereMiniPreview.tsx';
+import { ProgressArc } from './galaxy/ProgressArc.tsx';
+import { formatProgressPercentLabel } from './galaxy/progress-arc.ts';
+import { tryGetSphereTokenKey } from '../theme/galaxy/sphere-id-to-token.ts';
+import {
   canRunAuthorAction,
   canShowAuthorSurface,
   requiresAuthorConfirmation,
@@ -126,6 +135,7 @@ import type {
   OutcomeAction,
 } from '../types/app-shell';
 import { createGameViewModel } from '../game';
+import type { MapCameraCommand, MapCameraCommandType } from '../game/map-camera-command.ts';
 import type { GameNode } from '../game/types';
 
 const statusLabels: Record<string, string> = {
@@ -193,6 +203,21 @@ const statusLabel = (value: string) => statusLabels[value] ?? value;
 const typeLabel = (value: string) => typeLabels[value] ?? value;
 const riskLabel = (value: string) => riskLabels[value] ?? value;
 
+/**
+ * Build a `var(--sphere-{slug}-strong)` reference for a catalog
+ * slug. Used by the `Сектора` card to color the focused percentage
+ * label and the focused progress arc in the sphere's strong token.
+ * Slugs that are not in the sphere map (NLH cash stats, see epic
+ * 41) fall back to `--pixel-text-muted` so the label still reads.
+ */
+const sphereStrongVar = (slug: string): string => {
+  const tokenKey = tryGetSphereTokenKey(slug);
+  if (tokenKey) {
+    return `var(--sphere-${tokenKey}-strong)`;
+  }
+  return 'var(--pixel-text-muted)';
+};
+
 const masteryLevelItems: Array<{ value: MasteryLevel; label: string; short: string }> = [
   { value: 'seen', label: 'Видел', short: '1' },
   { value: 'understood', label: 'Понял', short: '2' },
@@ -204,6 +229,28 @@ const masteryLevelItems: Array<{ value: MasteryLevel; label: string; short: stri
 
 const masteryLabel = (value: string | null | undefined) =>
   masteryLevelItems.find((item) => item.value === value)?.label ?? 'Нет';
+
+/**
+ * The new self-report step labels (epic 44) are intentionally distinct from
+ * the persisted `MasteryLevel` enum. The `id` (1..6) of each step matches
+ * the rank used by the existing `currentRank` field, so consumers can
+ * translate the new id to the persisted enum with this index lookup.
+ */
+const MASTERY_ID_TO_LEVEL: readonly MasteryLevel[] = [
+  'seen',
+  'understood',
+  'remembered',
+  'applied',
+  'confirmed',
+  'retained',
+] as const;
+
+const masteryLevelForId = (id: number): MasteryLevel | null => {
+  if (id < 1 || id > MASTERY_ID_TO_LEVEL.length) {
+    return null;
+  }
+  return MASTERY_ID_TO_LEVEL[id - 1] ?? null;
+};
 
 const parseChecklistSelectionFromEvidence = (evidencePayload?: string | null): Record<string, boolean> => {
   if (!evidencePayload) {
@@ -512,10 +559,7 @@ export const NavigationView = ({
   const [pendingNodeArchive, setPendingNodeArchive] = useState<PendingNodeArchiveState | null>(null);
   const [isMapFocused, setIsMapFocused] = useState(false);
   const [hasManualMapViewport, setHasManualMapViewport] = useState(false);
-  const [mapCommand, setMapCommand] = useState<{
-    id: number;
-    type: 'focus-node' | 'fit-graph' | 'fit-overview' | 'center-layer' | 'reset-camera';
-  } | null>(null);
+  const [mapCommand, setMapCommand] = useState<MapCameraCommand | null>(null);
   const nextMapCommandId = useRef(0);
   const hasInitializedTreeExpansion = useRef(false);
   const handledRouteFilterRequestId = useRef<number | null>(null);
@@ -740,10 +784,10 @@ export const NavigationView = ({
       <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
         <PixelStack gap="xs">
           <div className="flex items-center justify-between gap-2">
-            <PixelText as="span" size="xs" color="textDim" uppercase>
+            <PixelText as="span" size="xs" color="textDim">
               Учебный путь
             </PixelText>
-            <PixelText as="span" size="xs" color={activeSession ? 'success' : 'accent'} uppercase>
+            <PixelText as="span" size="xs" color={activeSession ? 'success' : 'accent'}>
               {stateLabel}
             </PixelText>
           </div>
@@ -774,6 +818,263 @@ export const NavigationView = ({
           ) : null}
         </PixelStack>
       </PixelSurface>
+    );
+  };
+
+  const renderLearnerRightPanel = (nodeFocus: NodeFocusSnapshot) => {
+    if (canUseAuthorTools) {
+      return null;
+    }
+
+    const lessonAction = nodeFocus.selectedAction;
+    const session = nodeFocus.session;
+    const hasActiveDailySession = session?.status === 'active';
+    const matchesNode = (nodeId?: number | null) => nodeId != null && Number(nodeId) === Number(nodeFocus.node.id);
+    const matchesAction = (actionId?: number | null) =>
+      lessonAction?.id != null && actionId != null && Number(actionId) === Number(lessonAction.id);
+    const primarySessionMatches =
+      session?.primary_action_id != null ? matchesAction(session.primary_action_id) : matchesNode(session?.primary_node_id);
+    const selectedSessionTaskMatches =
+      session?.tasks?.some(
+        (task) =>
+          task.outcome === 'pending' &&
+          matchesNode(task.nodeId) &&
+          (task.actionId != null ? matchesAction(task.actionId) : true),
+      ) ?? false;
+    const activeSession = Boolean(hasActiveDailySession && (primarySessionMatches || selectedSessionTaskMatches));
+    const latestAttempt = nodeFocus.mastery?.latestAttempt ?? null;
+    const latestAttemptPassed = Boolean(latestAttempt?.passed);
+    const latestAttemptFailed = Boolean(latestAttempt && !latestAttempt.passed);
+    const canStartLesson = Boolean(lessonAction) && !hasActiveDailySession && !isStartingSession && !isEditorArchived;
+
+    // Status word: 'Старт' / 'В работе' / 'Готово' (epic 44)
+    const statusWord = latestAttemptPassed
+      ? 'Готово'
+      : activeSession || latestAttemptFailed || hasActiveDailySession
+        ? 'В работе'
+        : 'Старт';
+
+    // Action block: primary button + optional secondary.
+    let primaryLabel = isStartingSession ? 'Запускаю...' : 'Начать занятие';
+    let primaryIcon: ReactNode = <Play size={15} />;
+    let primaryDisabled = !canStartLesson && !activeSession && !latestAttempt && !hasActiveDailySession;
+    let primaryAction: () => void = () => void onStartSession();
+
+    if (latestAttemptPassed) {
+      primaryLabel = 'Следующий шаг';
+      primaryIcon = <ChevronRight size={15} />;
+      primaryDisabled = false;
+      primaryAction = () => onOpenToday();
+    } else if (latestAttemptFailed) {
+      primaryLabel = 'Перепройти';
+      primaryIcon = <RotateCcw size={15} />;
+      primaryDisabled = isEditorArchived;
+      primaryAction = () => startAssessmentRetry(latestAttempt?.id);
+    } else if (activeSession) {
+      primaryLabel = 'Продолжить';
+      primaryIcon = <ShieldCheck size={15} />;
+      primaryDisabled = isEditorArchived;
+      primaryAction = () => openAssessmentStep();
+    } else if (hasActiveDailySession) {
+      primaryLabel = 'Продолжить';
+      primaryIcon = <ChevronRight size={15} />;
+      primaryDisabled = false;
+      primaryAction = () => onOpenToday();
+    }
+
+    // Secondary "К следующему узлу" — only when the route has a next item
+    // that is not the node we are already focused on.
+    const nextRouteItem = currentRoute?.nextItem ?? null;
+    const hasNextNode = Boolean(
+      nextRouteItem && nextRouteItem.node_id != null && Number(nextRouteItem.node_id) !== Number(nodeFocus.node.id),
+    );
+    const handleGoToNextNode = () => {
+      if (nextRouteItem) {
+        selectRouteItemOnMap(nextRouteItem);
+      }
+    };
+
+    // Mastery block: 6 chips with labels and helper line.
+    const currentRank = nodeFocus.mastery?.currentRank ?? 0;
+    const isSelfMarkPending = masteryPendingAction === 'self-mark';
+    const canMarkSelf = !isSelfMarkPending && !isEditorArchived && !latestAttemptPassed;
+    const handleStepClick = (stepId: number) => {
+      const level = masteryLevelForId(stepId);
+      if (!level || !canMarkSelf) {
+        return;
+      }
+      void onMarkSelfMastery(level);
+    };
+
+    const statusHeadingId = 'learner-right-panel-status-title';
+    const masteryHeadingId = 'learner-right-panel-mastery-title';
+
+    return (
+      <PixelStack gap="md" role="group" aria-labelledby={statusHeadingId}>
+        {/* status */}
+        <PixelSurface
+          frame="ghost"
+          padding="sm"
+          className="inspector-right-panel-status"
+          style={{ minHeight: 64 }}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <PixelText
+                id={statusHeadingId}
+                as="h3"
+                readable
+                size="md"
+                style={{ margin: 0, fontWeight: 700 }}
+              >
+                {nodeFocus.node.title}
+              </PixelText>
+              <PixelText
+                as="p"
+                size="xs"
+                color="textDim"
+                style={{ marginTop: 4 }}
+              >
+                {nodeFocus.node.sphere_name} · {nodeFocus.node.direction_name} · {nodeFocus.node.skill_name}
+              </PixelText>
+            </div>
+            <PixelText
+              as="span"
+              size="sm"
+              color={statusWord === 'Готово' ? 'success' : 'accent'}
+              data-status={statusWord}
+              style={{ whiteSpace: 'nowrap', fontWeight: 700 }}
+            >
+              {statusWord}
+            </PixelText>
+          </div>
+        </PixelSurface>
+
+        {/* action */}
+        <PixelSurface
+          frame="ghost"
+          padding="sm"
+          className="inspector-primary-action inspector-right-panel-action"
+        >
+          <PixelStack gap="xs">
+            <PixelButton
+              tone="accent"
+              type="button"
+              onClick={primaryAction}
+              disabled={primaryDisabled}
+              fullWidth
+              style={{ minHeight: 40, padding: '8px 10px', gap: 6 }}
+            >
+              {primaryIcon} {primaryLabel}
+            </PixelButton>
+            {hasNextNode ? (
+              <PixelButton
+                tone="ghost"
+                type="button"
+                onClick={handleGoToNextNode}
+                fullWidth
+                style={{ minHeight: 32, padding: '6px 10px', gap: 6 }}
+              >
+                <ChevronRight size={14} /> К следующему узлу
+              </PixelButton>
+            ) : null}
+            {!lessonAction && !activeSession && !latestAttempt ? (
+              <PixelText as="p" readable size="xs" color="textMuted" style={{ margin: 0 }}>
+                Нет открытого действия. Вернитесь в Today или выберите другой узел.
+              </PixelText>
+            ) : null}
+          </PixelStack>
+        </PixelSurface>
+
+        {/* mastery */}
+        <PixelSurface
+          frame="ghost"
+          padding="sm"
+          className="inspector-right-panel-mastery"
+          aria-labelledby={masteryHeadingId}
+        >
+          <PixelStack gap="xs">
+            <div className="flex items-center justify-between gap-2">
+              <PixelText
+                id={masteryHeadingId}
+                as="span"
+                size="xs"
+                color="textDim"
+              >
+                Освоение
+              </PixelText>
+              <PixelText as="span" size="xs" color="textMuted">
+                {currentRank || '—'}/6
+              </PixelText>
+            </div>
+            <div className="grid grid-cols-6 gap-1">
+              {masterySteps.map((step) => {
+                const isReached = currentRank >= step.id;
+                const isActive = currentRank === step.id && currentRank > 0;
+                const tooltip = `${step.label} — ${step.meaning}`;
+                return (
+                  <button
+                    key={step.id}
+                    type="button"
+                    onClick={() => handleStepClick(step.id)}
+                    disabled={!canMarkSelf}
+                    aria-label={tooltip}
+                    aria-pressed={isActive}
+                    title={step.meaning}
+                    data-mastery-step={step.id}
+                    data-mastery-label={step.label}
+                    className="inspector-mastery-chip flex h-14 items-center justify-center border text-[11px] font-bold leading-tight"
+                    style={{
+                      borderColor: isActive
+                        ? 'var(--pixel-accent)'
+                        : isReached
+                          ? 'var(--pixel-accent-muted)'
+                          : 'var(--pixel-line-soft)',
+                      background: isActive
+                        ? 'rgba(247, 201, 72, 0.18)'
+                        : isReached
+                          ? 'var(--pixel-panel-inset)'
+                          : 'var(--pixel-panel-inset)',
+                      color: isActive
+                        ? 'var(--pixel-accent-glow)'
+                        : isReached
+                          ? 'var(--pixel-text-muted)'
+                          : 'var(--pixel-text-dim)',
+                      cursor: canMarkSelf ? 'pointer' : 'not-allowed',
+                      opacity: canMarkSelf ? 1 : 0.55,
+                      textAlign: 'center',
+                      padding: '2px',
+                      fontFamily: 'inherit',
+                      transition: 'transform 120ms ease, opacity 120ms ease',
+                    }}
+                  >
+                    {step.label}
+                  </button>
+                );
+              })}
+            </div>
+            <PixelText
+              as="p"
+              readable
+              size="xs"
+              color="textMuted"
+              style={{ margin: 0, lineHeight: 1.4 }}
+            >
+              {masteryHelperLine}
+            </PixelText>
+            {getMasteryStepById(currentRank) ? (
+              <PixelText
+                as="p"
+                size="xs"
+                color="textMuted"
+                style={{ margin: 0 }}
+              >
+                Сейчас: {getMasteryStepById(currentRank)?.label}
+              </PixelText>
+            ) : null}
+          </PixelStack>
+        </PixelSurface>
+      </PixelStack>
     );
   };
 
@@ -874,6 +1175,11 @@ export const NavigationView = ({
   const selectedProgramObjectEntry = selectedProgramObject
     ? programHierarchy.find((entry) => entry.stableId === selectedProgramObject.entryStableId) ?? null
     : null;
+  const currentProgramSphereSlug =
+    programRouteFocusObject?.catalogSlug ??
+    selectedAtlasItem?.entry?.catalogSlug ??
+    selectedProgramObject?.catalogSlug ??
+    null;
   const selectedProgramObjectNodeIds = useMemo(
     () => objectNodeIds(programHierarchy, selectedProgramObject?.key ?? null),
     [programHierarchy, selectedProgramObject?.key],
@@ -1230,14 +1536,37 @@ export const NavigationView = ({
     onSelectNode(entryNode);
   };
 
-  const runMapCommand = useCallback((type: 'focus-node' | 'fit-graph' | 'fit-overview' | 'center-layer' | 'reset-camera') => {
+  const runMapCommand = useCallback((type: MapCameraCommandType, point?: { x: number; y: number }) => {
     setHasManualMapViewport(false);
     nextMapCommandId.current += 1;
     setMapCommand({
       id: nextMapCommandId.current,
       type,
+      point,
     });
   }, []);
+
+  /**
+   * Holo-minimap click → "center the canvas on this point" (epic 46
+   * workstream 02). The command is dispatched through the same
+   * `mapCommand` channel used by every other camera reset; the
+   * `GameMapCanvas` switch handles `center-on-point` and calls
+   * `scene.centerOnPoint(point, viewportCamera.zoom)`. The user-
+   * controlled viewport flag is NOT reset here — the click is a
+   * user-initiated jump, so it counts as manual camera control.
+   */
+  const handleMinimapJump = useCallback(
+    (point: { x: number; y: number }) => {
+      setHasManualMapViewport(true);
+      nextMapCommandId.current += 1;
+      setMapCommand({
+        id: nextMapCommandId.current,
+        type: 'center-on-point',
+        point,
+      });
+    },
+    [],
+  );
 
   const clearMapTransientState = () => {
     setSelectedEdgeId(null);
@@ -1649,7 +1978,7 @@ export const NavigationView = ({
     return (
       <PixelSurface frame="ghost" padding="sm" className="grid gap-3">
         <div className="grid gap-1">
-          <PixelText as="span" size="xs" color="accent" uppercase>
+          <PixelText as="span" size="xs" color="accent">
             Детали
           </PixelText>
           <PixelText as="p" readable size="sm" style={{ margin: 0 }}>
@@ -1724,7 +2053,7 @@ export const NavigationView = ({
       return (
         <PixelSurface frame="inset" padding="sm">
           <PixelStack gap="sm">
-            <PixelText as="p" size="xs" color="textDim" uppercase>
+            <PixelText as="p" size="xs" color="textDim">
               Проверка
             </PixelText>
             <PixelText as="p" readable size="xs" color="textMuted">
@@ -1757,7 +2086,7 @@ export const NavigationView = ({
       <PixelSurface frame="inset" padding="sm" className={assessmentPanelClassName}>
         <PixelStack gap="sm">
           <PixelSurface frame="ghost" padding="xs">
-            <PixelText as="p" size="xs" color="textDim" uppercase>
+            <PixelText as="p" size="xs" color="textDim">
               1 · Тип
             </PixelText>
             <PixelSelect
@@ -1783,7 +2112,7 @@ export const NavigationView = ({
 
           {check.kind !== 'none' ? (
             <PixelSurface frame="ghost" padding="xs">
-              <PixelText as="p" size="xs" color="textDim" uppercase>
+              <PixelText as="p" size="xs" color="textDim">
                 2 · Задание
               </PixelText>
               <PixelTextarea
@@ -1799,7 +2128,7 @@ export const NavigationView = ({
 
           {check.kind !== 'none' ? (
             <PixelSurface frame="ghost" padding="xs">
-              <PixelText as="p" size="xs" color="textDim" uppercase>
+              <PixelText as="p" size="xs" color="textDim">
                 3 · {getCheckMetadataCriterionLabel(check)}
               </PixelText>
               <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 4 }}>
@@ -1827,7 +2156,7 @@ export const NavigationView = ({
                       onChange={(event) => updateCheck({ caseSensitive: event.target.checked })}
                       disabled={isEditorBusy}
                     />
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       регистр важен
                     </PixelText>
                   </label>
@@ -1867,7 +2196,7 @@ export const NavigationView = ({
               {check.kind === 'checklist' ? (
                 <div className="mt-2 grid gap-2">
                   <div className="flex items-center justify-between gap-2">
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       Пункты чек-листа
                     </PixelText>
                     <PixelButton
@@ -1909,7 +2238,7 @@ export const NavigationView = ({
                           }}
                           disabled={isEditorBusy}
                         />
-                        <PixelText as="span" size="xs" color="textMuted" uppercase>
+                        <PixelText as="span" size="xs" color="textMuted">
                           нужно
                         </PixelText>
                       </label>
@@ -1955,7 +2284,7 @@ export const NavigationView = ({
           ) : null}
 
           <PixelSurface frame="ghost" padding="xs">
-            <PixelText as="p" size="xs" color="textDim" uppercase>
+            <PixelText as="p" size="xs" color="textDim">
               4 · Как увидит ученик
             </PixelText>
             <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 4 }}>
@@ -2153,10 +2482,10 @@ export const NavigationView = ({
             <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
               <PixelStack gap="xs">
                 <div className="flex items-center justify-between gap-2">
-                  <PixelText as="span" size="xs" color="textDim" uppercase>
+                  <PixelText as="span" size="xs" color="textDim">
                     Основное действие
                   </PixelText>
-                  <PixelText as="span" size="xs" color={routeItem.is_complete ? 'success' : 'accent'} uppercase>
+                  <PixelText as="span" size="xs" color={routeItem.is_complete ? 'success' : 'accent'}>
                     {routeItem.is_complete ? 'готово' : 'в маршруте'}
                   </PixelText>
                 </div>
@@ -2205,10 +2534,10 @@ export const NavigationView = ({
             <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
               <PixelStack gap="xs">
                 <div className="flex items-center justify-between gap-2">
-                  <PixelText as="span" size="xs" color="textDim" uppercase>
+                  <PixelText as="span" size="xs" color="textDim">
                     Основное действие
                   </PixelText>
-                  <PixelText as="span" size="xs" color="accent" uppercase>
+                  <PixelText as="span" size="xs" color="accent">
                     не в маршруте
                   </PixelText>
                 </div>
@@ -2251,7 +2580,7 @@ export const NavigationView = ({
           {showRouteControls && !routeRequirement && currentSpecialization && currentSpecialization.status !== 'active' ? (
             <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
               <PixelStack gap="xs">
-                <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
                   Основное действие
                 </PixelText>
                 <PixelButton
@@ -2272,7 +2601,7 @@ export const NavigationView = ({
           {showRouteControls && !currentSpecialization ? (
             <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
               <PixelStack gap="xs">
-                <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
                   Основное действие
                 </PixelText>
                 <PixelButton
@@ -2294,7 +2623,7 @@ export const NavigationView = ({
             <>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                  <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
                     Освоение
                   </PixelText>
                   <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
@@ -2327,11 +2656,11 @@ export const NavigationView = ({
                 >
                   <span className="flex items-center gap-2">
                     <ShieldCheck size={14} style={{ color: mastery?.isVerified ? 'var(--pixel-success)' : 'var(--pixel-text-dim)' }} />
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       подтверждено
                     </PixelText>
                   </span>
-                  <PixelText as="span" size="xs" color={mastery?.isVerified ? 'success' : 'textDim'} uppercase>
+                  <PixelText as="span" size="xs" color={mastery?.isVerified ? 'success' : 'textDim'}>
                     {verifiedRank || '-'} · XP
                   </PixelText>
                 </div>
@@ -2344,11 +2673,11 @@ export const NavigationView = ({
                 >
                   <span className="flex items-center gap-2">
                     <Eye size={14} style={{ color: mastery?.isSelfMarkedOnly ? 'var(--pixel-accent)' : 'var(--pixel-text-dim)' }} />
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       самооценка
                     </PixelText>
                   </span>
-                  <PixelText as="span" size="xs" color={mastery?.isSelfMarkedOnly ? 'accent' : 'textDim'} uppercase>
+                  <PixelText as="span" size="xs" color={mastery?.isSelfMarkedOnly ? 'accent' : 'textDim'}>
                     {selfMarkedRank || '-'} · без XP
                   </PixelText>
                 </div>
@@ -2398,7 +2727,7 @@ export const NavigationView = ({
                   <PixelText as="span" size="xs" color="textMuted">
                     Маршрут: {routeRequirement.specialization_name}
                   </PixelText>
-                  <PixelText as="span" size="xs" color="accent" uppercase>
+                  <PixelText as="span" size="xs" color="accent">
                     нужно {masteryLabel(routeRequirement.required_mastery_level)}
                   </PixelText>
                 </div>
@@ -2446,7 +2775,7 @@ export const NavigationView = ({
 
               <PixelSurface frame="ghost" padding="sm" className="navigation-lesson-criteria">
                 <PixelStack gap="xs">
-                  <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                  <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
                     {criteriaHeading}
                   </PixelText>
                   {mastery?.check.prompt ? (
@@ -2495,7 +2824,7 @@ export const NavigationView = ({
 
               {isChecklistCheck ? (
                 <div className="grid gap-2">
-                  <PixelText as="p" size="xs" color="textMuted" uppercase style={{ margin: 0 }}>
+                  <PixelText as="p" size="xs" color="textMuted" style={{ margin: 0 }}>
                     {checklistHeading}
                   </PixelText>
                   <div className="navigation-lesson-criteria-list">
@@ -2520,7 +2849,7 @@ export const NavigationView = ({
                           {item.label}
                         </PixelText>
                         {item.required ? (
-                          <PixelText as="span" size="xs" color="accent" uppercase className="navigation-lesson-criteria-item__badge">
+                          <PixelText as="span" size="xs" color="accent" className="navigation-lesson-criteria-item__badge">
                             важно
                           </PixelText>
                         ) : null}
@@ -2558,7 +2887,7 @@ export const NavigationView = ({
 
               {canEditChecks ? (
               <details className="border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] px-2 py-2">
-                <summary className="cursor-pointer text-xs uppercase text-[var(--pixel-text-muted)]">
+                <summary className="cursor-pointer text-xs text-[var(--pixel-text-muted)]">
                   Технические детали
                 </summary>
                 <div className="mt-2 grid gap-2">
@@ -2604,7 +2933,7 @@ export const NavigationView = ({
                     <ShieldCheck size={14} style={{ color: assessmentReadinessTone, marginTop: 2 }} />
                   )}
                   <div>
-                    <PixelText as="p" size="xs" color="textMuted" uppercase style={{ margin: 0 }}>
+                    <PixelText as="p" size="xs" color="textMuted" style={{ margin: 0 }}>
                       Можно продолжать?
                     </PixelText>
                     <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
@@ -2622,7 +2951,7 @@ export const NavigationView = ({
                   style={{ borderColor: 'var(--pixel-success)' }}
                 >
                   <PixelStack gap="xs">
-                    <PixelText as="p" size="xs" color="success" uppercase style={{ margin: 0 }}>
+                    <PixelText as="p" size="xs" color="success" style={{ margin: 0 }}>
                       {passedResultState?.statusLabel ?? 'Зачтено'}
                     </PixelText>
                     <PixelText as="p" readable size="sm" style={{ margin: 0 }}>
@@ -2631,7 +2960,7 @@ export const NavigationView = ({
                     {passedResultState ? (
                       <div className="grid gap-2 sm:grid-cols-2">
                         <div className="border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] p-2">
-                          <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                          <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
                             {passedResultState.progressLabel}
                           </PixelText>
                           <PixelText as="p" readable size="sm" color="success" style={{ marginTop: 4 }}>
@@ -2639,7 +2968,7 @@ export const NavigationView = ({
                           </PixelText>
                         </div>
                         <div className="border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] p-2">
-                          <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                          <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
                             {passedResultState.xpLabel}
                           </PixelText>
                           <PixelText as="p" readable size="sm" color="success" style={{ marginTop: 4 }}>
@@ -2672,7 +3001,7 @@ export const NavigationView = ({
                   style={{ borderColor: 'var(--pixel-accent)' }}
                 >
                   <PixelStack gap="xs">
-                    <PixelText as="p" size="xs" color="accent" uppercase style={{ margin: 0 }}>
+                    <PixelText as="p" size="xs" color="accent" style={{ margin: 0 }}>
                       {failedResultState.statusLabel}
                     </PixelText>
                     <PixelText as="p" readable size="sm" style={{ margin: 0 }}>
@@ -2680,7 +3009,7 @@ export const NavigationView = ({
                     </PixelText>
                     <PixelSurface frame="inset" padding="xs">
                       <PixelStack gap="xs">
-                        <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                        <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
                           {failedResultState.reasonLabel}
                         </PixelText>
                         <PixelText as="p" readable size="sm" color="textMuted" style={{ margin: 0 }}>
@@ -2713,7 +3042,7 @@ export const NavigationView = ({
               ) : (
                 <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
                   <PixelStack gap="xs">
-                    <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                    <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
                       Основное действие
                     </PixelText>
                   <PixelButton
@@ -2795,7 +3124,7 @@ export const NavigationView = ({
                       <X size={14} style={{ color: 'var(--pixel-accent)', marginTop: 2 }} />
                     )}
                     <div>
-                      <PixelText as="p" size="xs" color="textMuted" uppercase style={{ margin: 0 }}>
+                      <PixelText as="p" size="xs" color="textMuted" style={{ margin: 0 }}>
                         {latestAttemptResultCopy?.status ?? 'Попытка сохранена'}
                       </PixelText>
                       <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
@@ -2808,7 +3137,7 @@ export const NavigationView = ({
                       ) : null}
                       {canEditChecks && mastery.latestAttempt.evidence_payload ? (
                         <details className="mt-2 border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)] px-2 py-2">
-                          <summary className="cursor-pointer text-xs uppercase text-[var(--pixel-text-muted)]">
+                          <summary className="cursor-pointer text-xs text-[var(--pixel-text-muted)]">
                             Технические детали попытки
                           </summary>
                           <PixelText as="p" readable size="xs" color="textMuted" style={{ marginTop: 6, wordBreak: 'break-word' }}>
@@ -2910,14 +3239,14 @@ export const NavigationView = ({
           }
           title={lessonTitle}
           aside={
-            <PixelText as="span" size="xs" color={latestAttempt?.passed ? 'success' : 'accent'} uppercase>
+            <PixelText as="span" size="xs" color={latestAttempt?.passed ? 'success' : 'accent'}>
               {latestAttempt ? (latestAttempt.passed ? 'результат' : 'повтор') : 'занятие'}
             </PixelText>
           }
         />
 
         <section className="navigation-focused-check-flow__task" aria-label="Что делаем">
-          <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+          <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
             Что делаем
           </PixelText>
           <PixelText as="p" readable size="md" className="navigation-focused-check-flow__task-text" style={{ margin: 0 }}>
@@ -2961,7 +3290,7 @@ export const NavigationView = ({
   const renderLearnerFocusedCheckRailSummary = (nodeFocus: NodeFocusSnapshot) => (
     <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
       <PixelStack gap="xs">
-        <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+        <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
           Изучение открыто
         </PixelText>
         <PixelText as="p" readable size="sm" style={{ margin: 0 }}>
@@ -3063,7 +3392,7 @@ export const NavigationView = ({
                           cursor: node ? 'pointer' : 'default',
                         }}
                       >
-                        <PixelText as="span" size="xs" color="textDim" uppercase>
+                        <PixelText as="span" size="xs" color="textDim">
                           #{index + 1} · {item.is_required ? 'обяз.' : 'опц.'}
                         </PixelText>
                         <PixelText as="p" readable size="sm" style={{ margin: '3px 0 0' }}>
@@ -3448,14 +3777,14 @@ export const NavigationView = ({
     <PixelSurface frame="inset" padding="sm" className="program-map-city-layer">
       <div className="program-map-layer-header">
         <div>
-          <PixelText as="span" size="xs" color="accent" uppercase>
-            {isCourseCatalogProgram ? 'Регионы' : 'Город'}
+          <PixelText as="span" size="xs" color="accent">
+            {isCourseCatalogProgram ? 'Регионы' : 'Сектора'}
           </PixelText>
           <PixelText as="h3" readable size="lg">
             {isCourseCatalogProgram ? 'Регионы программы' : 'Объекты программы'}
           </PixelText>
         </div>
-        <PixelText as="span" size="xs" color="textMuted" uppercase>
+        <PixelText as="span" size="xs" color="textMuted">
           {isCourseCatalogProgram ? `${programObjects.length} регионов` : `${programObjects.length} объектов`}
         </PixelText>
       </div>
@@ -3467,35 +3796,70 @@ export const NavigationView = ({
         </PixelSurface>
       ) : (
         <div className="program-city-grid">
-          {programObjects.map((object) => (
-            <button
-              key={object.key}
-              type="button"
-              className={`program-city-card program-city-card--${object.controlTone}${
-                object.key === selectedProgramObject?.key ? ' program-city-card--selected' : ''
-              }${object.isRouteFocus ? ' program-city-card--route-focus' : ''}`}
-              onClick={() => openProgramObject(object.key)}
-            >
-              <span className="program-city-card__beacon" aria-hidden="true" />
-              <span className="program-city-card__meta">
-                <span>{object.sourceTitle}</span>
-                <strong>{object.controlLabel}</strong>
-              </span>
-              <strong className="program-city-card__title">{object.title}</strong>
-              <span className="program-city-card__description">{object.description}</span>
-              <span className="program-city-card__stats">
-                <span>{object.atomicNodeCount} узл.</span>
-                <span>{object.routeNodeCount} в маршруте</span>
-                <span>{object.pressureLabel}</span>
-              </span>
-              <span className="program-city-card__meter" aria-hidden="true">
-                <span style={{ width: `${object.progressPercent}%` }} />
-              </span>
-              <span className="program-city-card__cta">
-                <MapIcon size={14} /> Открыть карту знаний
-              </span>
-            </button>
-          ))}
+          {programObjects.map((object) => {
+            const isCardFocused = object.key === selectedProgramObject?.key;
+            const objectVisualSlug = object.catalogSlug ?? object.key;
+            const percentLabel = formatProgressPercentLabel(
+              object.completedCount,
+              object.totalCount,
+            );
+            return (
+              <button
+                key={object.key}
+                type="button"
+                className={`program-city-card program-city-card--${object.controlTone}${
+                  isCardFocused ? ' program-city-card--selected' : ''
+                }${object.isRouteFocus ? ' program-city-card--route-focus' : ''}`}
+                onClick={() => openProgramObject(object.key)}
+              >
+                <span className="program-city-card__preview" aria-hidden="true">
+                  <SphereMiniPreview slug={objectVisualSlug} focused={isCardFocused} />
+                  <ProgressArc
+                    slug={objectVisualSlug}
+                    completedCount={object.completedCount}
+                    totalCount={object.totalCount}
+                    focused={isCardFocused}
+                    className="program-city-card__progress-arc"
+                  />
+                </span>
+                <span className="program-city-card__meta">
+                  <span>{object.sourceTitle}</span>
+                  <strong>{object.controlLabel}</strong>
+                </span>
+                <strong className="program-city-card__title">{object.title}</strong>
+                <span className="program-city-card__description">{object.description}</span>
+                <span className="program-city-card__stats">
+                  <span>{object.atomicNodeCount} узл.</span>
+                  <span>{object.routeNodeCount} в маршруте</span>
+                  <span>{object.pressureLabel}</span>
+                </span>
+                <span className="program-city-card__meter" aria-hidden="true">
+                  <span style={{ width: `${object.progressPercent}%` }} />
+                </span>
+                <span className="program-city-card__footer">
+                  <span
+                    className={`program-city-card__percent${
+                      isCardFocused ? ' program-city-card__percent--focused' : ''
+                    }`}
+                    data-sphere-card-percent="true"
+                    data-sphere-card-percent-focused={isCardFocused ? 'true' : 'false'}
+                    style={
+                      isCardFocused
+                        ? ({ '--program-city-card-percent-color': sphereStrongVar(objectVisualSlug) } as
+                            | Record<string, string>
+                            | undefined)
+                        : undefined
+                    }
+                  >
+                    {percentLabel}
+                  </span>
+                  <span className="program-city-card__cta">
+                    <MapIcon size={14} /> Открыть карту знаний
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
     </PixelSurface>
@@ -3582,7 +3946,7 @@ export const NavigationView = ({
       <PixelSurface frame="inset" padding="sm" className="program-map-folders-layer">
         <div className="program-map-layer-header">
           <div>
-            <PixelText as="span" size="xs" color="accent" uppercase>
+            <PixelText as="span" size="xs" color="accent">
               Папки
             </PixelText>
             <PixelText as="h3" readable size="lg">
@@ -3952,7 +4316,7 @@ export const NavigationView = ({
             {entry.node.title}
           </button>
         </span>
-        <span className="shrink-0 text-[10px] uppercase text-[var(--pixel-text-dim)]">
+        <span className="shrink-0 text-[10px] text-[var(--pixel-text-dim)]">
           {hasChildren ? `${entry.descendantCount} узл.` : statusLabel(entry.node.status)}
         </span>
       </>
@@ -4035,7 +4399,7 @@ export const NavigationView = ({
               title={
                 <span className="flex flex-wrap items-center gap-2">
                   <MapIcon size={20} className="text-[var(--pixel-accent)]" />{' '}
-                  {isSkillAtlasMap ? 'Атлас знаний' : canUseAuthorTools ? 'Карта задач' : 'Карта программы'}
+                  {isSkillAtlasMap ? 'Карта знаний' : 'Карта программы'}
                 </span>
               }
               description={isSkillAtlasMap ? currentCampaign?.name ?? selectedProgramObject?.title ?? mapFocusTitle : `${mapFocusTitle} · ${mapFocusPath}`}
@@ -4130,7 +4494,7 @@ export const NavigationView = ({
               <PixelSurface frame="secondary" padding="sm" className="navigation-map-controls navigation-map-view-controls">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       Вид карты
                     </PixelText>
                     <PixelButton
@@ -4181,7 +4545,7 @@ export const NavigationView = ({
                     </PixelButton>
                   </div>
                   {routeNodeIds.size > 0 ? (
-                    <PixelText as="span" size="xs" color={isRouteFilterActive ? 'accent' : 'textMuted'} uppercase>
+                    <PixelText as="span" size="xs" color={isRouteFilterActive ? 'accent' : 'textMuted'}>
                       {isRouteFilterActive
                         ? `Фильтр: ${routeNodeIds.size} узл.`
                       : `В маршруте: ${routeNodeIds.size} узл.`}
@@ -4195,7 +4559,7 @@ export const NavigationView = ({
                     <div className="program-map-layer-switcher">
                     <div className="program-map-layer-switcher__tabs" role="tablist" aria-label="Слои карты программы">
                       {([
-                        ['city', 'Город', MapIcon],
+                        ['city', 'Сектора', MapIcon],
                         ['knowledge_map', 'Карта знаний', Target],
                         ['folders', 'Папки', GitBranch],
                       ] as const).map(([layer, label, Icon]) => (
@@ -4305,10 +4669,10 @@ export const NavigationView = ({
               {canUseAuthorTools && isRouteFilterActive && routeOverviewStages.length > 0 ? (
                 <PixelSurface frame="inset" padding="sm" className="navigation-route-overview">
                   <div className="navigation-route-overview__header">
-                    <PixelText as="span" size="xs" color="accent" uppercase>
+                    <PixelText as="span" size="xs" color="accent">
                       Обзор маршрута
                     </PixelText>
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       {routeItems.length} узл. / {activeRouteTargetIndex >= 0 ? `шаг #${activeRouteTargetIndex + 1}` : 'нет текущего шага'}
                     </PixelText>
                   </div>
@@ -4335,7 +4699,7 @@ export const NavigationView = ({
                           <PixelText as="span" readable size="sm">
                             {stage.label}
                           </PixelText>
-                          <PixelText as="span" size="xs" color="textMuted" uppercase>
+                          <PixelText as="span" size="xs" color="textMuted">
                             {stage.completedCount}/{stage.items.length}
                           </PixelText>
                         </div>
@@ -4373,7 +4737,7 @@ export const NavigationView = ({
               {mapCanvasMode === 'layers' ? (
                 <PixelSurface frame="inset" padding="sm" className="navigation-map-layer-panel" style={{ order: 2 }}>
                   <div className="flex flex-wrap items-center gap-2">
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       Слой
                     </PixelText>
                     <PixelText as="span" readable size="sm">
@@ -4440,7 +4804,7 @@ export const NavigationView = ({
               <PixelSurface frame="secondary" padding="sm" className="navigation-map-controls navigation-map-tool-controls">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       Инструменты
                     </PixelText>
                     <PixelButton
@@ -4587,10 +4951,10 @@ export const NavigationView = ({
                 <PixelSurface frame="inset" padding="sm">
                   <PixelStack gap="xs">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                      <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
                         Архив структуры
                       </PixelText>
-                      <PixelText as="span" size="xs" color="textMuted" uppercase>
+                      <PixelText as="span" size="xs" color="textMuted">
                         {selectedStructureArchivedNodes.length} узл.
                       </PixelText>
                     </div>
@@ -4626,7 +4990,7 @@ export const NavigationView = ({
               <div className="navigation-map-focus-strip flex flex-wrap items-center gap-2">
                 <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
                   <div className="flex max-w-full flex-wrap items-center gap-2">
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       {canUseAuthorTools ? 'Фокус' : 'Текущий шаг'}
                     </PixelText>
                     <PixelText as="span" readable size="sm">
@@ -4641,7 +5005,7 @@ export const NavigationView = ({
                       </PixelText>
                     ) : null}
                     {focusChipRoute ? (
-                      <PixelText as="span" size="xs" color="accent" uppercase>
+                      <PixelText as="span" size="xs" color="accent">
                         {focusChipRoute}
                       </PixelText>
                     ) : null}
@@ -4674,42 +5038,42 @@ export const NavigationView = ({
                 ) : null}
                 {mapMutationPendingAction === 'create-node' ? (
                   <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       Сохраняю новый узел…
                     </PixelText>
                   </PixelSurface>
                 ) : null}
                 {mapMutationPendingAction === 'move-node' ? (
                   <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       Сохраняю позицию узла…
                     </PixelText>
                   </PixelSurface>
                 ) : null}
                 {mapMutationPendingAction === 'create-edge' ? (
                   <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       Сохраняю связь…
                     </PixelText>
                   </PixelSurface>
                 ) : null}
                 {mapMutationPendingAction === 'delete-edge' ? (
                   <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       Удаляю связь…
                     </PixelText>
                   </PixelSurface>
                 ) : null}
                 {mapMutationPendingAction === 'restore-node' ? (
                   <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       Восстанавливаю узел...
                     </PixelText>
                   </PixelSurface>
                 ) : null}
                 {mapMutationPendingAction === 'layout' ? (
                   <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       Применяю размещение…
                     </PixelText>
                   </PixelSurface>
@@ -4724,14 +5088,14 @@ export const NavigationView = ({
                   <PixelSurface frame="inset" padding="sm" className="program-object-scope">
                     <div className="program-object-scope__header">
                       <div>
-                        <PixelText as="span" size="xs" color="accent" uppercase>
-                          {isSkillAtlasMap ? 'Атлас знаний' : 'Карта знаний'}
+                        <PixelText as="span" size="xs" color="accent">
+                          Карта знаний
                         </PixelText>
                         <PixelText as="h3" readable size="lg">
                           {isSkillAtlasMap ? currentCampaign?.name ?? selectedProgramObject.title : selectedProgramObject.title}
                         </PixelText>
                       </div>
-                      <PixelText as="span" size="xs" color="textMuted" uppercase>
+                      <PixelText as="span" size="xs" color="textMuted">
                         {isSkillAtlasMap ? `${navigationNodeIndex.size} узл.` : `${selectedProgramObject.atomicNodeCount} узл.`}
                       </PixelText>
                     </div>
@@ -4774,6 +5138,7 @@ export const NavigationView = ({
                     routeNodeMetadata={routeNodeMetadata}
                     presentation={isSkillAtlasMap ? 'skill-atlas' : 'graph'}
                     programTitle={isSkillAtlasMap ? currentCampaign?.name ?? selectedProgramObject.title : null}
+                    currentSphereSlug={isSkillAtlasMap ? currentProgramSphereSlug : null}
                     highlightedNodeIdOverride={selectedAtlasItem?.gameNodeId ?? null}
                     maxFitZoom={isSkillAtlasMap ? 0.36 : undefined}
                     onSelectNode={handleCanvasNodeSelect}
@@ -4870,6 +5235,7 @@ export const NavigationView = ({
                       return created;
                     } : undefined}
                     mapCommand={mapCommand}
+                    onMinimapJump={handleMinimapJump}
                     previewNodePositions={layerPreviewPositions}
                     interactionMode={canUseAuthorTools ? (mapCanvasMode === 'free' ? 'free-edit' : 'layer-edit') : 'readonly'}
                     createMode={canCreateNodes && mapEditTool === 'create'}
@@ -4948,7 +5314,7 @@ export const NavigationView = ({
                 >
                   <div className="navigation-map-drawer__header">
                     <div className="min-w-0">
-                      <PixelText as="span" size="xs" color="accent" uppercase>
+                      <PixelText as="span" size="xs" color="accent">
                         {isMapDrawerOpen ? 'Детали' : 'Выбрано'}
                       </PixelText>
                       <PixelText as="h3" readable size="md" style={{ margin: 0 }}>
@@ -5285,12 +5651,14 @@ export const NavigationView = ({
 
               {focus?.node && editorDraft ? (
                 <PixelStack gap="md">
+                  {canUseAuthorTools ? (
+                  <>
                   <PixelPanelHeader
                     eyebrow={
                       <span className="inline-flex items-center gap-2">
                         {canUseAuthorTools ? 'Инспектор' : 'Занятие'}
                         {isFocusLoading ? (
-                          <span className="text-[10px] uppercase text-[var(--pixel-text-dim)]">обновляю</span>
+                          <span className="text-[10px] text-[var(--pixel-text-dim)]">обновляю</span>
                         ) : null}
                       </span>
                     }
@@ -5305,7 +5673,6 @@ export const NavigationView = ({
                           as="span"
                           size="xs"
                           color={canUseAuthorTools && isEditorDirty ? 'accent' : 'textDim'}
-                          uppercase
                           className={canUseAuthorTools && isEditorDirty ? 'draft-status draft-status--dirty' : 'draft-status'}
                         >
                           {canUseAuthorTools ? (isEditorDirty ? 'Есть правки' : 'Сохранено') : 'Режим ученика'}
@@ -5366,7 +5733,7 @@ export const NavigationView = ({
                   {inspectorMode === 'overview' && canUseAuthorTools ? (
                     <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
                       <div className="grid gap-2">
-                        <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                        <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
                           Основное действие
                         </PixelText>
                         <PixelButton
@@ -5463,7 +5830,7 @@ export const NavigationView = ({
                     <PixelStack gap="xs">
                       <PixelSurface frame="ghost" padding="sm" className="inspector-primary-action">
                         <PixelStack gap="xs">
-                          <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                          <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
                             Основное действие
                           </PixelText>
                           <PixelButton
@@ -5483,10 +5850,10 @@ export const NavigationView = ({
                         <PixelStatCard label="Вход." value={incomingGraphEdges.length} tone="inset" compact />
                       </div>
                       <div className="flex items-center justify-between gap-2">
-                        <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+                        <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
                           Граф
                         </PixelText>
-                        <PixelText as="span" size="xs" color="textMuted" uppercase>
+                        <PixelText as="span" size="xs" color="textMuted">
                           {outgoingGraphEdges.length} исход. / {incomingGraphEdges.length} вход.
                         </PixelText>
                       </div>
@@ -5525,7 +5892,7 @@ export const NavigationView = ({
                   {showInlineEditor && isEditorExpanded && editorDraft ? (
                     <div className="grid gap-3">
                       <PixelSurface frame="inset" padding="sm">
-                        <PixelText as="p" size="xs" color="textDim" uppercase>
+                        <PixelText as="p" size="xs" color="textDim">
                           Тематика / путь
                         </PixelText>
                         <PixelText as="p" readable size="sm" style={{ marginTop: 8 }}>
@@ -5597,7 +5964,7 @@ export const NavigationView = ({
                       {renderCheckMetadataEditor(editorDraft)}
 
                       <PixelSurface frame="inset" padding="sm">
-                        <PixelText as="p" size="xs" color="textDim" uppercase>
+                        <PixelText as="p" size="xs" color="textDim">
                           Следующий шаг
                         </PixelText>
                         <PixelText as="p" readable size="sm" style={{ marginTop: 8 }}>
@@ -5719,6 +6086,10 @@ export const NavigationView = ({
                     </PixelButton>
                   </div>
                   ) : null}
+                  </>
+                  ) : (
+                    renderLearnerRightPanel(focus)
+                  )}
                 </PixelStack>
               ) : null}
             </PixelSurface>
@@ -5779,7 +6150,7 @@ export const NavigationView = ({
               <div className="flex items-start gap-3">
                 <AlertTriangle size={22} className="mt-1 flex-shrink-0 text-[var(--pixel-danger)]" />
                 <div className="min-w-0">
-                  <PixelText as="p" size="xs" color="textDim" uppercase>
+                  <PixelText as="p" size="xs" color="textDim">
                     Архивировать узел
                   </PixelText>
                   <PixelText as="h2" readable size="lg" style={{ marginTop: 4, fontWeight: 800 }}>
@@ -5861,16 +6232,16 @@ export const NavigationView = ({
 
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
                 <PixelSurface frame="inset" padding="sm">
-                  <PixelText as="p" size="xs" color="textMuted" uppercase>
+                  <PixelText as="p" size="xs" color="textMuted">
                     ID узла
                   </PixelText>
-                  <PixelText as="p" size="xs" color="textDim" uppercase className="debug-label" style={{ marginTop: 4 }}>
+                  <PixelText as="p" size="xs" color="textDim" className="debug-label" style={{ marginTop: 4 }}>
                     ID {focus.node.id}
                   </PixelText>
                 </PixelSurface>
 
                 <PixelSurface frame="inset" padding="sm">
-                  <PixelText as="p" size="xs" color="textMuted" uppercase>
+                  <PixelText as="p" size="xs" color="textMuted">
                     Сохранено
                   </PixelText>
                   <PixelText as="p" size="sm" style={{ marginTop: 4 }}>
@@ -5882,7 +6253,7 @@ export const NavigationView = ({
               </div>
 
               <PixelSurface frame="inset" padding="sm">
-                <PixelText as="p" size="xs" color="textDim" uppercase>
+                <PixelText as="p" size="xs" color="textDim">
                   Тематика / путь
                 </PixelText>
                 <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
@@ -5954,7 +6325,7 @@ export const NavigationView = ({
               {renderCheckMetadataEditor(modalEditorDraft)}
 
               <PixelSurface frame="inset" padding="sm">
-                <PixelText as="p" size="xs" color="textDim" uppercase>
+                <PixelText as="p" size="xs" color="textDim">
                   Следующий шаг
                 </PixelText>
                 <PixelText as="p" readable size="sm" style={{ marginTop: 4 }}>
@@ -6136,7 +6507,7 @@ export const NavigationView = ({
 
               <div className="grid gap-3 lg:grid-cols-3">
                 <PixelSurface frame="inset" padding="sm">
-                  <PixelText as="p" size="xs" color="textDim" uppercase>
+                  <PixelText as="p" size="xs" color="textDim">
                     Критерий завершения
                   </PixelText>
                   <PixelText as="p" readable size="sm" style={{ marginTop: 8, whiteSpace: 'pre-line' }}>
@@ -6152,7 +6523,7 @@ export const NavigationView = ({
                 </PixelSurface>
 
                 <PixelSurface frame="inset" padding="sm">
-                  <PixelText as="p" size="xs" color="textDim" uppercase>
+                  <PixelText as="p" size="xs" color="textDim">
                     Заметка к графу
                   </PixelText>
                   <PixelText as="p" readable size="sm" style={{ marginTop: 8, whiteSpace: 'pre-line' }}>
@@ -6166,7 +6537,7 @@ export const NavigationView = ({
                 </PixelSurface>
 
                 <PixelSurface frame="inset" padding="sm">
-                  <PixelText as="p" size="xs" color="textDim" uppercase>
+                  <PixelText as="p" size="xs" color="textDim">
                     Награда
                   </PixelText>
                   <PixelText as="p" readable size="sm" style={{ marginTop: 8, whiteSpace: 'pre-line' }}>
@@ -6181,7 +6552,7 @@ export const NavigationView = ({
               </div>
 
               <PixelSurface frame="inset" padding="sm">
-                <PixelText as="p" size="xs" color="textDim" uppercase>
+                <PixelText as="p" size="xs" color="textDim">
                   Открытые шаги
                 </PixelText>
                 <div className="mt-2 space-y-2">
@@ -6206,7 +6577,7 @@ export const NavigationView = ({
 
               <div className="grid gap-3 lg:grid-cols-2">
                 <PixelSurface frame="inset" padding="sm">
-                  <PixelText as="p" size="xs" color="textDim" uppercase>
+                  <PixelText as="p" size="xs" color="textDim">
                     Откроет дальше
                   </PixelText>
                   {modalSummaryFocus.dependents.length === 0 ? (
@@ -6223,7 +6594,7 @@ export const NavigationView = ({
                 </PixelSurface>
 
                 <PixelSurface frame="inset" padding="sm">
-                  <PixelText as="p" size="xs" color="textDim" uppercase>
+                  <PixelText as="p" size="xs" color="textDim">
                     Что мешает
                   </PixelText>
                   {modalSummaryFocus.dependencies.length === 0 ? (

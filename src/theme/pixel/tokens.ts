@@ -1,7 +1,10 @@
 import type { CSSProperties } from 'react';
 
+import { SPHERE_TOKEN_ORDER, sphereTokens, type SphereTokenKey } from '../galaxy/sphere-tokens.ts';
+
 export const pixelColors = {
   canvas: '#10131A',
+  cosmicBase: '#0D1320', // --cosmic-base. Very dark navy / near-black, lands at hsl(220 32% 8%) — the "around hsl(220 30% 6%)" target from the epic 47 spec. Slightly lighter than the spec midpoint so the sphere `default` tokens keep contrast > 4.5:1 on top. (Epic 47.)
   background: '#161B24',
   panel: '#1F2633',
   panelRaised: '#283142',
@@ -15,9 +18,9 @@ export const pixelColors = {
   warning: '#F59E0B',
   danger: '#FF7A90',
   info: '#7DD3FC',
-  text: '#F4F1DE',
-  textMuted: '#B8C1CC',
-  textDim: '#7E8A99',
+  text: '#F4F1DE', // text-emphasis: 16.13:1 on --pixel-canvas (AAA)
+  textMuted: '#8C949E', // text-default / text-muted: 6.06:1 on --pixel-canvas (AA). Epic 45 rewrite — see tasks/45-visual-discipline/audit.md.
+  textDim: '#7E8A99', // text-subtle (non-text affordance only): 5.26:1 on --pixel-canvas (AA Large). Not used in body copy.
 } as const;
 
 export const pixelSpacing = {
@@ -144,6 +147,7 @@ export const pixelRadii = {
 
 export const pixelCssVariables = {
   '--pixel-canvas': pixelColors.canvas,
+  '--cosmic-base': pixelColors.cosmicBase,
   '--pixel-background': pixelColors.background,
   '--pixel-panel': pixelColors.panel,
   '--pixel-panel-raised': pixelColors.panelRaised,
@@ -162,7 +166,38 @@ export const pixelCssVariables = {
   '--pixel-text-dim': pixelColors.textDim,
   '--pixel-font-display': pixelTypography.family.base,
   '--pixel-font-readable': pixelTypography.family.readable,
+  ...buildSphereCssVariables(),
 } as const;
+
+/**
+ * Builds the flat `--sphere-{key}-{stop}` map that is emitted to the
+ * root element by `applyPixelThemeCssVariables`. The map is built in
+ * the canonical `SPHERE_TOKEN_ORDER` so a downstream grep is stable:
+ * `--sphere-code-default` comes first, `--sphere-projects-textOnStrong`
+ * comes last. Stops are emitted in the order `default`, `strong`,
+ * `soft`, `textOnStrong`.
+ *
+ * Lives next to the pixel theme emitter (instead of inside the galaxy
+ * module) so that a single `applyCssVariables` call still lights up
+ * every pixel + sphere token in one pass; epic 47 will switch the
+ * canvas to a dedicated `galaxy` emitter but the byte-for-byte
+ * emission must stay the same for the WindRose.
+ */
+function buildSphereCssVariables(): Record<`--sphere-${SphereTokenKey}-${'default' | 'strong' | 'soft' | 'textOnStrong'}`, string> {
+  const stops = ['default', 'strong', 'soft', 'textOnStrong'] as const;
+  const result: Record<string, string> = {};
+  for (const key of SPHERE_TOKEN_ORDER) {
+    const token = sphereTokens[key];
+    for (const stop of stops) {
+      const name = `--sphere-${key}-${stop}`;
+      result[name] = token[stop];
+    }
+  }
+  return result as Record<
+    `--sphere-${SphereTokenKey}-${'default' | 'strong' | 'soft' | 'textOnStrong'}`,
+    string
+  >;
+}
 
 export type PixelColorToken = keyof typeof pixelColors;
 export type PixelSpacingToken = keyof typeof pixelSpacing;

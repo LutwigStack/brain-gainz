@@ -31,7 +31,7 @@ export const PixelInput = ({ label, hint, id, style, ...props }: PixelInputProps
   <PixelStack gap="xs">
     {label ? (
       <label htmlFor={id}>
-        <PixelText as="span" size="xs" color="textMuted" uppercase>
+        <PixelText as="span" size="xs" color="textMuted">
           {label}
         </PixelText>
       </label>

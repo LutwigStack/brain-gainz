@@ -54,7 +54,7 @@ export const PixelMeter = ({
     >
       {(label || showValue) && (
         <PixelStack direction="row" justify="space-between" align="center" gap="sm">
-          <PixelText as="span" size="xs" color="textMuted" uppercase>
+          <PixelText as="span" size="xs" color="textMuted">
             {label ?? defaultMeterLabel}
           </PixelText>
           {showValue && (

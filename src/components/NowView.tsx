@@ -110,7 +110,7 @@ const isRecommendationCandidate = (
 const renderReasons = (reasons: string[]) =>
   reasons.slice(0, 2).map((reason) => (
     <PixelSurface key={reason} frame="ghost" padding="xs" fullWidth={false} className="today-chip">
-      <PixelText as="span" size="xs" color="textMuted" uppercase>
+      <PixelText as="span" size="xs" color="textMuted">
         {reasonLabels[reason] ?? reason}
       </PixelText>
     </PixelSurface>
@@ -532,7 +532,7 @@ export const NowView = ({
     <div className="now-view today-dashboard-shell">
       <div className="today-dashboard-header">
         <div className="min-w-0">
-          <PixelText as="p" size="xs" color="textMuted" uppercase>
+          <PixelText as="p" size="xs" color="textMuted">
             Сегодня / {todayState.label}
           </PixelText>
           <PixelText as="h2" readable size="xl" className="today-dashboard-title">
@@ -584,7 +584,7 @@ export const NowView = ({
                 )}
               </div>
               <div className="min-w-0">
-                <PixelText as="p" size="xs" color="accent" uppercase>
+                <PixelText as="p" size="xs" color="accent">
                   Главная цель
                 </PixelText>
                 <PixelText as="h1" readable size="xl" className="today-main-goal-title">
@@ -595,13 +595,13 @@ export const NowView = ({
                 </PixelText>
               </div>
               <div className="today-main-goal-action">
-                <PixelText as="span" size="xs" color="textMuted" uppercase>
+                <PixelText as="span" size="xs" color="textMuted">
                   Прогресс
                 </PixelText>
                 <PixelText as="strong" readable size="xl" color={opponentIsAhead ? 'warning' : 'success'}>
                   {clampPercent(mainProgressPercent)}%
                 </PixelText>
-                <PixelText as="span" size="xs" color="textMuted" uppercase>
+                <PixelText as="span" size="xs" color="textMuted">
                   {mainProgressLabel}
                 </PixelText>
                 <PixelButton tone="accent" onClick={handleSingleNextAction} disabled={singleNextAction.disabled} fullWidth>
@@ -649,7 +649,7 @@ export const NowView = ({
               {isDailyRunActive ? (
                 <div className="today-run-active">
                   <div className={`today-run-progress${canFinishDailyRun ? ' today-run-progress--ready' : ''}`}>
-                    <PixelText as="span" size="xs" color={canFinishDailyRun ? 'accent' : 'textMuted'} uppercase>
+                    <PixelText as="span" size="xs" color={canFinishDailyRun ? 'accent' : 'textMuted'}>
                       {canFinishDailyRun ? 'можно завершить' : `${resolvedRunTaskCount}/${dailyRunTasks.length} разобрано`}
                     </PixelText>
                     <span className="today-run-progress__meter" aria-hidden="true">
@@ -735,7 +735,7 @@ export const NowView = ({
                     })}
                   </div>
                   <div className={`today-run-footer${canFinishDailyRun ? ' today-run-footer--ready' : ''}`}>
-                    <PixelText as="span" size="xs" color={canFinishDailyRun ? 'accent' : 'textMuted'} uppercase>
+                    <PixelText as="span" size="xs" color={canFinishDailyRun ? 'accent' : 'textMuted'}>
                       {pendingRunTaskCount === 0 ? 'можно завершить' : `${pendingRunTaskCount} осталось`}
                     </PixelText>
                     <div className="today-run-footer__actions">
@@ -752,7 +752,7 @@ export const NowView = ({
 
               {isDailyRunFinished ? (
                 <div className="today-run-summary">
-                  <PixelText as="p" size="xs" color={dailyRunSummaryStatus.tone} uppercase>
+                  <PixelText as="p" size="xs" color={dailyRunSummaryStatus.tone}>
                     {dailyRunSummaryStatus.label}
                   </PixelText>
                   {(todaySession.summary?.lines.length ? todaySession.summary.lines : [todaySession.summary_note ?? 'Сводка не записана.']).map((line) => (
@@ -850,10 +850,10 @@ export const NowView = ({
               <span className="today-section-icon">
                 <ShieldCheck size={16} />
               </span>
-              <PixelText as="h3" size="sm" uppercase>
+              <PixelText as="h3" size="sm">
                 Уровни освоения
               </PixelText>
-              <PixelText as="span" size="xs" color="textMuted" uppercase>
+              <PixelText as="span" size="xs" color="textMuted">
                 доказанное понимание
               </PixelText>
             </div>
@@ -878,7 +878,7 @@ export const NowView = ({
                       className="today-mastery-step__asset"
                       fallback={<Icon size={18} />}
                     />
-                    <PixelText as="span" size="xs" uppercase>
+                    <PixelText as="span" size="xs">
                       {rank}
                     </PixelText>
                     <PixelText as="span" readable size="xs" className="today-mastery-step__label">
@@ -898,10 +898,10 @@ export const NowView = ({
                 <span className="today-section-icon today-section-icon--warning">
                   <RefreshCw size={16} />
                 </span>
-                <PixelText as="h3" size="sm" uppercase>
+                <PixelText as="h3" size="sm">
                   Повторение
                 </PixelText>
-                <PixelText as="span" size="xs" color="textMuted" uppercase>
+                <PixelText as="span" size="xs" color="textMuted">
                   слабые места
                 </PixelText>
               </div>
@@ -934,7 +934,7 @@ export const NowView = ({
                             удержание {item.current_mastery_rank}/6
                           </PixelText>
                         </span>
-                        <PixelText as="span" size="xs" color="accent" uppercase>
+                        <PixelText as="span" size="xs" color="accent">
                           Повторить
                         </PixelText>
                       </button>
@@ -963,7 +963,7 @@ export const NowView = ({
                           </PixelText>
                           <span className="today-weak-row__chips">{renderReasons(item.whyNow)}</span>
                         </span>
-                        <PixelText as="span" size="xs" color="accent" uppercase>
+                        <PixelText as="span" size="xs" color="accent">
                           Повторить
                         </PixelText>
                       </button>
@@ -994,10 +994,10 @@ export const NowView = ({
                 <span className="today-section-icon">
                   <MapIcon size={16} />
                 </span>
-                <PixelText as="h3" size="sm" uppercase>
+                <PixelText as="h3" size="sm">
                   Мини-карта
                 </PixelText>
-                <PixelText as="span" size="xs" color="textMuted" uppercase>
+                <PixelText as="span" size="xs" color="textMuted">
                   следующий шаг
                 </PixelText>
               </div>
@@ -1084,7 +1084,7 @@ export const NowView = ({
               <div className="today-secondary-grid">
                 {primaryCandidate ? (
                   <div className="min-w-0">
-                    <PixelText as="p" size="xs" color="textMuted" uppercase>
+                    <PixelText as="p" size="xs" color="textMuted">
                       Очередь
                     </PixelText>
                     <PixelText as="p" readable size="sm" className="today-secondary-title">
@@ -1098,7 +1098,7 @@ export const NowView = ({
 
                 {focusedNode && focusedAction && progress ? (
                   <div className="min-w-0">
-                    <PixelText as="p" size="xs" color="textMuted" uppercase>
+                    <PixelText as="p" size="xs" color="textMuted">
                       Текущее занятие
                     </PixelText>
                     <PixelText as="p" readable size="sm" className="today-secondary-title">
@@ -1112,7 +1112,7 @@ export const NowView = ({
 
                 {extraOptionsCount > 0 ? (
                   <div className="today-secondary-count">
-                    <PixelText as="span" size="xs" color="textMuted" uppercase>
+                    <PixelText as="span" size="xs" color="textMuted">
                       Еще можно
                     </PixelText>
                     <PixelText as="strong" readable size="lg" color="accent">
@@ -1159,7 +1159,7 @@ export const NowView = ({
           >
             <div className="today-rail-card-heading">
               <Trophy size={16} />
-              <PixelText as="h3" size="sm" uppercase>
+              <PixelText as="h3" size="sm">
                 Ваша раса
               </PixelText>
             </div>
@@ -1207,10 +1207,10 @@ export const NowView = ({
           >
             <div className="today-rail-card-heading">
               <Flag size={16} />
-              <PixelText as="h3" size="sm" uppercase>
+              <PixelText as="h3" size="sm">
                 Цивилизация
               </PixelText>
-              <PixelText as="span" size="xs" color="info" uppercase>
+              <PixelText as="span" size="xs" color="info">
                 {todayRail.city.levelLabel}
               </PixelText>
             </div>
@@ -1268,7 +1268,7 @@ export const NowView = ({
           >
             <div className="today-rail-card-heading today-rail-card-heading--danger">
               <Swords size={16} />
-              <PixelText as="h3" size="sm" uppercase>
+              <PixelText as="h3" size="sm">
                 ИИ-соперник
               </PixelText>
             </div>
@@ -1324,7 +1324,7 @@ export const NowView = ({
           </PixelSurface>
 
           <PixelSurface frame="secondary" padding="md" className="today-rail-card today-rail-card--route">
-            <PixelText as="p" size="xs" color="textMuted" uppercase>
+            <PixelText as="p" size="xs" color="textMuted">
               Статус маршрута
             </PixelText>
             <PixelText as="p" readable size="sm" className="today-rail-title">
@@ -1347,7 +1347,7 @@ export const NowView = ({
 
           {todayState.primaryCta.action === 'open_route_node' && !hasRouteFocusNode ? (
             <PixelSurface frame="disabled" padding="sm" className="today-rail-card">
-              <PixelText as="p" size="xs" color="textMuted" uppercase>
+              <PixelText as="p" size="xs" color="textMuted">
                 <Lock size={13} /> Узел недоступен
               </PixelText>
             </PixelSurface>

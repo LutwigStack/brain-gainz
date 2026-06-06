@@ -59,6 +59,14 @@ export interface GameNode {
   atlasRing?: number;
   atlasAngle?: number;
   atlasSectorColor?: number;
+  /**
+   * Sphere token key (one of the 8 keys from sphere-tokens.ts) used
+   * by the cosmic canvas (epic 47) to look up the planet body /
+   * strong / soft colors directly from the palette. The WindRose
+   * and the minimap keep using `atlasSectorColor`; this field is
+   * the cosmic-canvas equivalent.
+   */
+  atlasSphereTokenKey?: string;
 }
 
 export interface GameEdge {

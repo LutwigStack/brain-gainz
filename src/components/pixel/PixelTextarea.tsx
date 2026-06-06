@@ -38,7 +38,7 @@ export const PixelTextarea = ({
   <PixelStack gap="xs">
     {label ? (
       <label htmlFor={id}>
-        <PixelText as="span" size="xs" color="textMuted" uppercase>
+        <PixelText as="span" size="xs" color="textMuted">
           {label}
         </PixelText>
       </label>

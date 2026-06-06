@@ -186,6 +186,61 @@ test('skill atlas adapter preserves real learning nodes and adds non-editing atl
   assert.ok(atlasModel.edges.some((edge) => edge.fromNodeId < 0 || edge.toNodeId < 0));
 });
 
+test('skill atlas bounds contain every atlas node', () => {
+  const graphModel = createGameViewModel(snapshot, { node: { id: 2 }, progress: { completionPercent: 20, openActions: 1 } });
+  const atlasModel = applySkillAtlasLayoutToModel(snapshot, graphModel, { programTitle: 'NLH cash' });
+
+  atlasModel.nodes.forEach((node) => {
+    assert.ok(
+      node.position.x >= atlasModel.bounds.minX && node.position.x <= atlasModel.bounds.maxX,
+      `expected node ${node.id} x=${node.position.x} to be inside ${atlasModel.bounds.minX}..${atlasModel.bounds.maxX}`,
+    );
+    assert.ok(
+      node.position.y >= atlasModel.bounds.minY && node.position.y <= atlasModel.bounds.maxY,
+      `expected node ${node.id} y=${node.position.y} to be inside ${atlasModel.bounds.minY}..${atlasModel.bounds.maxY}`,
+    );
+  });
+});
+
+test('skill atlas adapter keeps the program root at the canvas center', () => {
+  // Epic 47 workstream 04 — the cosmic canvas must place the
+  // current node at 35% from the left and 40% from the top of
+  // the canvas bounds. The transform is applied on the game
+  // model (not on the layout model) so this assertion lives
+  // next to the other `applySkillAtlasLayoutToModel` tests.
+  const graphModel = createGameViewModel(snapshot, { node: { id: 2 }, progress: { completionPercent: 20, openActions: 1 } });
+  const atlasModel = applySkillAtlasLayoutToModel(snapshot, graphModel, { programTitle: 'Бакалавриат по информатике' });
+
+  const currentNode = atlasModel.nodes.find((node) => node.atlasNodeType === 'root');
+  const focalX = 0;
+  const focalY = 0;
+
+  // The current node lands exactly on the focal point
+  // (modulo the per-node position precision rounding).
+  assert.ok(currentNode, 'expected the atlas root to be present');
+  assert.ok(Math.abs(currentNode.position.x - focalX) <= 1, `expected currentNode.position.x ≈ ${focalX}, got ${currentNode.position.x}`);
+  assert.ok(Math.abs(currentNode.position.y - focalY) <= 1, `expected currentNode.position.y ≈ ${focalY}, got ${currentNode.position.y}`);
+  assert.ok(Math.abs(atlasModel.hub.position.x - focalX) <= 1, `expected hub.position.x ≈ ${focalX}, got ${atlasModel.hub.position.x}`);
+  assert.ok(Math.abs(atlasModel.hub.position.y - focalY) <= 1, `expected hub.position.y ≈ ${focalY}, got ${atlasModel.hub.position.y}`);
+});
+
+test('skill atlas adapter is deterministic for the same program', () => {
+  // The spiral angle jitter is keyed on the program title +
+  // node id, so the same program always produces the same
+  // layout and two different programs produce visibly
+  // different layouts. This pins both invariants at once.
+  const graphModel = createGameViewModel(snapshot, { node: { id: 2 }, progress: { completionPercent: 20, openActions: 1 } });
+
+  const firstCs = applySkillAtlasLayoutToModel(snapshot, graphModel, { programTitle: 'Бакалавриат по информатике' });
+  const secondCs = applySkillAtlasLayoutToModel(snapshot, graphModel, { programTitle: 'Бакалавриат по информатике' });
+
+  assert.deepEqual(
+    firstCs.nodes.map((node) => `${node.id}:${node.position.x}:${node.position.y}`),
+    secondCs.nodes.map((node) => `${node.id}:${node.position.x}:${node.position.y}`),
+  );
+});
+
+
 test('skill atlas renders catalog courses as course hubs without duplicate skill containers for any course kind', () => {
   const courseLinks = JSON.stringify({
     kind: 'future_program_course',

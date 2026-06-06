@@ -47,7 +47,7 @@ export const JournalView = ({ snapshot, isLoading, error, onRefresh, onOpenNode,
         <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-amber-50 blur-3xl" />
         <div className="relative flex flex-wrap items-start justify-between gap-6">
           <div className="max-w-2xl space-y-3">
-            <p className="text-[11px] font-black uppercase tracking-[0.35em] text-amber-400">Журнал</p>
+            <p className="text-[11px] font-black tracking-[0.35em] text-amber-400">Журнал</p>
             <h2 className="flex items-center gap-3 text-3xl font-black tracking-tight text-gray-900">
               <BookOpenText size={30} className="text-amber-500" /> Что мешает двигаться
             </h2>
@@ -57,7 +57,7 @@ export const JournalView = ({ snapshot, isLoading, error, onRefresh, onOpenNode,
           <button
             onClick={onRefresh}
             disabled={isLoading}
-            className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-xs font-black uppercase tracking-widest text-gray-500 transition-all hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-xs font-black tracking-widest text-gray-500 transition-all hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} /> Обновить
           </button>
@@ -73,9 +73,9 @@ export const JournalView = ({ snapshot, isLoading, error, onRefresh, onOpenNode,
           ) : (
             barrierSummary.map((item) => (
               <div key={item.barrierType} className="rounded-[1.75rem] border border-gray-100 bg-gray-50 p-5">
-                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">Барьер</p>
+                <p className="text-[10px] font-black tracking-[0.25em] text-gray-400">Барьер</p>
                 <p className="mt-3 text-lg font-black tracking-tight text-gray-900">{barrierLabel(item.barrierType)}</p>
-                <p className="mt-3 text-xs font-black uppercase tracking-[0.25em] text-amber-500">{item.count} раз</p>
+                <p className="mt-3 text-xs font-black tracking-[0.25em] text-amber-500">{item.count} раз</p>
               </div>
             ))
           )}
@@ -84,7 +84,7 @@ export const JournalView = ({ snapshot, isLoading, error, onRefresh, onOpenNode,
 
       <section className="grid gap-6 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.15fr)_minmax(0,1.15fr)]">
         <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-lg">
-          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">
+          <p className="flex items-center gap-2 text-[10px] font-black tracking-[0.25em] text-gray-400">
             <AlertTriangle size={14} className="text-rose-400" /> Повторы
           </p>
 
@@ -95,19 +95,19 @@ export const JournalView = ({ snapshot, isLoading, error, onRefresh, onOpenNode,
               hotspots.map((item) => (
                 <div key={item.nodeId} className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-4">
                   <p className="text-sm font-black text-gray-900">{item.nodeTitle}</p>
-                  <p className="mt-2 text-[11px] font-bold uppercase tracking-widest text-gray-400">
+                  <p className="mt-2 text-[11px] font-bold tracking-widest text-gray-400">
                     {item.incidentCount} раз · {item.blockedCount} барьеров · {item.shrunkCount} упрощений · {item.deferredCount} откладываний
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
                       onClick={() => onOpenNode(item.nodeId)}
-                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-gray-600 transition-all hover:bg-gray-100"
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[10px] font-black tracking-widest text-gray-600 transition-all hover:bg-gray-100"
                     >
                       Открыть
                     </button>
                     <button
                       onClick={() => onCreateFollowUp({ nodeId: item.nodeId, title: `Следующий шаг: ${item.nodeTitle}`, note: 'Создано из повтора в журнале.' })}
-                      className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-amber-700 transition-all hover:bg-amber-100"
+                      className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-[10px] font-black tracking-widest text-amber-700 transition-all hover:bg-amber-100"
                     >
                       Следующий шаг
                     </button>
@@ -119,7 +119,7 @@ export const JournalView = ({ snapshot, isLoading, error, onRefresh, onOpenNode,
         </div>
 
         <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-lg">
-          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">
+          <p className="flex items-center gap-2 text-[10px] font-black tracking-[0.25em] text-gray-400">
             <AlertTriangle size={14} className="text-rose-400" /> Барьеры
           </p>
 
@@ -130,18 +130,18 @@ export const JournalView = ({ snapshot, isLoading, error, onRefresh, onOpenNode,
               barrierEntries.map((entry) => (
                 <div key={entry.id} className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-4">
                   <p className="text-sm font-black text-gray-900">{entry.nodeTitle}</p>
-                  <p className="mt-1 text-[11px] font-bold uppercase tracking-widest text-rose-600">{barrierLabel(entry.barrierType ?? 'barrier')}</p>
+                  <p className="mt-1 text-[11px] font-bold tracking-widest text-rose-600">{barrierLabel(entry.barrierType ?? 'barrier')}</p>
                   <p className="mt-3 text-xs text-gray-600">{entry.note || 'Без заметки.'}</p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
                       onClick={() => onOpenNode(entry.nodeId)}
-                      className="rounded-xl border border-white/80 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-rose-700 transition-all hover:bg-rose-100"
+                      className="rounded-xl border border-white/80 bg-white px-3 py-2 text-[10px] font-black tracking-widest text-rose-700 transition-all hover:bg-rose-100"
                     >
                       Открыть
                     </button>
                     <button
                       onClick={() => onCreateFollowUp({ nodeId: entry.nodeId, title: `Разобрать барьер: ${barrierLabel(entry.barrierType ?? 'barrier')}`, note: entry.note ?? undefined, barrierType: entry.barrierType })}
-                      className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-amber-700 transition-all hover:bg-amber-100"
+                      className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-[10px] font-black tracking-widest text-amber-700 transition-all hover:bg-amber-100"
                     >
                       Следующий шаг
                     </button>
@@ -153,7 +153,7 @@ export const JournalView = ({ snapshot, isLoading, error, onRefresh, onOpenNode,
         </div>
 
         <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-lg">
-          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">
+          <p className="flex items-center gap-2 text-[10px] font-black tracking-[0.25em] text-gray-400">
             <Scissors size={14} className="text-amber-400" /> Изменения
           </p>
 
@@ -164,19 +164,19 @@ export const JournalView = ({ snapshot, isLoading, error, onRefresh, onOpenNode,
               adjustmentEntries.map((entry) => (
                 <div key={entry.id} className={`rounded-2xl border px-4 py-4 ${eventStyles[entry.eventType] ?? 'border-gray-100 bg-gray-50 text-gray-700'}`}>
                   <p className="text-sm font-black text-gray-900">{entry.nodeTitle}</p>
-                  <p className="mt-1 text-[11px] font-bold uppercase tracking-widest">{eventLabel(entry.eventType)}</p>
+                  <p className="mt-1 text-[11px] font-bold tracking-widest">{eventLabel(entry.eventType)}</p>
                   <p className="mt-3 text-xs text-gray-600">{entry.note || 'Без заметки.'}</p>
-                  {entry.actionTitle && <p className="mt-2 text-[11px] font-bold uppercase tracking-widest text-gray-500">{entry.actionTitle}</p>}
+                  {entry.actionTitle && <p className="mt-2 text-[11px] font-bold tracking-widest text-gray-500">{entry.actionTitle}</p>}
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
                       onClick={() => onOpenNode(entry.nodeId)}
-                      className="rounded-xl border border-white/80 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-gray-700 transition-all hover:bg-gray-100"
+                      className="rounded-xl border border-white/80 bg-white px-3 py-2 text-[10px] font-black tracking-widest text-gray-700 transition-all hover:bg-gray-100"
                     >
                       Открыть
                     </button>
                     <button
                       onClick={() => onCreateFollowUp({ nodeId: entry.nodeId, title: `Следующий шаг после: ${eventLabel(entry.eventType)}`, note: entry.note ?? undefined })}
-                      className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-amber-700 transition-all hover:bg-amber-100"
+                      className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-[10px] font-black tracking-widest text-amber-700 transition-all hover:bg-amber-100"
                     >
                       Следующий шаг
                     </button>

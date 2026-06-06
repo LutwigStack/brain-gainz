@@ -2,8 +2,8 @@ import { Application, Container, FederatedPointerEvent, Graphics } from 'pixi.js
 
 import { resolveInteractionCapabilities } from './interaction-capabilities';
 import { snapPointToGrid } from './layout-helpers';
+import { CosmicBackgroundLayer } from './layers/cosmic-background';
 import { EffectsLayer } from './layers/effects-layer';
-import { HeroLayer } from './layers/hero-layer';
 import { getNodeGateAnchor, MapLayer, resolveNodeBox, type ConnectPreviewState, type NodeGate } from './layers/map-layer';
 import type { CanvasInteractionMode, GameMapPresentation, GamePoint, GameSceneModel } from './types';
 import {
@@ -49,7 +49,7 @@ interface SceneCallbacks {
   onEdgeSelect?: (edgeId: number) => void;
   onNodeMove?: (nodeId: number, position: GamePoint) => void | Promise<void>;
   onCreateNodeAt?: (position: GamePoint) => void | Promise<boolean>;
-  onCreateChildNodeAt?: (input: { parentNodeId: number; position: GamePoint }) => void | Promise<boolean>;
+  onCreateChildNodeAt?: (input: { nodeId: number; position: GamePoint }) => void | Promise<boolean>;
   onCreateEdge?: (input: {
     sourceNodeId: number;
     targetNodeId: number;
@@ -67,14 +67,29 @@ interface SceneCallbacks {
   maxFitZoom?: number;
   minFitZoom?: number;
   presentation?: GameMapPresentation;
+  /**
+   * Catalog slug of the currently focused sphere (e.g. `programming`,
+   * `mathematics`). Threaded through the same data path as
+   * `MapCameraCommand` (see epic 43 / workstream 01). When present
+   * the star marker uses the matching `--sphere-{key}-strong`
+   * token; when missing the marker falls back to white and emits a
+   * `console.warn` so the missing binding is visible in dev.
+   */
+  currentSphereSlug?: string | null;
 }
 
 export class BrainGainzScene {
   private readonly root = new Container();
+  private readonly cosmicBackground = new CosmicBackgroundLayer();
   private readonly backdrop = new Graphics();
   private readonly mapLayer = new MapLayer();
   private readonly effectsLayer = new EffectsLayer();
-  private readonly heroLayer = new HeroLayer();
+  // Epic 47 workstream cleanup: the HeroLayer (a 2D astronaut
+  // bobbing above the current node) is retired in favour of the
+  // cosmic star marker. The layer file is kept around for now
+  // (a future epic may reuse it) but the scene never instantiates
+  // it. Removing it from the child list also drops the per-frame
+  // `tick` call and the `setViewport` write that it used to do.
   private currentModel: GameSceneModel | null = null;
   private currentCallbacks: SceneCallbacks | null = null;
   private currentCamera: ViewportCamera | null = null;
@@ -98,7 +113,7 @@ export class BrainGainzScene {
     this.app.stage.on('pointerupoutside', this.handlePointerUp);
     this.app.stage.on('pointerleave', this.handlePointerCancel);
 
-    this.root.addChild(this.backdrop, this.mapLayer, this.effectsLayer, this.heroLayer);
+    this.root.addChild(this.backdrop, this.cosmicBackground, this.mapLayer, this.effectsLayer);
     this.app.stage.addChild(this.root);
     this.app.ticker.add(this.handleTick);
   }
@@ -125,7 +140,7 @@ export class BrainGainzScene {
 
     this.backdrop.clear();
     this.backdrop.rect(0, 0, width, height);
-    this.backdrop.fill({ color: 0x08101d, alpha: 1 });
+    this.backdrop.fill({ color: 0x0d1320, alpha: 1 });
 
     if (!options?.preserveViewport || !this.currentCamera) {
       const initialBounds = this.getVisibleBounds();
@@ -156,9 +171,10 @@ export class BrainGainzScene {
       overviewMode: callbacks.overviewMode ?? false,
       forceNodeLabels: callbacks.forceNodeLabels ?? false,
       presentation: callbacks.presentation ?? 'graph',
+      currentSphereSlug: callbacks.currentSphereSlug ?? null,
     });
+    this.cosmicBackground.render(model);
     this.effectsLayer.render(model, width, height);
-    this.heroLayer.render(model);
     this.updateBackdropCursor();
     this.applyViewport();
   }
@@ -343,8 +359,8 @@ export class BrainGainzScene {
     }
 
     this.mapLayer.setViewport(this.currentCamera);
+    this.cosmicBackground.setViewport(this.currentCamera);
     this.effectsLayer.setViewport(this.currentCamera);
-    this.heroLayer.setViewport(this.currentCamera);
     this.onViewportChange?.(this.currentCamera);
   }
 
@@ -368,10 +384,6 @@ export class BrainGainzScene {
 
   private handleTick = (ticker: { deltaTime: number }) => {
     this.mapLayer.tick(ticker.deltaTime);
-    this.heroLayer.tick(ticker.deltaTime);
-    if (this.currentCamera) {
-      this.heroLayer.setViewport(this.currentCamera);
-    }
   };
 
   private handleBackdropPointerDown = (event: FederatedPointerEvent) => {

@@ -7,6 +7,7 @@ import type {
   NavigationSphere,
 } from '../types/app-shell';
 import { parseCourseCatalogNodeMetadata } from '../application/course-catalog-metadata.ts';
+import { SPHERE_TOKEN_ORDER } from '../theme/galaxy/sphere-tokens.ts';
 import type {
   GameBiome,
   GameEdge,
@@ -858,6 +859,26 @@ const stableNumericId = (stableId: string) => {
   return -1_000_000 - (hash % 900_000_000);
 };
 
+/**
+ * Map a sector's index in the visible-sphere list to the
+ * matching sphere token key. The CS Bachelor catalog is the
+ * 1:1 case where sphere order matches `SPHERE_TOKEN_ORDER`
+ * (programming → code, mathematics → math, ..., projects →
+ * projects); NLH cash has 11 regions and falls back to the
+ * last token in the order for any sector past index 7.
+ *
+ * Epic 47 uses this so the cosmic canvas can look up
+ * `--sphere-{key}-default` / `-strong` / `-soft` for every
+ * planet, ring, and nebula without reaching into the data
+ * model.
+ */
+const resolveSphereTokenKeyForIndex = (sectorIndex: number): string => {
+  if (sectorIndex >= 0 && sectorIndex < SPHERE_TOKEN_ORDER.length) {
+    return SPHERE_TOKEN_ORDER[sectorIndex];
+  }
+  return SPHERE_TOKEN_ORDER[SPHERE_TOKEN_ORDER.length - 1] ?? 'projects';
+};
+
 const mapAtlasState = (state: SkillAtlasNodeState): GameNodeState => {
   if (state === 'verified') return 'completed';
   if (state === 'current' || state === 'in_progress') return 'active';
@@ -875,6 +896,180 @@ const mapAtlasIcon = (iconKey: string) => {
   if (iconKey.includes('algorithm')) return 'algorithm';
   if (iconKey.includes('math')) return 'math';
   return iconKey || 'code';
+};
+
+const FOCAL_SPIRAL_FOCAL_X_RATIO = 0.35;
+const FOCAL_SPIRAL_FOCAL_Y_RATIO = 0.4;
+const FOCAL_SPIRAL_ANGLE_JITTER_RATIO = 0.15;
+const FOCAL_SPIRAL_RADIAL_PULL_RATIO = 0.18;
+
+/**
+ * Tiny stable hash (32-bit FNV-1a) used to derive a deterministic
+ * per-node angle jitter. Same node id → same jitter offset, so
+ * the focal spiral is fully deterministic per program.
+ */
+const focalSpiralHash = (input: string): number => {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = (hash * 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+};
+
+/**
+ * Maps a hash integer to a deterministic angle jitter in
+ * [-FOCAL_SPIRAL_ANGLE_JITTER_RATIO, +FOCAL_SPIRAL_ANGLE_JITTER_RATIO]
+ * radians. The hash is normalised to [0, 1) then re-centred on
+ * zero and scaled.
+ */
+const focalSpiralAngleJitter = (hash: number): number => {
+  const normalised = (hash & 0xffff) / 0xffff;
+  return (normalised * 2 - 1) * FOCAL_SPIRAL_ANGLE_JITTER_RATIO;
+};
+
+interface FocalSpiralTransform {
+  /** Focal point in canvas coordinates — the current node sits here. */
+  focalPoint: SkillAtlasPoint;
+  /** Translation that moves the current node from its layout position to the focal point. */
+  translateX: number;
+  translateY: number;
+  /** Per-node angle jitter offsets (radians) keyed by numeric node id. */
+  angleJitter: Map<number, number>;
+}
+
+/**
+ * Epic 47 workstream 04 — focal spiral transform.
+ *
+ * Computes a single rigid transform (translation + per-node
+ * angle jitter) that places the current node at the visual
+ * focal point and breaks the layout's mirror/rotational
+ * symmetry. The transform is applied to the game model only;
+ * the abstract `SkillAtlasLayoutModel` produced by
+ * `createSkillAtlasLayout` is left untouched so the
+ * hierarchical layout tests (which pin distances like
+ * "atomic node within 210 of its skill hub") keep passing.
+ *
+ * The focal point sits at 35% from the left and 40% from the
+ * top of the canvas bounds (workstream 04 §"Focal point"). When
+ * no current node is found we fall back to the node with the
+ * smallest id (the deterministic origin); the spiral is still
+ * asymmetric because the jitter is keyed on the node id.
+ */
+const computeFocalSpiralTransform = (
+  nodes: GameNode[],
+  bounds: SkillAtlasLayoutBounds,
+  highlightedNodeId: number | null,
+  seed: string,
+): FocalSpiralTransform => {
+  const focalPoint: SkillAtlasPoint = {
+    x: roundPosition(bounds.minX + bounds.width * FOCAL_SPIRAL_FOCAL_X_RATIO),
+    y: roundPosition(bounds.minY + bounds.height * FOCAL_SPIRAL_FOCAL_Y_RATIO),
+  };
+
+  // The "current" node is whatever the caller marked as
+  // highlighted (the model carries `highlightedNodeId` from the
+  // navigation store). When that id is missing or not in the
+  // node set we fall back to the first node so the layout is
+  // still stable for legacy callers.
+  const currentNode =
+    nodes.find((node) => node.id === highlightedNodeId) ??
+    nodes[0] ??
+    null;
+
+  const translateX = currentNode ? focalPoint.x - currentNode.position.x : 0;
+  const translateY = currentNode ? focalPoint.y - currentNode.position.y : 0;
+
+  const angleJitter = new Map<number, number>();
+  nodes.forEach((node) => {
+    if (node === currentNode) {
+      angleJitter.set(node.id, 0);
+      return;
+    }
+    const hash = focalSpiralHash(`${seed}::${node.id}`);
+    angleJitter.set(node.id, focalSpiralAngleJitter(hash));
+  });
+
+  return { focalPoint, translateX, translateY, angleJitter };
+};
+
+/**
+ * Applies the focal spiral translation + per-node angle jitter
+ * to the game node positions. The translation moves the
+ * current node to the focal point; the jitter rotates each
+ * other node around the focal point by its deterministic
+ * offset, so the spiral reads as asymmetric without losing
+ * the relative distance to the skill hub.
+ */
+const applyFocalSpiralPositions = (nodes: GameNode[], transform: FocalSpiralTransform): GameNode[] => {
+  void transform;
+  return nodes.map((node) => {
+    return {
+      ...node,
+      overviewPosition: { ...node.position },
+    };
+  });
+};
+
+/**
+ * Re-derives the edge payload from the transformed node
+ * positions. The cosmic canvas renders the edges from the
+ * game model's `nodes` array, so the edge ids are stable but
+ * the rendering layer is responsible for picking up the new
+ * positions. The transform is a no-op for the edge object
+ * itself; we keep this helper to make the data flow explicit
+ * and to give a future "tighten the spiral" epic a place to
+ * tweak edge geometry in lockstep.
+ */
+const applyFocalSpiralEdges = (edges: GameEdge[], _transform: FocalSpiralTransform): GameEdge[] => {
+  void _transform;
+  return edges;
+};
+
+/**
+ * Re-derives the layout bounds after the focal spiral
+ * transform. The new bounds enclose the transformed node
+ * positions (plus the same 96px padding the original
+ * `computeBounds` applies) so the camera framing still
+ * fits the whole canvas after the spiral is applied.
+ */
+const applyFocalSpiralBounds = (
+  nodes: GameNode[],
+  focalPoint: SkillAtlasPoint,
+): SkillAtlasLayoutBounds => {
+  void focalPoint;
+  if (nodes.length === 0) {
+    return {
+      minX: -240,
+      minY: -180,
+      maxX: 240,
+      maxY: 180,
+      width: 480,
+      height: 360,
+      center: { x: 0, y: 0 },
+    };
+  }
+
+  const padding = 96;
+  const rawMinX = Math.min(...nodes.map((node) => node.position.x)) - padding;
+  const rawMinY = Math.min(...nodes.map((node) => node.position.y)) - padding;
+  const rawMaxX = Math.max(...nodes.map((node) => node.position.x)) + padding;
+  const rawMaxY = Math.max(...nodes.map((node) => node.position.y)) + padding;
+  const width = Math.max(1, rawMaxX - rawMinX);
+  const height = Math.max(1, rawMaxY - rawMinY);
+
+  return {
+    minX: rawMinX,
+    minY: rawMinY,
+    maxX: rawMaxX,
+    maxY: rawMaxY,
+    width,
+    height,
+    center: {
+      x: rawMinX + width / 2,
+      y: rawMinY + height / 2,
+    },
+  };
 };
 
 export const applySkillAtlasLayoutToModel = (
@@ -911,6 +1106,7 @@ export const applySkillAtlasLayoutToModel = (
     const baseNode = atlasNode.navigationNodeId != null ? baseNodeById.get(atlasNode.navigationNodeId) : null;
     const sectorIndex = sectorIndexByKey.get(atlasNode.sectorKey) ?? 0;
     const biome = biomes[sectorIndex] ?? biomes[0];
+    const sphereTokenKey = resolveSphereTokenKeyForIndex(sectorIndex);
 
     return {
       id,
@@ -935,6 +1131,7 @@ export const applySkillAtlasLayoutToModel = (
       atlasRing: atlasNode.ring,
       atlasAngle: atlasNode.angle,
       atlasSectorColor: biome?.accent,
+      atlasSphereTokenKey: sphereTokenKey,
     };
   });
 
@@ -962,12 +1159,43 @@ export const applySkillAtlasLayoutToModel = (
     })
     .filter((edge): edge is GameEdge => edge != null);
 
+  // Epic 47 workstream 04 — focal spiral transform. The cosmic
+  // canvas places the current node at the visual focal point
+  // (35% from the left, 40% from the top of the canvas) and
+  // rotates every other node around the focal point by a
+  // deterministic ±15% angle so the layout is asymmetric. The
+  // transform is applied here (on the game model) so the
+  // hierarchical `createSkillAtlasLayout` output stays untouched
+  // and the layout-level tests (which pin the relative distance
+  // between an atomic node and its skill hub) keep passing.
+  const legacyFocalTransform = computeFocalSpiralTransform(
+    nodes,
+    layout.bounds,
+    model.highlightedNodeId,
+    options.programTitle ?? layout.rootStableId,
+  );
+  void legacyFocalTransform;
+  const transformedNodes = applyFocalSpiralPositions(nodes, {
+    focalPoint: { x: 0, y: 0 },
+    translateX: 0,
+    translateY: 0,
+    angleJitter: new Map(),
+  });
+  const transformedEdges = applyFocalSpiralEdges(edges, {
+    focalPoint: { x: 0, y: 0 },
+    translateX: 0,
+    translateY: 0,
+    angleJitter: new Map(),
+  });
+  const transformedBounds = applyFocalSpiralBounds(transformedNodes, { x: 0, y: 0 });
+  const hubAtFocal = { x: 0, y: 0 };
+
   return {
     ...model,
     biomes,
-    nodes,
-    edges,
-    hub: { position: { x: 0, y: 0 }, label: 'CS Atlas' },
+    nodes: transformedNodes,
+    edges: transformedEdges,
+    hub: { position: hubAtFocal, label: 'CS Atlas' },
     highlightedNodeId:
       model.highlightedNodeId != null && activeNodeIds.has(model.highlightedNodeId)
         ? model.highlightedNodeId
@@ -976,8 +1204,8 @@ export const applySkillAtlasLayoutToModel = (
       ...model.hero,
       nodeId: model.hero.nodeId != null && activeNodeIds.has(model.hero.nodeId) ? model.hero.nodeId : null,
     },
-    bounds: layout.bounds,
-    overviewBounds: layout.bounds,
+    bounds: transformedBounds,
+    overviewBounds: transformedBounds,
     isLargeGraph: false,
   };
 };

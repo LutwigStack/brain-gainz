@@ -1,9 +1,26 @@
 import { Container, FederatedPointerEvent, Graphics, Rectangle, Text } from 'pixi.js';
 
 import { getGraphEdgeSemantics } from '../../application/graph-edge-semantics';
-import { createQuadraticRoute } from '../edge-geometry';
-import type { GameMapPresentation, GameNode, GamePoint, GameSceneModel, SkillAtlasNodeType } from '../types';
+import { tryGetSphereTokenKey } from '../../theme/galaxy/sphere-id-to-token.ts';
+import { sphereTokens, type SphereTokenKey } from '../../theme/galaxy/sphere-tokens.ts';
+import {
+  createQuadraticRoute,
+  createStraightRoute,
+  sampleJumpRoute,
+} from '../edge-geometry';
+import type { GameEdge, GameMapPresentation, GameNode, GamePoint, GameSceneModel, SkillAtlasEdgeRole, SkillAtlasNodeType } from '../types';
 import type { ViewportCamera } from '../viewport';
+import { StarMarker } from './star-marker';
+
+/**
+ * Pulse period (ms) — the corona scale and alpha complete one full
+ * sine cycle in this many milliseconds. The workstream 02 spec pins
+ * this at 2.4s; the constant is exported so the tests can pin the
+ * value too.
+ */
+export const STAR_MARKER_PULSE_PERIOD_MS = 2400;
+const STAR_MARKER_FALLBACK_HEX = '#ffffff';
+const STAR_MARKER_FALLBACK_COLOR = STAR_MARKER_FALLBACK_HEX;
 
 const statePalette = {
   locked: { fill: 0x111827, stroke: 0x475569, text: 0xcbd5e1, alpha: 0.55 },
@@ -48,6 +65,91 @@ const ATLAS_NODE_SIZE: Record<SkillAtlasNodeType, number> = {
   boss_node: 48,
 };
 
+/**
+ * Epic 47 — three planet body sizes (workstream 02 spec).
+ * `large` (14) is reserved for milestone nodes (boss_node +
+ * domain_hub) and gets a thin elliptical ring; `medium` (10)
+ * for the mid-tier hubs; `small` (6) for leaves.
+ */
+const PLANET_BODY_RADIUS: Record<SkillAtlasNodeType, number> = {
+  root: 6,
+  domain_hub: 14,
+  course_hub: 10,
+  topic_node: 10,
+  atomic_node: 6,
+  practice_node: 6,
+  review_node: 6,
+  boss_node: 14,
+};
+
+/** Visual types that get a milestone ring around the body. */
+const MILESTONE_VISUAL_TYPES: ReadonlySet<SkillAtlasNodeType> = new Set([
+  'boss_node',
+  'domain_hub',
+]);
+
+const PLANET_INNER_STROKE_COLOR = 0xffffff;
+const PLANET_INNER_STROKE_ALPHA = 0.3;
+const PLANET_RING_ALPHA = 0.5;
+const PLANET_RING_X_RATIO = 1.5;
+const PLANET_RING_Y_RATIO = 0.6;
+const PLANET_RING_ROTATION_RAD_PER_SEC = 0.05;
+const PLANET_ICON_COLOR = 0xffffff;
+const PLANET_ICON_ALPHA = 0.6;
+const PLANET_HIT_PADDING = 10;
+
+/**
+ * Epic 47 workstream 03 — "jump route" edge visuals.
+ *
+ * The cosmic canvas draws every edge as a single Bezier curve in
+ * the source sphere's `default` token at 30% alpha, with a
+ * stardust trail of 3 small dots (1.5px) that animates along the
+ * curve. The trail duration is derived from the edge length
+ * (capped at 6s) and the per-edge state is a single Map keyed by
+ * edge id — no React state, no per-frame allocations.
+ */
+const JUMP_ROUTE_STARDUST_DOT_COUNT = 3;
+const JUMP_ROUTE_STARDUST_DOT_RADIUS = 1.5;
+const JUMP_ROUTE_STARDUST_ALPHA = 0.5;
+const JUMP_ROUTE_STARDUST_DOT_SPACING = 0.12;
+const JUMP_ROUTE_HIT_WIDTH = 12;
+
+/**
+ * Cached "sampled curve + per-edge timing" for the current model.
+ * Populated in `drawEdges` (when the static curve is drawn) and
+ * consumed in `tick()` (when the stardust dots are animated).
+ * The map is cleared on every `render()` so a model swap discards
+ * stale trails.
+ */
+interface JumpRouteState {
+  route: GamePoint[];
+  durationMs: number;
+  color: number;
+}
+
+/** Token keys we know are safe to look up in `sphereTokens`. */
+const KNOWN_SPHERE_KEYS = new Set(Object.keys(sphereTokens) as SphereTokenKey[]);
+
+const resolvePlanetRadius = (node: GameNode): number => {
+  const visualType = node.atlasNodeType ?? 'atomic_node';
+  return PLANET_BODY_RADIUS[visualType] ?? PLANET_BODY_RADIUS.atomic_node;
+};
+
+const resolvePlanetIsMilestone = (node: GameNode): boolean => {
+  const visualType = node.atlasNodeType ?? 'atomic_node';
+  return MILESTONE_VISUAL_TYPES.has(visualType);
+};
+
+const resolveSphereToken = (node: GameNode): SphereTokenKey => {
+  const candidate = node.atlasSphereTokenKey;
+  if (candidate && KNOWN_SPHERE_KEYS.has(candidate as SphereTokenKey)) {
+    return candidate as SphereTokenKey;
+  }
+  return 'projects';
+};
+
+const hexStringToInt = (hex: string): number => parseInt(hex.startsWith('#') ? hex.slice(1) : hex, 16);
+
 interface MapLayerHandlers {
   onNodePointerDown?: (nodeId: number, event: FederatedPointerEvent) => void;
   onNodeGatePointerDown?: (nodeId: number, gate: NodeGate, event: FederatedPointerEvent) => void;
@@ -63,6 +165,16 @@ interface MapLayerHandlers {
   presentation?: GameMapPresentation;
   onNodePointerOver?: (nodeId: number, event: FederatedPointerEvent) => void;
   onNodePointerOut?: (nodeId: number, event: FederatedPointerEvent) => void;
+  /**
+   * Catalog slug of the currently focused sphere (e.g. `programming`,
+   * `mathematics`). When provided, the star marker uses the
+   * matching `--sphere-{key}-strong` token for its body fill and
+   * corona colour. When missing or unknown the marker falls back to
+   * white and emits a `console.warn` so the missing binding is
+   * visible in dev — see the epic 43 spec, workstream 01
+   * "Color / Fallback".
+   */
+  currentSphereSlug?: string | null;
 }
 
 export type NodeGate = 'input' | 'output';
@@ -120,6 +232,46 @@ const drawDottedPolyline = (
     carry = (segmentLength + carry) % spacing;
     previous = current;
   }
+};
+
+const getAtlasNodeEdgeAnchors = (fromNode: GameNode, toNode: GameNode): { from: GamePoint; to: GamePoint } => {
+  const dx = toNode.position.x - fromNode.position.x;
+  const dy = toNode.position.y - fromNode.position.y;
+  const distance = Math.hypot(dx, dy) || 1;
+  const unit = { x: dx / distance, y: dy / distance };
+  const fromRadius = resolvePlanetRadius(fromNode) + 5;
+  const toRadius = resolvePlanetRadius(toNode) + 5;
+
+  return {
+    from: {
+      x: fromNode.position.x + unit.x * fromRadius,
+      y: fromNode.position.y + unit.y * fromRadius,
+    },
+    to: {
+      x: toNode.position.x - unit.x * toRadius,
+      y: toNode.position.y - unit.y * toRadius,
+    },
+  };
+};
+
+const getAtlasEdgeStyle = (
+  edgeRole: SkillAtlasEdgeRole | undefined,
+  isFocusEdge: boolean,
+  isSelectedPathEdge: boolean,
+): { alpha: number; width: number } => {
+  if (isFocusEdge) {
+    return { alpha: 0.32, width: 1.35 };
+  }
+
+  if (edgeRole === 'structure_root') {
+    return { alpha: isSelectedPathEdge ? 0.22 : 0.13, width: 1.05 };
+  }
+
+  if (edgeRole === 'structure_branch') {
+    return { alpha: isSelectedPathEdge ? 0.2 : 0.1, width: 0.85 };
+  }
+
+  return { alpha: isSelectedPathEdge ? 0.2 : 0.12, width: 0.7 };
 };
 
 const drawArrowHead = (
@@ -235,15 +387,31 @@ export class MapLayer extends Container {
   private readonly edgeGraphics = new Graphics();
   private readonly edgeHitContainer = new Container();
   private readonly edgePreviewGraphics = new Graphics();
+  /**
+   * Epic 47 workstream 03 — animated stardust trail. A separate
+   * Graphics batch so the trail can be redrawn every frame in
+   * `tick()` without invalidating the static curve batch that was
+   * emitted by `drawEdges()`. The container is added to `world`
+   * after `edgeGraphics` so the trail sits above the static
+   * curve and below the planets (which live in `nodeContainer`).
+   */
+  private readonly stardustGraphics = new Graphics();
   private readonly legendGraphics = new Graphics();
   private readonly legendLabels = new Container();
   private readonly nodeContainer = new Container();
-  private readonly pulses = new Map<number, Graphics>();
+  private readonly starMarkers = new Map<number, StarMarker>();
   private readonly nodeShells = new Map<number, Graphics>();
   private readonly nodeLabels = new Map<number, Text>();
   private readonly edgeHits = new Map<number, Graphics>();
   private readonly legendTexts = new Map<string, Text>();
   private readonly previewNodePositions = new Map<number, GamePoint>();
+  /**
+   * Per-edge sampled curve + duration cache for the stardust
+   * trail. Cleared on every `render()` so a model swap drops
+   * stale trails; populated by `drawEdges` (atlas branch) and
+   * consumed by `tick()`.
+   */
+  private readonly jumpRouteStates = new Map<number, JumpRouteState>();
   private currentModel: GameSceneModel | null = null;
   private currentZoom = 1;
   private highlightedNodeId: number | null = null;
@@ -256,21 +424,77 @@ export class MapLayer extends Container {
   private forceNodeLabels = false;
   private presentation: GameMapPresentation = 'graph';
   private lastHandlers: MapLayerHandlers = {};
-  private pulseTime = 0;
+  /**
+   * Catalog slug of the currently focused sphere (e.g. `programming`).
+   * Cached from the last `render()` call so the `tick()` pulse loop
+   * can keep using the same colour without re-reading the handlers.
+   */
+  private currentSphereSlug: string | null = null;
+  /**
+   * The colour the star markers were last drawn with, cached so a
+   * `setColor` call is only emitted on a real change (the marker
+   * allocates a FillGradient texture per colour, so we want this
+   * idempotent for the steady state).
+   */
+  private lastAppliedStarColor: string | null = null;
+  /**
+   * Wall-clock origin for the pulse cycle. Updated every time the
+   * document becomes visible again, so the cycle stays in phase
+   * with the real clock after a tab switch (the spec calls this
+   * "resume at current performance.now(), not at the paused
+   * frame").
+   */
+  private pulseOriginMs = typeof performance !== 'undefined' ? performance.now() : 0;
+  /**
+   * Frozen cycle position used while the document is hidden — the
+   * pulse holds the last visible frame until visibility flips back
+   * to true, at which point `pulseOriginMs` resets and the cycle
+   * restarts from 0.
+   */
+  private frozenCyclePos = 0;
+  private isDocumentVisible = typeof document === 'undefined' ? true : !document.hidden;
+  /**
+   * Epic 47: cached rotation of the milestone-planet ring, in
+   * radians. The rotation is paused when the tab is hidden; the
+   * cached value freezes at the last computed rotation so the
+   * ring does not jump on tab focus.
+   */
+  private cachedRingRotation = 0;
+  private readonly handleVisibilityChange = () => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    this.isDocumentVisible = !document.hidden;
+    if (this.isDocumentVisible && typeof performance !== 'undefined') {
+      // Reset the cycle origin so the pulse resumes in phase with
+      // the wall clock instead of continuing from the frozen frame
+      // (workstream 02 §"Pause on hide").
+      this.pulseOriginMs = performance.now();
+    }
+  };
 
   constructor() {
     super();
     this.world.addChild(
       this.edgeGraphics,
+      this.stardustGraphics,
       this.edgeHitContainer,
       this.edgePreviewGraphics,
       this.nodeContainer,
     );
     this.addChild(this.world, this.legendGraphics, this.legendLabels);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    }
   }
 
   render(model: GameSceneModel, handlers: MapLayerHandlers = {}) {
     this.previewNodePositions.clear();
+    // Epic 47 workstream 03 — drop the previous frame's stardust
+    // trails on every model swap. The static curve is rebuilt in
+    // `drawEdges`; the trail is rebuilt in `tick()`.
+    this.jumpRouteStates.clear();
+    this.stardustGraphics.clear();
     this.currentModel = model;
     this.lastHandlers = handlers;
     this.highlightedNodeId = model.highlightedNodeId;
@@ -282,6 +506,7 @@ export class MapLayer extends Container {
     this.overviewMode = handlers.overviewMode ?? false;
     this.forceNodeLabels = handlers.forceNodeLabels ?? false;
     this.presentation = handlers.presentation ?? 'graph';
+    this.currentSphereSlug = handlers.currentSphereSlug ?? null;
     this.drawEdges(model, handlers);
     this.drawConnectPreview();
     this.drawLegend();
@@ -294,7 +519,7 @@ export class MapLayer extends Container {
 
     model.nodes.filter((node) => this.shouldRenderNode(node)).forEach((node) => {
       const shell = this.nodeShells.get(node.id) ?? new Graphics();
-      const pulse = this.pulses.get(node.id) ?? new Graphics();
+      const starMarker = this.starMarkers.get(node.id) ?? new StarMarker();
       const label =
         this.nodeLabels.get(node.id) ??
         new Text({
@@ -309,12 +534,18 @@ export class MapLayer extends Container {
 
       if (!this.nodeShells.has(node.id)) {
         this.nodeShells.set(node.id, shell);
-        this.pulses.set(node.id, pulse);
+        this.starMarkers.set(node.id, starMarker);
         this.nodeLabels.set(node.id, label);
-        this.nodeContainer.addChild(pulse, shell, label);
+        // Z-order: edges → planet shell (body + ring + icon) →
+        // current-node marker (corona + star) → label. Epic 47
+        // workstream 02 §"Body" pins the planet body above the
+        // edges and below the current-node marker; the marker
+        // is therefore added AFTER the shell so the corona glows
+        // over the planet rim instead of being clipped by it.
+        this.nodeContainer.addChild(shell, starMarker, label);
       }
 
-      pulse.eventMode = 'none';
+      starMarker.eventMode = 'none';
       label.eventMode = 'none';
       shell.eventMode = 'static';
       shell.cursor = 'pointer';
@@ -337,9 +568,12 @@ export class MapLayer extends Container {
         handlers.onNodePointerOut?.(node.id, event);
       });
 
-      this.drawNode(this.withRenderPosition(node), shell, pulse, label, model);
+      this.drawNode(this.withRenderPosition(node), shell, starMarker, label, model);
       if (node.id === model.highlightedNodeId) {
-        this.nodeContainer.addChild(pulse, shell, label);
+        // Re-add the highlighted node on top so its halo + marker
+        // stay above the other planets (the marker pulses and
+        // would otherwise be hidden by an adjacent large planet).
+        this.nodeContainer.addChild(shell, starMarker, label);
       }
     });
 
@@ -349,10 +583,10 @@ export class MapLayer extends Container {
       }
 
       this.nodeShells.get(nodeId)?.destroy();
-      this.pulses.get(nodeId)?.destroy();
+      this.starMarkers.get(nodeId)?.destroy();
       this.nodeLabels.get(nodeId)?.destroy();
       this.nodeShells.delete(nodeId);
-      this.pulses.delete(nodeId);
+      this.starMarkers.delete(nodeId);
       this.nodeLabels.delete(nodeId);
     });
 
@@ -362,10 +596,10 @@ export class MapLayer extends Container {
   previewNodePosition(nodeId: number, position: GamePoint, model: GameSceneModel) {
     const node = model.nodes.find((item) => item.id === nodeId);
     const shell = this.nodeShells.get(nodeId);
-    const pulse = this.pulses.get(nodeId);
+    const starMarker = this.starMarkers.get(nodeId);
     const label = this.nodeLabels.get(nodeId);
 
-    if (!node || !shell || !pulse || !label) {
+    if (!node || !shell || !starMarker || !label) {
       return;
     }
 
@@ -379,25 +613,112 @@ export class MapLayer extends Container {
         position,
       },
       shell,
-      pulse,
+      starMarker,
       label,
       model,
     );
   }
 
-  tick(deltaTime: number) {
-    this.pulseTime += deltaTime * 0.025;
+  tick(_deltaTime: number) {
+    // The pulse is driven by `performance.now()` (not the frame
+    // counter) so that a frame drop never skips the cycle visibly.
+    // While the document is hidden we freeze the cycle position and
+    // skip the per-marker update; the next tick after a
+    // `visibilitychange` re-syncs the origin to the current
+    // `performance.now()` and the cycle resumes from 0.
+    void _deltaTime; // accepted for the public tick signature; pulse is wall-clock based.
+    const cyclePos = this.resolveCyclePosition();
 
-    this.pulses.forEach((pulse, nodeId) => {
+    this.starMarkers.forEach((starMarker, nodeId) => {
       const node = this.currentModel?.nodes.find((item) => item.id === nodeId);
-      pulse.visible = nodeId === this.highlightedNodeId || node?.isCurrentRouteTarget === true;
-      if (!pulse.visible) {
+      const isCurrent = nodeId === this.highlightedNodeId || node?.isCurrentRouteTarget === true;
+      starMarker.visible = isCurrent;
+      if (!isCurrent) {
         return;
       }
 
-      const scale = 1 + Math.sin(this.pulseTime) * 0.1;
-      pulse.scale.set(scale);
-      pulse.alpha = 0.24 + (Math.sin(this.pulseTime) + 1) * 0.08;
+      starMarker.applyPulse(cyclePos);
+    });
+
+    // Epic 47 workstream 03 — stardust trail. Drawn from the
+    // `performance.now()` clock so the animation is in phase with
+    // the marker pulse and the milestone-ring rotation. When the
+    // tab is hidden we skip the redraw entirely (the trail freezes
+    // at its last frame) and we also redraw a frame on the next
+    // tick after a visibility flip so the dots resume from the
+    // current wall clock instead of jumping to a stale position.
+    this.renderStardustTrails();
+  }
+
+  override destroy(options?: Parameters<Container['destroy']>[0]) {
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+    super.destroy(options);
+  }
+
+  private resolveCyclePosition(): number {
+    if (!this.isDocumentVisible) {
+      return this.frozenCyclePos;
+    }
+    if (typeof performance === 'undefined') {
+      return 0;
+    }
+    const elapsed = performance.now() - this.pulseOriginMs;
+    const cyclePos = ((elapsed % STAR_MARKER_PULSE_PERIOD_MS) + STAR_MARKER_PULSE_PERIOD_MS) % STAR_MARKER_PULSE_PERIOD_MS;
+    const normalised = cyclePos / STAR_MARKER_PULSE_PERIOD_MS;
+    this.frozenCyclePos = normalised;
+    return normalised;
+  }
+
+  /**
+   * Redraw the stardust trail batch for every cached jump route.
+   * The trail is a train of `JUMP_ROUTE_STARDUST_DOT_COUNT` small
+   * dots that travel along the curve from source to target over
+   * `durationMs` and then loop. The head is at `headT`; the tail
+   * dots are spaced `JUMP_ROUTE_STARDUST_DOT_SPACING` (12% of
+   * the curve) behind it, so a 3-dot train spans ~24% of the
+   * curve.
+   *
+   * Performance: one Graphics batch per frame, with at most
+   * `edges.length * 3` circles. There is no per-edge sprite; the
+   * batch is redrawn from the same sampled `route` array that
+   * was cached in `drawEdges()`. The work is skipped entirely
+   * when the tab is hidden.
+   */
+  private renderStardustTrails() {
+    if (!this.isDocumentVisible) {
+      // Freeze the last visible frame. The trail stays at whatever
+      // the previous tick painted; the next visible tick resumes
+      // from the current `performance.now()` because the per-edge
+      // phase is derived from the wall clock.
+      return;
+    }
+    if (this.jumpRouteStates.size === 0) {
+      this.stardustGraphics.clear();
+      return;
+    }
+    if (typeof performance === 'undefined') {
+      return;
+    }
+
+    const now = performance.now();
+    this.stardustGraphics.clear();
+    this.jumpRouteStates.forEach((state) => {
+      // Wrap the head position so the trail loops without a hard
+      // jump. The `+ 0.15` headroom keeps the tail inside [0, 1]
+      // when the head crosses 1.
+      const phase = (now % state.durationMs) / state.durationMs;
+      const headT = phase;
+      for (let dotIndex = 0; dotIndex < JUMP_ROUTE_STARDUST_DOT_COUNT; dotIndex += 1) {
+        const t = headT - dotIndex * JUMP_ROUTE_STARDUST_DOT_SPACING;
+        if (t < 0 || t > 1) {
+          continue;
+        }
+        const point = sampleJumpRoute(state.route, t);
+        this.stardustGraphics.circle(point.x, point.y, JUMP_ROUTE_STARDUST_DOT_RADIUS);
+        this.stardustGraphics.fill({ color: state.color, alpha: JUMP_ROUTE_STARDUST_ALPHA });
+      }
     });
   }
 
@@ -439,14 +760,14 @@ export class MapLayer extends Container {
 
     const node = this.currentModel.nodes.find((item) => item.id === nodeId);
     const shell = this.nodeShells.get(nodeId);
-    const pulse = this.pulses.get(nodeId);
+    const starMarker = this.starMarkers.get(nodeId);
     const label = this.nodeLabels.get(nodeId);
 
-    if (!node || !shell || !pulse || !label) {
+    if (!node || !shell || !starMarker || !label) {
       return;
     }
 
-    this.drawNode(this.withRenderPosition(node), shell, pulse, label, this.currentModel);
+    this.drawNode(this.withRenderPosition(node), shell, starMarker, label, this.currentModel);
   }
 
   private drawEdges(model: GameSceneModel, handlers: MapLayerHandlers) {
@@ -474,6 +795,10 @@ export class MapLayer extends Container {
       const toNode = nodeById.get(edge.toNodeId);
 
       if (!fromNode || !toNode) {
+        return;
+      }
+
+      if (isAtlas && edge.atlasEdgeRole === 'route_overlay') {
         return;
       }
 
@@ -523,51 +848,31 @@ export class MapLayer extends Container {
       );
 
       if (isAtlas) {
-        const role = edge.atlasEdgeRole ?? 'structure_branch';
-        const atlasStrokeScale = 1 / Math.max(this.currentZoom, 0.35);
-        const atlasColor =
-          role === 'route_overlay'
-            ? 0x38bdf8
-            : role === 'structure_root'
-              ? 0x7dd3fc
-              : role === 'local_cluster'
-                ? toNode.atlasSectorColor ?? fromNode.atlasSectorColor ?? 0x94a3b8
-                : toNode.atlasSectorColor ?? fromNode.atlasSectorColor ?? 0x94a3b8;
-        const atlasWidth =
-          role === 'local_cluster'
-            ? 0.55
-            : role === 'structure_root'
-              ? 1.15
-              : 1;
-        const atlasAlpha =
-          role === 'local_cluster'
-            ? 0.08
-            : role === 'structure_root'
-              ? 0.16
-              : 0.14;
-        const focusBoost = fromNode.isCurrentRouteTarget || toNode.isCurrentRouteTarget ? 0.04 : 0;
+        // Epic 47 workstream 03 — cosmic "jump route". The curve
+        // is a single Bezier in the source sphere's `default` token
+        // at 30% alpha; the stardust trail (3 dots, 1.5px, 50%
+        // alpha) is animated separately in `tick()` using the
+        // route state cached on `jumpRouteStates`. The edge
+        // hit-area is still a 12px transparent polyline so the
+        // existing pointer interactions keep working.
+        const sourceSphere = resolveSphereToken(fromNode);
+        const sourcePalette = sphereTokens[sourceSphere];
+        const edgeColor = hexStringToInt(sourcePalette.default);
+        const anchors = getAtlasNodeEdgeAnchors(fromNode, toNode);
+        const routePoints = createStraightRoute(anchors.from, anchors.to);
+        const style = getAtlasEdgeStyle(edge.atlasEdgeRole, isFocusEdge, isSelectedPathEdge);
 
-        if (role === 'structure_root' || role === 'structure_branch') {
-          drawPolyline(this.edgeGraphics, route);
-          this.edgeGraphics.stroke({
-            width: (atlasWidth + 1.4) * atlasStrokeScale,
-            color: atlasColor,
-            alpha: Math.min(0.028, atlasAlpha * 0.2),
-          });
-          drawPolyline(this.edgeGraphics, route);
-          this.edgeGraphics.stroke({
-            width: atlasWidth * atlasStrokeScale,
-            color: atlasColor,
-            alpha: Math.min(0.2, atlasAlpha + focusBoost),
-          });
-        } else {
-          drawPolyline(this.edgeGraphics, route);
-          this.edgeGraphics.stroke({
-            width: atlasWidth * atlasStrokeScale,
-            color: atlasColor,
-            alpha: Math.min(0.22, atlasAlpha + focusBoost),
-          });
-        }
+        // Static curve batch — drawn in one stroke() call so the
+        // GPU sees a single path. The curve sits above the
+        // cosmic background (workstream 01) and below the
+        // planets (workstream 02) because the nodeContainer is
+        // added after edgeGraphics in the world container.
+        drawPolyline(this.edgeGraphics, routePoints);
+        this.edgeGraphics.stroke({
+          width: style.width / Math.max(this.currentZoom, 0.75),
+          color: edgeColor,
+          alpha: style.alpha,
+        });
 
         const hit =
           this.edgeHits.get(edge.id) ??
@@ -586,8 +891,12 @@ export class MapLayer extends Container {
           handlers.onEdgePointerDown?.(edge.id, event);
         });
         hit.clear();
-        drawPolyline(hit, route);
-        hit.stroke({ width: 12, color: atlasColor, alpha: 0.001 });
+        drawPolyline(hit, routePoints);
+        hit.stroke({
+          width: JUMP_ROUTE_HIT_WIDTH,
+          color: edgeColor,
+          alpha: 0.001,
+        });
         return;
       }
 
@@ -672,8 +981,12 @@ export class MapLayer extends Container {
       : routeNodes;
     routeOverlayNodes.slice(0, -1).forEach((fromNode, index) => {
       const toNode = routeOverlayNodes[index + 1];
-      const { from, to } = getRouteSegmentAnchors(fromNode, toNode, this.overviewMode);
-      const route = createQuadraticRoute(from, to, fromNode.id <= toNode.id ? 1 : -1, 0.12);
+      const anchors = isAtlas
+        ? getAtlasNodeEdgeAnchors(fromNode, toNode)
+        : getRouteSegmentAnchors(fromNode, toNode, this.overviewMode);
+      const route = isAtlas
+        ? createStraightRoute(anchors.from, anchors.to)
+        : createQuadraticRoute(anchors.from, anchors.to, fromNode.id <= toNode.id ? 1 : -1, 0.12);
       const isCurrentSegment = Boolean(fromNode.isCurrentRouteTarget || toNode.isCurrentRouteTarget);
       const color = isCurrentSegment ? 0x38bdf8 : 0xfacc15;
       const atlasStrokeScale = 1 / Math.max(this.currentZoom, 0.35);
@@ -691,8 +1004,8 @@ export class MapLayer extends Container {
       if (!isAtlas) {
         drawArrowHead(
           this.edgeGraphics,
-          route[route.length - 2] ?? from,
-          route[route.length - 1] ?? to,
+          route[route.length - 2] ?? anchors.from,
+          route[route.length - 1] ?? anchors.to,
           color,
           isCurrentSegment ? 0.86 : 0.55,
           isCurrentSegment ? 12 : 9,
@@ -773,12 +1086,12 @@ export class MapLayer extends Container {
   private drawNode(
     node: GameNode,
     shell: Graphics,
-    pulse: Graphics,
+    starMarker: StarMarker,
     label: Text,
     model: GameSceneModel,
   ) {
     if (this.presentation === 'skill-atlas') {
-      this.drawAtlasNode(node, shell, pulse, label, model);
+      this.drawAtlasNode(node, shell, starMarker, label, model);
       return;
     }
 
@@ -815,19 +1128,15 @@ export class MapLayer extends Container {
           ? routeColor
         : palette.stroke;
 
-    pulse.clear();
-    pulse.roundRect(
-      -box.width / 2 - 10,
-      -box.height / 2 - 10,
-      box.width + 20,
-      box.height + 20,
-      radius + 6,
-    );
-    pulse.fill({
-      color: node.isRouteNode ? routeColor : biome?.accent ?? 0x60a5fa,
-      alpha: isHighlighted ? 0.18 : node.isRouteNode ? 0.1 : 0.04,
-    });
-    pulse.position.set(node.position.x, node.position.y);
+    // The star marker is the new current-node indicator (epic 43).
+    // The colour is the current sphere's `strong` token so the
+    // marker reads as the same "active star" the legend paints for
+    // the WindRose. The visibility check in `tick()` decides whether
+    // the marker is shown for this particular node; the geometry
+    // is always drawn here so a later flip doesn't need a re-draw.
+    const starColor = this.resolveStarColor();
+    starMarker.setColor(starColor);
+    starMarker.position.set(node.position.x, node.position.y);
 
     shell.clear();
     shell.hitArea = new Rectangle(
@@ -956,8 +1265,14 @@ export class MapLayer extends Container {
   }
 
   private drawAtlasIcon(shell: Graphics, iconKey: string, color: number, size: number) {
-    const iconSize = Math.max(8, size * 0.34);
-    shell.setStrokeStyle({ width: Math.max(1.4, size * 0.045), color, alpha: 0.92 });
+    // Epic 47: the icon is rendered in white at 60% alpha, scaled
+    // to 4-6px regardless of the planet body size. The caller
+    // passes the icon diameter in pixels via `size` (not the
+    // planet diameter); the default icon path is the existing
+    // vector set, retuned for the small canvas.
+    const iconSize = Math.max(4, Math.min(6, size));
+    const iconAlpha = 0.6;
+    shell.setStrokeStyle({ width: 1, color, alpha: iconAlpha });
 
     if (iconKey === 'database') {
       shell.ellipse(0, -iconSize * 0.34, iconSize * 0.55, iconSize * 0.24);
@@ -1000,8 +1315,8 @@ export class MapLayer extends Container {
           shell.moveTo(previous.x, previous.y);
           shell.lineTo(point.x, point.y);
         }
-        shell.circle(point.x, point.y, Math.max(1.8, size * 0.045));
-        shell.fill({ color, alpha: 0.88 });
+        shell.circle(point.x, point.y, 0.9);
+        shell.fill({ color, alpha: iconAlpha });
       });
       shell.stroke();
       return;
@@ -1053,124 +1368,157 @@ export class MapLayer extends Container {
   private drawAtlasNode(
     node: GameNode,
     shell: Graphics,
-    pulse: Graphics,
+    starMarker: StarMarker,
     label: Text,
-    model: GameSceneModel,
+    _model: GameSceneModel,
   ) {
-    const palette = statePalette[node.state];
-    const biome = model.biomes.find((item) => item.id === node.biomeId);
-    const size = ATLAS_NODE_SIZE[node.atlasNodeType ?? 'atomic_node'] ?? ATLAS_NODE_SIZE.atomic_node;
-    const radius = size / 2;
+    void _model; // epic 47 re-introduces the model lookup; the canvas-only path doesn't need it.
     const isHighlighted = node.id === this.highlightedNodeId;
-    const controlColor =
-      node.controlState === 'lost' || node.controlState === 'contested'
-        ? 0xfb7185
-        : node.controlState === 'weakened'
-          ? 0xfacc15
-          : node.controlState === 'controlled' || node.controlState === 'fortified'
-            ? 0x6ee7b7
-            : node.controlState === 'scouted'
-              ? 0x38bdf8
-              : null;
-    const routeColor = controlColor ?? (node.isRouteComplete
-      ? 0x6ee7b7
-      : node.isCurrentRouteTarget
-        ? 0x38bdf8
-        : node.isWeakRouteNode
-          ? 0xfb7185
-          : node.isRouteLocked
-            ? 0x64748b
-            : 0xfacc15);
-    const accent = node.atlasSectorColor ?? biome?.accent ?? palette.stroke;
-    const borderColor = isHighlighted || node.isCurrentRouteTarget ? routeColor : node.isRouteNode ? routeColor : accent;
     const isBoss = node.atlasNodeType === 'boss_node';
     const isReview = node.atlasNodeType === 'review_node';
     const isRoot = node.atlasNodeType === 'root';
     const isHub = node.atlasNodeType === 'domain_hub' || node.atlasNodeType === 'course_hub' || node.atlasNodeType === 'topic_node';
-    const isActiveBranchHub = isHub && node.isOnSelectedPath;
 
-    pulse.clear();
-    pulse.circle(0, 0, radius + (isRoot ? 24 : isBoss || isHub ? 16 : 12));
-    pulse.fill({
-      color: node.isRouteNode ? routeColor : accent,
-      alpha: isHighlighted || node.isCurrentRouteTarget ? 0.24 : isActiveBranchHub ? 0.14 : node.isRouteNode ? 0.1 : 0.045,
-    });
-    pulse.position.set(node.position.x, node.position.y);
+    // Epic 47: planet body color comes from the sphere token, not
+    // the hard-coded biome palette. Resolve the body radius from
+    // the three planet sizes (small=6, medium=10, large=14).
+    const planetRadius = resolvePlanetRadius(node);
+    const sphereKey = resolveSphereToken(node);
+    const spherePalette = sphereTokens[sphereKey];
+    const planetBodyColor = hexStringToInt(spherePalette.default);
+    const planetStrongColor = hexStringToInt(spherePalette.strong);
+    const planetIsMilestone = resolvePlanetIsMilestone(node);
+    const ringRotation = this.computePlanetRingRotation();
+
+    // Epic 43: the current-node marker is a star + corona, not a
+    // soft circular glow. The colour is the current sphere's
+    // `strong` token (falling back to white + console.warn if the
+    // slug is missing). The geometry is drawn here so a later
+    // visibility flip in `tick()` is free.
+    const starColor = this.resolveStarColor();
+    starMarker.setColor(starColor);
+    starMarker.position.set(node.position.x, node.position.y);
 
     shell.clear();
     shell.hitArea = new Rectangle(
-      -radius - NODE_HIT_PADDING,
-      -radius - NODE_HIT_PADDING,
-      size + NODE_HIT_PADDING * 2,
-      size + NODE_HIT_PADDING * 2,
+      -planetRadius - PLANET_HIT_PADDING,
+      -planetRadius - PLANET_HIT_PADDING,
+      planetRadius * 2 + PLANET_HIT_PADDING * 2,
+      planetRadius * 2 + PLANET_HIT_PADDING * 2,
     );
-    shell.circle(0, 0, radius + 8);
-    shell.fill({ color: 0x020617, alpha: 0.001 });
-    shell.circle(0, 0, radius + (isRoot ? 13 : isBoss || isHub ? 7 : 4));
-    shell.fill({ color: accent, alpha: isRoot ? 0.18 : isBoss || isActiveBranchHub ? 0.12 : 0.06 });
-    shell.circle(0, 0, radius);
-    shell.fill({ color: isRoot ? 0x071426 : palette.fill, alpha: node.state === 'locked' ? 0.68 : isRoot || isHub ? 0.94 : 0.9 });
-    shell.circle(0, 0, radius);
+
+    // Subtle outer halo so the planet reads against the deep-space
+    // background. The halo uses the sphere's `strong` stop at a
+    // very low alpha; the body sits on top in the sphere's
+    // `default` stop.
+    const haloRadius = planetRadius + Math.max(2, planetRadius * 0.35);
+    shell.circle(0, 0, haloRadius);
+    shell.fill({ color: planetStrongColor, alpha: 0.08 });
+
+    // Body
+    shell.circle(0, 0, planetRadius);
+    shell.fill({
+      color: planetBodyColor,
+      alpha: node.state === 'locked' ? 0.72 : 0.96,
+    });
+    // 1px inner stroke in white at 30% alpha — the brief is explicit
+    // that the inner stroke is in #FFFFFF, not in the sphere token.
+    shell.circle(0, 0, planetRadius);
     shell.stroke({
-      color: borderColor,
-      width: isHighlighted || node.isCurrentRouteTarget ? 4 : isRoot ? 3.8 : isBoss ? 3.4 : isHub ? 2.6 : node.isRouteNode ? 2.4 : 1.8,
-      alpha: node.state === 'locked' ? 0.68 : 0.96,
+      color: PLANET_INNER_STROKE_COLOR,
+      width: 1,
+      alpha: PLANET_INNER_STROKE_ALPHA,
     });
 
-    if (isRoot || isActiveBranchHub) {
-      shell.circle(0, 0, radius + (isRoot ? 18 : 10));
-      shell.stroke({ color: accent, width: isRoot ? 2.4 : 1.8, alpha: isRoot ? 0.32 : 0.24 });
-    }
-
-    if (isBoss) {
-      for (let index = 0; index < 8; index += 1) {
-        const angle = (index / 8) * Math.PI * 2;
-        const inner = radius + 4;
-        const outer = radius + 10;
-        shell.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
-        shell.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+    // Milestone ring — thin ellipse, sphere strong, slow rotation.
+    // The ring is part of the planet body, not a separate sprite,
+    // so the hit area is still the body. The rotation is paused
+    // when the tab is hidden.
+    if (planetIsMilestone) {
+      const ringXRadius = planetRadius * PLANET_RING_X_RATIO;
+      const ringYRadius = ringXRadius * PLANET_RING_Y_RATIO;
+      const cos = Math.cos(ringRotation);
+      const sin = Math.sin(ringRotation);
+      const ringSteps = 48;
+      let started = false;
+      for (let step = 0; step <= ringSteps; step += 1) {
+        const theta = (step / ringSteps) * Math.PI * 2;
+        const localX = Math.cos(theta) * ringXRadius;
+        const localY = Math.sin(theta) * ringYRadius;
+        const rotatedX = localX * cos - localY * sin;
+        const rotatedY = localX * sin + localY * cos;
+        if (started) {
+          shell.lineTo(rotatedX, rotatedY);
+        } else {
+          shell.moveTo(rotatedX, rotatedY);
+          started = true;
+        }
       }
-      shell.stroke({ color: borderColor, width: 2, alpha: 0.7 });
+      shell.stroke({ color: planetStrongColor, width: 1, alpha: PLANET_RING_ALPHA });
     }
 
+    // Status badge: small dot in the upper-right of the body for
+    // review / weak / contested / completed / locked route states.
+    // The badge sits inside the body and does not affect the hit
+    // area; the position scales with `planetRadius` so the three
+    // planet sizes all get a readable badge.
     if (isReview || node.isWeakRouteNode) {
-      shell.circle(radius * 0.52, -radius * 0.5, Math.max(4, radius * 0.18));
+      shell.circle(planetRadius * 0.55, -planetRadius * 0.55, Math.max(1.6, planetRadius * 0.18));
       shell.fill({ color: 0xfacc15, alpha: 0.96 });
     } else if (node.controlState === 'contested' || node.controlState === 'lost') {
-      shell.circle(radius * 0.52, -radius * 0.5, Math.max(4, radius * 0.18));
+      shell.circle(planetRadius * 0.55, -planetRadius * 0.55, Math.max(1.6, planetRadius * 0.18));
       shell.fill({ color: 0xfb7185, alpha: 0.96 });
     } else if (node.isRouteComplete || node.state === 'completed') {
-      shell.circle(radius * 0.52, -radius * 0.5, Math.max(4, radius * 0.18));
+      shell.circle(planetRadius * 0.55, -planetRadius * 0.55, Math.max(1.6, planetRadius * 0.18));
       shell.fill({ color: 0x6ee7b7, alpha: 0.96 });
     } else if (node.isRouteLocked || node.state === 'locked') {
-      shell.circle(radius * 0.52, -radius * 0.5, Math.max(4, radius * 0.18));
+      shell.circle(planetRadius * 0.55, -planetRadius * 0.55, Math.max(1.6, planetRadius * 0.18));
       shell.fill({ color: 0x64748b, alpha: 0.86 });
     }
 
     if (node.isCurrentRouteTarget) {
-      shell.circle(0, 0, radius + 13);
-      shell.stroke({ color: 0x38bdf8, width: 2, alpha: 0.54 });
+      shell.circle(0, 0, planetRadius + 6);
+      shell.stroke({ color: 0x38bdf8, width: 1.5, alpha: 0.6 });
     }
 
     if (isHighlighted) {
-      shell.circle(0, 0, radius + (isRoot ? 22 : isBoss || isHub ? 13 : 9));
+      shell.circle(0, 0, planetRadius + (isRoot ? 22 : isBoss || isHub ? 13 : 9));
       shell.stroke({ color: 0xfef08a, width: isRoot || isHub ? 2.6 : 2.2, alpha: 0.96 });
-      shell.circle(0, 0, radius + (isRoot ? 27 : isBoss || isHub ? 17 : 12));
+      shell.circle(0, 0, planetRadius + (isRoot ? 27 : isBoss || isHub ? 17 : 12));
       shell.stroke({ color: 0x38bdf8, width: 1.4, alpha: 0.52 });
     }
 
-    this.drawAtlasIcon(shell, node.atlasIconKey ?? 'code', node.state === 'locked' ? 0x94a3b8 : accent, size);
-    if (isRoot) {
-      shell.circle(0, 0, Math.max(5, radius * 0.18));
-      shell.fill({ color: accent, alpha: 0.92 });
-      shell.circle(0, 0, Math.max(12, radius * 0.42));
-      shell.stroke({ color: 0xfacc15, width: 1.6, alpha: 0.42 });
-    }
+    // Icon inside the body, white at 60% alpha. The icon is
+    // scaled to 4-6px regardless of the planet body size, per
+    // the workstream 02 spec ("scaled to 4-6px, in white at 60%
+    // alpha"). The icon is centred on the body and shares the
+    // same hit area.
+    this.drawAtlasIcon(shell, node.atlasIconKey ?? 'code', PLANET_ICON_COLOR, 5);
+
     shell.position.set(node.position.x, node.position.y);
 
     label.text = '';
     label.visible = false;
     label.position.set(node.position.x, node.position.y);
+  }
+
+  /**
+   * Computes the current milestone-ring rotation in radians. The
+   * rotation is driven by the same `performance.now()` clock as
+   * the current-node pulse, so the two animations stay in phase.
+   * When the tab is hidden (`document.hidden`) the rotation is
+   * paused at its last value, matching the spec for the current-
+   * node marker in epic 43.
+   */
+  private computePlanetRingRotation(): number {
+    const doc = typeof document === 'undefined' ? null : document;
+    if (doc?.hidden) {
+      return this.cachedRingRotation;
+    }
+    const now = typeof performance !== 'undefined' ? performance.now() : 0;
+    const radians = (now * PLANET_RING_ROTATION_RAD_PER_SEC) / 1000;
+    this.cachedRingRotation = radians;
+    return radians;
   }
 
   private refreshLabelVisibility() {
@@ -1257,5 +1605,43 @@ export class MapLayer extends Container {
       ...node,
       position: this.getRenderPosition(node),
     };
+  }
+
+  /**
+   * Resolve the colour for the star marker. The `currentSphereSlug`
+   * handler is the source of truth — when it is present and maps
+   * to a known token key, the matching `--sphere-{key}-strong`
+   * hex is used. When it is missing or unknown, the marker falls
+   * back to white and emits a single `console.warn` so the missing
+   * binding is visible in dev. The `lastAppliedStarColor` cache
+   * keeps the fallback path idempotent — the warning only fires on
+   * a real change of slug (e.g. first render, then a slug swap to
+   * an unknown value).
+   */
+  private resolveStarColor(): string {
+    const slug = this.currentSphereSlug;
+    let resolved: string;
+    if (slug == null || slug === '') {
+      if (this.lastAppliedStarColor !== STAR_MARKER_FALLBACK_COLOR) {
+        console.warn(
+          '[map-layer] star marker: no currentSphereSlug provided; using white fallback.',
+        );
+      }
+      resolved = STAR_MARKER_FALLBACK_HEX;
+    } else {
+      const tokenKey = tryGetSphereTokenKey(slug) as SphereTokenKey | null;
+      if (tokenKey == null) {
+        if (this.lastAppliedStarColor !== STAR_MARKER_FALLBACK_COLOR) {
+          console.warn(
+            `[map-layer] star marker: no sphere token mapped for slug "${slug}"; using white fallback.`,
+          );
+        }
+        resolved = STAR_MARKER_FALLBACK_HEX;
+      } else {
+        resolved = sphereTokens[tokenKey].strong;
+      }
+    }
+    this.lastAppliedStarColor = resolved;
+    return resolved;
   }
 }

@@ -2119,7 +2119,7 @@ export default function App() {
                 <AlertTriangle size={24} />
               </PixelSurface>
               <div className="min-w-0">
-                <PixelText as="p" size="xs" color="textMuted" uppercase>
+                <PixelText as="p" size="xs" color="textMuted">
                   Локальное восстановление
                 </PixelText>
                 <PixelText as="h1" readable size="xl" style={{ marginTop: 6, fontWeight: 800 }}>
@@ -2194,7 +2194,7 @@ export default function App() {
             </div>
 
             <div className="app-left-nav__screen">
-              <PixelText as="p" size="xs" color="textDim" uppercase>
+              <PixelText as="p" size="xs" color="textDim">
                 Экран
               </PixelText>
               <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 4, fontWeight: 800 }}>
@@ -2205,7 +2205,7 @@ export default function App() {
             {renderShellNav('desktop')}
 
             <div className="app-left-nav__footer" title={runtime.dataBoundaryLabel}>
-              <PixelText as="p" size="xs" color="textDim" uppercase>
+              <PixelText as="p" size="xs" color="textDim">
                 Среда
               </PixelText>
               <PixelText as="p" readable size="xs" color={runtime.isLocalFirst ? 'success' : 'info'} style={{ marginTop: 4 }}>
@@ -2256,7 +2256,7 @@ export default function App() {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <PixelText as="p" size="xs" color="textDim" uppercase>
+                        <PixelText as="p" size="xs" color="textDim">
                           Программа
                         </PixelText>
                         <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
@@ -2282,7 +2282,7 @@ export default function App() {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <PixelText as="p" size="xs" color="textDim" uppercase>
+                        <PixelText as="p" size="xs" color="textDim">
                           Специализация
                         </PixelText>
                         <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
@@ -2309,7 +2309,7 @@ export default function App() {
                           )}
                         </div>
                         <div className="min-w-0">
-                          <PixelText as="p" size="xs" color="textDim" uppercase>
+                          <PixelText as="p" size="xs" color="textDim">
                             Раса / персона
                           </PixelText>
                           <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
@@ -2332,7 +2332,7 @@ export default function App() {
                           )}
                         </div>
                         <div className="min-w-0">
-                          <PixelText as="p" size="xs" color="textDim" uppercase>
+                          <PixelText as="p" size="xs" color="textDim">
                             Режим
                           </PixelText>
                           <PixelText as="p" readable size="sm" className="truncate" style={{ marginTop: 3, fontWeight: 800 }}>
@@ -2393,7 +2393,7 @@ export default function App() {
             <PixelStack gap="lg">
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <PixelText as="p" size="xs" color="textMuted" uppercase>
+                  <PixelText as="p" size="xs" color="textMuted">
                     Профиль
                   </PixelText>
                   <PixelText as="h2" readable size="xl" style={{ marginTop: 4, fontWeight: 800 }}>
@@ -2436,7 +2436,7 @@ export default function App() {
               {selectedCampaign ? (
                 <PixelSurface frame="ghost" padding="sm">
                   <PixelStack gap="xs">
-                    <PixelText as="p" size="xs" color="textMuted" uppercase>
+                    <PixelText as="p" size="xs" color="textMuted">
                       Программа
                     </PixelText>
                     <PixelText as="p" readable size="sm" color="textMuted">
@@ -2497,7 +2497,7 @@ export default function App() {
               </PixelSelect>
 
               <PixelStack gap="xs">
-                <PixelText as="p" size="xs" color="textMuted" uppercase>
+                <PixelText as="p" size="xs" color="textMuted">
                   Данные
                 </PixelText>
                 <PixelButton

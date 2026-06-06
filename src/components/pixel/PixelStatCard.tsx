@@ -18,7 +18,7 @@ export const PixelStatCard = ({
   ...props
 }: PixelStatCardProps) => (
   <PixelSurface frame={tone} padding={compact ? 'xxs' : 'md'} {...props}>
-    <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0, lineHeight: 1 }}>
+    <PixelText as="p" size="xs" color="textDim" style={{ margin: 0, lineHeight: 1 }}>
       {label}
     </PixelText>
     <PixelText

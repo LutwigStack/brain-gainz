@@ -57,7 +57,7 @@ export const PixelActionCard = ({
       <div className="grid min-w-0 gap-3 2xl:grid-cols-[minmax(0,1fr)_auto]">
         <PixelStack gap="xs" className="min-w-0 flex-1">
           {eyebrow ? (
-            <PixelText as="p" size="xs" color="textDim" uppercase style={{ margin: 0 }}>
+            <PixelText as="p" size="xs" color="textDim" style={{ margin: 0 }}>
               {eyebrow}
             </PixelText>
           ) : null}

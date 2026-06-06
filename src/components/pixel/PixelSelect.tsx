@@ -36,7 +36,7 @@ export const PixelSelect = ({ label, hint, id, style, children, ...props }: Pixe
     <PixelStack gap="xs">
       {label ? (
         <label htmlFor={selectId}>
-          <PixelText as="span" size="xs" color="textMuted" uppercase>
+          <PixelText as="span" size="xs" color="textMuted">
             {label}
           </PixelText>
         </label>

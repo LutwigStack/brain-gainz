@@ -72,7 +72,6 @@ export const PixelButton = ({
     fontSize: pixelTypography.size.xs,
     lineHeight: pixelTypography.lineHeight.tight,
     letterSpacing: pixelTypography.tracking.normal,
-    textTransform: 'uppercase',
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.55 : 1,
     imageRendering: 'pixelated',

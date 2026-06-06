@@ -21,7 +21,7 @@ export const PixelPanelHeader = ({
     <div className="flex min-w-0 flex-wrap items-start justify-between gap-4">
       <PixelStack gap="xs" className="min-w-0">
         {eyebrow ? (
-          <PixelText as="p" size="xs" color="textMuted" uppercase>
+          <PixelText as="p" size="xs" color="textMuted">
             {eyebrow}
           </PixelText>
         ) : null}

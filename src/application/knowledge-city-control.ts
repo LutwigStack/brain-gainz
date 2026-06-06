@@ -1,3 +1,7 @@
+// NOTE: This module is parked. The user-facing language moved to "Карта знаний"
+// in epic 40. The module is kept for the consolidation pass that will rename
+// the data model and the file path. Do not add new functionality here.
+
 export type NodeControlState = 'unclaimed' | 'scouted' | 'controlled' | 'fortified' | 'weakened' | 'contested' | 'lost';
 export type ObjectControlState = 'secure' | 'developing' | 'weakening' | 'contested' | 'lost_ground';
 export type PressureLevel = 'calm' | 'watch' | 'attack' | 'breach';

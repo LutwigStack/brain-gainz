@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type MouseEvent } from 'react';
 
 import { getGraphEdgeSemantics } from '../../application/graph-edge-semantics';
+import { GalaxyHoloMinimap } from '../../components/galaxy/GalaxyHoloMinimap.tsx';
 import { PixelSurface, PixelText } from '../../components/pixel';
 import type { NavigationNodeSummary, NavigationSnapshot, NodeFocusSnapshot } from '../../types/app-shell';
 import { BrainGainzScene } from '../brain-gainz-scene';
@@ -79,6 +80,26 @@ interface GameMapCanvasProps {
   }) => void;
   onFocusChange?: (focused: boolean) => void;
   onUserCameraControl?: () => void;
+  /**
+   * Catalog slug of the currently focused sphere (e.g. `programming`,
+   * `mathematics`). Passed through to the map layer so the star
+   * marker on the highlighted / current-route-target node uses the
+   * matching `--sphere-{key}-strong` token. When the slug is
+   * missing or unknown, the marker falls back to white and the
+   * map layer emits a single `console.warn` so the missing
+   * binding is visible in dev — see epic 43 workstream 01 §Color.
+   */
+  currentSphereSlug?: string | null;
+  /**
+   * Holo-minimap click → recenter the canvas. Epic 46. The parent
+   * (NavigationView) wires this to the `center-on-point`
+   * `MapCameraCommand` so the click flows through the same command
+   * channel as the other camera resets (the legacy minimap already
+   * did the work inline via `recenterFromMinimap`; the new minimap
+   * surfaces the world point and lets the parent decide how to
+   * dispatch it).
+   */
+  onMinimapJump?: (worldPoint: { x: number; y: number }) => void;
   className?: string;
 }
 
@@ -247,6 +268,8 @@ export const GameMapCanvas = ({
   onCanvasPointerDown,
   onFocusChange,
   onUserCameraControl,
+  currentSphereSlug = null,
+  onMinimapJump,
   className = 'h-[clamp(620px,calc(100dvh-180px),1080px)] w-full overflow-hidden rounded-[1rem] border border-[var(--pixel-line-soft)] bg-[var(--pixel-panel-inset)]',
 }: GameMapCanvasProps) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -395,7 +418,8 @@ export const GameMapCanvas = ({
   const forceNodeLabelsRef = useRef(forceNodeLabels);
   const maxFitZoomRef = useRef(maxFitZoom);
   const minFitZoomRef = useRef(minFitZoom);
-  const presentationRef = useRef(presentation);
+  const presentationRef = useRef(presentation)
+  const currentSphereSlugRef = useRef<string | null>(currentSphereSlug ?? null);
   const viewportModeKey = `${presentation}:${visibleSphereId ?? 'all'}:${visibleSkillId ?? 'all'}:${canvasMode}:${shouldRenderOverview ? 'overview' : 'detail'}:${visibleNodeIds?.join(',') ?? 'all'}:${minFitZoom ?? 'auto'}:${maxFitZoom ?? 'auto'}`;
   const getNodeRenderPosition = useCallback(
     (node: GameSceneModel['nodes'][number]) => (shouldRenderOverview ? node.overviewPosition : null) ?? node.position,
@@ -509,6 +533,7 @@ export const GameMapCanvas = ({
             maxFitZoom: maxFitZoomRef.current,
             minFitZoom: minFitZoomRef.current,
             presentation: presentationRef.current,
+            currentSphereSlug: currentSphereSlugRef.current,
         },
         {
           preserveViewport: false,
@@ -606,6 +631,7 @@ export const GameMapCanvas = ({
           maxFitZoom,
           minFitZoom,
           presentation,
+          currentSphereSlug,
       },
       {
         preserveViewport: shouldPreserveViewport || hasUserControlledViewportRef.current,
@@ -613,7 +639,7 @@ export const GameMapCanvas = ({
         onUserViewportChange: handleUserViewportChange,
       },
     );
-  }, [connectEdgeType, connectSourceNodeId, createMode, forceNodeLabels, interactionMode, maxFitZoom, minFitZoom, model, presentation, selectedEdgeId, shouldRenderOverview, snapToGrid, viewportModeKey]);
+  }, [connectEdgeType, connectSourceNodeId, createMode, currentSphereSlug, forceNodeLabels, interactionMode, maxFitZoom, minFitZoom, model, presentation, selectedEdgeId, shouldRenderOverview, snapToGrid, viewportModeKey]);
 
   const minimap = useMemo(() => {
     if (!viewportCamera || hostSize.width <= 0 || hostSize.height <= 0) {
@@ -922,11 +948,31 @@ export const GameMapCanvas = ({
           scene.resetCamera();
         }
         break;
+      case 'center-on-point': {
+        // Epic 46 — galaxy holo minimap click. A missing `point`
+        // is a hard no-op: the click is still recorded as
+        // "handled" so a later command with the same id is not
+        // re-fired, but the camera does not move. The user can
+        // tap again to re-issue the command with a fresh id.
+        if (!mapCommand.point) {
+          return;
+        }
+        hasUserControlledViewportRef.current = true;
+        onUserCameraControl?.();
+        scene.centerOnPoint({ x: mapCommand.point.x, y: mapCommand.point.y }, viewportCamera.zoom);
+        break;
+      }
       default:
         break;
     }
-  }, [highlightedRenderPosition, mapCommand, model.isLargeGraph, shouldRenderOverview, visibleSphereId]);
+  }, [highlightedRenderPosition, mapCommand, model.isLargeGraph, onUserCameraControl, shouldRenderOverview, viewportCamera?.zoom, visibleSphereId]);
 
+  // Legacy fallback for the click-to-jump UX (epic 37, before the
+  // holo minimap landed in epic 46). Kept as a function so the
+  // commented-out JSX block above stays a one-line uncomment to roll
+  // back. The new flow routes the click through the
+  // `center-on-point` MapCameraCommand and never calls this.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const recenterFromMinimap = (clientX: number, clientY: number, element: HTMLDivElement) => {
     if (!minimap || !viewportCamera) {
       return;
@@ -1033,7 +1079,7 @@ export const GameMapCanvas = ({
       {isEmptyMap ? (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
           <PixelSurface frame="ghost" padding="xxl" className="max-w-[440px] text-center">
-            <PixelText as="p" size="xs" color="textMuted" uppercase>
+            <PixelText as="p" size="xs" color="textMuted">
               Карта пуста
             </PixelText>
             <PixelText as="p" size="lg" style={{ marginTop: 10 }}>
@@ -1050,12 +1096,12 @@ export const GameMapCanvas = ({
         <div className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-2 sm:left-3 sm:top-3 sm:max-w-[calc(100%-1.5rem)]">
           <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
             {createMode ? (
-              <PixelText as="span" size="xs" color="accent" uppercase>
+              <PixelText as="span" size="xs" color="accent">
                 {'\u0420\u0435\u0436\u0438\u043c: \u043d\u043e\u0432\u044b\u0439 \u0443\u0437\u0435\u043b'}
               </PixelText>
             ) : null}
             {connectSourceNodeId != null ? (
-              <PixelText as="span" size="xs" color="accent" uppercase>
+              <PixelText as="span" size="xs" color="accent">
                 {'\u0421\u0432\u044f\u0437\u044c: \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0446\u0435\u043b\u044c'}
               </PixelText>
             ) : null}
@@ -1066,7 +1112,7 @@ export const GameMapCanvas = ({
       {shouldShowZoomEditHint ? (
         <div className="pointer-events-none absolute left-2 top-2 z-10 sm:left-3 sm:top-3">
           <PixelSurface frame="ghost" padding="xs" fullWidth={false}>
-            <PixelText as="span" size="xs" color="textMuted" uppercase>
+            <PixelText as="span" size="xs" color="textMuted">
               Приблизьте для редактирования
             </PixelText>
           </PixelSurface>
@@ -1082,7 +1128,7 @@ export const GameMapCanvas = ({
           }}
         >
           <PixelSurface frame="selected" padding="sm" className="shadow-[0_18px_44px_rgba(0,0,0,0.42)]">
-            <PixelText as="p" size="xs" color="accent" uppercase>
+            <PixelText as="p" size="xs" color="accent">
               {tooltipNode.isCurrentRouteTarget
                 ? 'Текущий шаг'
                 : tooltipNode.isRouteComplete
@@ -1112,13 +1158,29 @@ export const GameMapCanvas = ({
         <div className="pointer-events-none absolute bottom-3 right-3 z-10 hidden sm:block">
           <PixelSurface frame="ghost" padding="xs" fullWidth={false} className="pointer-events-auto">
             <div className="flex items-center justify-between gap-3 pb-2">
-              <PixelText as="span" size="xs" color="textMuted" uppercase>
+              <PixelText as="span" size="xs" color="textMuted">
                 Миникарта
               </PixelText>
-              <PixelText as="span" size="xs" color="textMuted" uppercase>
+              <PixelText as="span" size="xs" color="textMuted">
                 перейти
               </PixelText>
             </div>
+            {/* Epic 46 — galaxy holo minimap. The legacy edge-and-dot
+                renderer is preserved as a comment block below in case
+                we need to roll back the visual direction. The new
+                component owns the click handler and routes it through
+                the `center-on-point` MapCameraCommand. */}
+            <GalaxyHoloMinimap
+              biomes={model.biomes}
+              modelBounds={model.bounds}
+              viewportCamera={viewportCamera}
+              canvasSize={hostSize}
+              currentSphereSlug={currentSphereSlug}
+              onJumpToWorldPoint={onMinimapJump}
+              width={MINIMAP_SIZE.width}
+              height={MINIMAP_SIZE.height}
+            />
+            {/*
             <div
               className="relative cursor-pointer overflow-hidden rounded-[0.65rem] border border-[var(--pixel-line-soft)] bg-[rgba(4,10,20,0.88)]"
               style={{ width: MINIMAP_SIZE.width, height: MINIMAP_SIZE.height }}
@@ -1194,6 +1256,7 @@ export const GameMapCanvas = ({
                 />
               </svg>
             </div>
+            */}
           </PixelSurface>
         </div>
       ) : null}

@@ -1,12 +1,17 @@
 import type {
   NavigationSnapshot,
   NavigationNodeSummary,
+  NavigationDirection,
+  NavigationSphere,
   ProgramHierarchyEntry,
   ProgramMapLayerFallbackReason,
   ProgramMapLayerState,
   TodaySnapshot,
 } from '../types/app-shell';
-import { isCourseCatalogNodeMetadata } from './course-catalog-metadata.ts';
+import { CS_BACHELOR_COURSES_BY_KEY } from './cs-bachelor-course-catalog.ts';
+import { isCourseCatalogNodeMetadata, parseCourseCatalogNodeMetadata } from './course-catalog-metadata.ts';
+import { NLH_CASH_COURSES_BY_KEY } from './nlh-cash-course-catalog.ts';
+import { SPHERE_CATALOG_SLUG_ORDER, tryGetSphereTokenKey } from '../theme/galaxy/sphere-id-to-token.ts';
 
 type RouteItem = NonNullable<TodaySnapshot['route']>['items'][number];
 
@@ -18,6 +23,7 @@ interface ProgramHierarchyInput {
 
 export interface InfrastructureObjectViewModel {
   key: string;
+  catalogSlug: string | null;
   entryStableId: string;
   title: string;
   sourceTitle: string;
@@ -25,6 +31,20 @@ export interface InfrastructureObjectViewModel {
   atomicNodeCount: number;
   routeNodeCount: number;
   completedRouteNodeCount: number;
+  /**
+   * Total number of nodes that count toward the sphere's progress in
+   * the `Сектора` card. Mirrors `routeNodeCount` (the route is the
+   * source of truth for the user's tracked work in the sphere) and
+   * exists as a separate field so the `Сектора` card can use a stable
+   * name (`totalCount`) without coupling the card to the route
+   * internals. Epic 42.
+   */
+  totalCount: number;
+  /**
+   * Completed nodes in the sphere. Mirrors `completedRouteNodeCount`
+   * for the same reason as `totalCount`. Epic 42.
+   */
+  completedCount: number;
   progressPercent: number;
   controlLabel: string;
   controlTone: 'secure' | 'developing' | 'weakening' | 'contested';
@@ -99,6 +119,39 @@ const isSyntheticCourseDirection = (direction: NavigationDirection) =>
   direction.skills.length > 0 &&
   direction.skills.every((skill) => skill.nodes.length === 1 && isCourseNode(skill.nodes[0]));
 
+const resolveCourseCatalogRegionKey = (courseKey: string): string | null => {
+  const csCourse = CS_BACHELOR_COURSES_BY_KEY.get(courseKey);
+  if (csCourse) {
+    return csCourse.regionKey;
+  }
+
+  const nlhCourse = NLH_CASH_COURSES_BY_KEY.get(courseKey);
+  if (nlhCourse) {
+    return nlhCourse.regionKey;
+  }
+
+  return null;
+};
+
+const resolveSphereCatalogSlug = (sphere: NavigationSphere): string | null => {
+  for (const direction of sphere.directions) {
+    for (const skill of direction.skills) {
+      for (const node of skill.nodes) {
+        const metadata = parseCourseCatalogNodeMetadata(node.links);
+        if (!metadata) {
+          continue;
+        }
+        const regionKey = resolveCourseCatalogRegionKey(metadata.courseKey);
+        if (regionKey) {
+          return regionKey;
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
 export const buildProgramHierarchy = ({
   snapshot,
   campaign = null,
@@ -121,6 +174,7 @@ export const buildProgramHierarchy = ({
     atomicDescendantCount: 0,
     childContainerCount: snapshot?.spheres.length ?? 0,
     objectKey: null,
+    catalogSlug: null,
     isInfrastructureObjectCandidate: false,
     routeNodeIds: [],
     graphNodeIds: [],
@@ -142,7 +196,12 @@ export const buildProgramHierarchy = ({
     }
   };
 
-  for (const sphere of snapshot?.spheres ?? []) {
+  for (const [sphereIndex, sphere] of (snapshot?.spheres ?? []).entries()) {
+    const resolvedCatalogSlug = resolveSphereCatalogSlug(sphere);
+    const sphereCatalogSlug =
+      resolvedCatalogSlug && tryGetSphereTokenKey(resolvedCatalogSlug)
+        ? resolvedCatalogSlug
+        : SPHERE_CATALOG_SLUG_ORDER[sphereIndex % SPHERE_CATALOG_SLUG_ORDER.length] ?? null;
     const sphereStableId = stableId('sphere', sphere.id);
     const isCourseCatalogSphere = sphere.directions.some((direction) => isSyntheticCourseDirection(direction));
     const sphereObjectKey = isCourseCatalogSphere ? `${sphereStableId}:${objectSlug(sphere.name)}` : null;
@@ -158,6 +217,7 @@ export const buildProgramHierarchy = ({
       atomicDescendantCount: 0,
       childContainerCount: sphere.directions.length,
       objectKey: sphereObjectKey,
+      catalogSlug: sphereCatalogSlug,
       isInfrastructureObjectCandidate: isCourseCatalogSphere,
       routeNodeIds: [],
       graphNodeIds: [],
@@ -181,6 +241,7 @@ export const buildProgramHierarchy = ({
           atomicDescendantCount: 0,
           childContainerCount: direction.skills.length,
           objectKey: null,
+          catalogSlug: sphereCatalogSlug,
           isInfrastructureObjectCandidate: false,
           routeNodeIds: [],
           graphNodeIds: [],
@@ -209,6 +270,7 @@ export const buildProgramHierarchy = ({
           atomicDescendantCount: skill.nodes.length,
           childContainerCount: 0,
           objectKey,
+          catalogSlug: sphereCatalogSlug,
           isInfrastructureObjectCandidate: isObjectCandidate,
           routeNodeIds: [],
           graphNodeIds: skill.nodes.map((node) => node.id),
@@ -241,6 +303,7 @@ export const buildProgramHierarchy = ({
             atomicDescendantCount: 1,
             childContainerCount: 0,
             objectKey: nodeObjectKey,
+            catalogSlug: sphereCatalogSlug,
             isInfrastructureObjectCandidate: false,
             routeNodeIds: routeItem ? [routeItem.id] : [],
             graphNodeIds: [node.id],
@@ -365,6 +428,7 @@ export const buildInfrastructureObjects = ({
 
       return {
         key: entry.objectKey as string,
+        catalogSlug: entry.catalogSlug,
         entryStableId: entry.stableId,
         title: objectDisplayName(entry.title),
         sourceTitle: entry.title,
@@ -372,6 +436,11 @@ export const buildInfrastructureObjects = ({
         atomicNodeCount: entry.atomicDescendantCount,
         routeNodeCount: objectRouteItems.length,
         completedRouteNodeCount,
+        // Epic 42: alias the route-based counts under the stable
+        // names the `Сектора` card consumes. The progress arc and
+        // the percentage label use `completedCount / totalCount`.
+        totalCount: objectRouteItems.length,
+        completedCount: completedRouteNodeCount,
         progressPercent,
         controlLabel,
         controlTone,

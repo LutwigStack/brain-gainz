@@ -9,6 +9,8 @@ import {
   PixelSurface,
   PixelText,
 } from './pixel';
+import { GalaxyLegend } from './galaxy/GalaxyLegend.tsx';
+import { SPHERE_TOKEN_ORDER, tryGetSphereTokenKey } from '../theme/galaxy/sphere-id-to-token.ts';
 
 interface WindRoseBranch {
   id: number;
@@ -24,7 +26,18 @@ interface WindRoseBranch {
 
 interface WindRoseStat {
   id: number;
+  /** Catalog slug (e.g. `programming`, `algorithms-theory`). */
+  key: string;
   title: string;
+  /**
+   * Legacy hex color from the database. Kept for backward compatibility
+   * with existing campaigns whose stats were seeded before epic 41;
+   * the radar uses the sphere token (mapped from `key`) when present
+   * and only falls back to this hex if the slug is not in the sphere
+   * map (NLH cash, see epic 41 README). New code should not read it.
+   *
+   * @deprecated since epic 41; will be removed in a follow-up.
+   */
   color?: string | null;
   xp: number;
   level: number;
@@ -56,6 +69,30 @@ const polarPoint = (index: number, total: number, radius: number) => {
 };
 
 type BranchStateKey = 'active' | 'next' | 'blocked' | 'completed';
+
+type SphereStop = 'default' | 'strong' | 'soft' | 'textOnStrong';
+
+/**
+ * Build a `var(--sphere-{key}-{stop})` reference for the given stat.
+ * Returns the infra fallback (`var(--pixel-accent)`) when the stat's
+ * catalog slug is not in the sphere map — currently the case for
+ * NLH cash stats, which the epic 41 README explicitly leaves out of
+ * scope. The fallback keeps the radar renderable for those stats
+ * without falling back to a hardcoded hex.
+ */
+const sphereVar = (
+  stat: Pick<WindRoseStat, 'key' | 'color'>,
+  stop: SphereStop,
+): string => {
+  const tokenKey = tryGetSphereTokenKey(stat.key);
+  if (tokenKey) {
+    return `var(--sphere-${tokenKey}-${stop})`;
+  }
+  if (stop === 'default' || stop === 'strong') {
+    return 'var(--pixel-accent)';
+  }
+  return 'var(--pixel-text)';
+};
 
 const clampPercent = (value: number) => Math.min(100, Math.max(0, Math.round(value)));
 
@@ -125,6 +162,26 @@ export const WindRoseView = ({
       return `${point.x},${point.y}`;
     })
     .join(' ');
+
+  // Legend — always 8 fixed rows (one per sphere token). The active
+  // campaign drives the focused-row signal: when a stat is selected
+  // and its slug is in the sphere map, the matching row is focused.
+  // Clicking a row calls `onSelectStat` for the stat whose slug
+  // matches; for campaigns without a sphere mapping (NLH cash) the
+  // click is a no-op, which matches the spec ("linked to the radar
+  // via the sphere filter").
+  const legendEntries = stats.map((stat, index) => ({
+    slug: stat.key,
+    label: stat.title,
+    tokenKey: tryGetSphereTokenKey(stat.key) ?? SPHERE_TOKEN_ORDER[index % SPHERE_TOKEN_ORDER.length] ?? null,
+  }));
+  const focusedSlug = selectedStat?.key ?? null;
+  const handleLegendSelect = (slug: string) => {
+    const stat = stats.find((entry) => entry.key === slug);
+    if (stat) {
+      onSelectStat(stat.id);
+    }
+  };
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -197,7 +254,7 @@ export const WindRoseView = ({
                           cx={point.x}
                           cy={point.y}
                           r={active ? 16 : 12}
-                          fill={stat.color ?? '#58d6ff'}
+                          fill={active ? sphereVar(stat, 'strong') : sphereVar(stat, 'default')}
                           opacity={active ? 1 : 0.82}
                         />
                         <text
@@ -206,7 +263,7 @@ export const WindRoseView = ({
                           textAnchor="middle"
                           fontSize="10"
                           fontWeight="800"
-                          fill="#06101c"
+                          fill={sphereVar(stat, 'textOnStrong')}
                         >
                           {stat.level}
                         </text>
@@ -217,32 +274,39 @@ export const WindRoseView = ({
               </div>
 
               <div className="grid min-w-0 content-start gap-2">
-                {stats.map((stat) => (
-                  <button
-                    key={stat.id}
-                    type="button"
-                    onClick={() => onSelectStat(stat.id)}
-                    className="grid min-w-0 gap-2 border bg-[rgba(15,23,42,0.72)] p-3 text-left"
-                    style={{
-                      borderColor: selectedStat?.id === stat.id ? stat.color : 'var(--pixel-border)',
-                      boxShadow:
-                        selectedStat?.id === stat.id
-                          ? `inset 4px 0 0 ${stat.color ?? 'var(--pixel-accent)'}`
-                          : undefined,
-                    }}
-                  >
-                    <div className="flex min-w-0 items-center justify-between gap-3">
-                      <span className="truncate text-sm font-bold text-[var(--pixel-text)]">{stat.title}</span>
-                      <span className="text-xs uppercase text-[var(--pixel-text-muted)]">
-                        ур. {stat.level} · {stat.branches?.length ?? 0} ветк.
-                      </span>
-                    </div>
-                    <PixelMeter value={stat.progressToNext ?? 0} />
-                  </button>
-                ))}
+                {stats.map((stat) => {
+                  const active = selectedStat?.id === stat.id;
+                  return (
+                    <button
+                      key={stat.id}
+                      type="button"
+                      onClick={() => onSelectStat(stat.id)}
+                      className="grid min-w-0 gap-2 border bg-[rgba(15,23,42,0.72)] p-3 text-left"
+                      style={{
+                        borderColor: active ? sphereVar(stat, 'strong') : 'var(--pixel-border)',
+                        boxShadow: active ? `inset 4px 0 0 ${sphereVar(stat, 'strong')}` : undefined,
+                      }}
+                    >
+                      <div className="flex min-w-0 items-center justify-between gap-3">
+                        <span className="truncate text-sm font-bold text-[var(--pixel-text)]">{stat.title}</span>
+                        <span className="text-xs text-[var(--pixel-text-muted)]">
+                          ур. {stat.level} · {stat.branches?.length ?? 0} ветк.
+                        </span>
+                      </div>
+                      <PixelMeter value={stat.progressToNext ?? 0} />
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
+
+          <div className="grid min-w-0 gap-2">
+            <PixelText as="p" size="xs" color="textMuted" readable>
+              Сферы (8) — кликни строку, чтобы выбрать стат
+            </PixelText>
+            <GalaxyLegend entries={legendEntries} focusedSlug={focusedSlug} onSelect={handleLegendSelect} />
+          </div>
         </PixelStack>
       </PixelSurface>
 
@@ -250,7 +314,10 @@ export const WindRoseView = ({
         frame="secondary"
         padding="md"
         className="min-w-0"
-        style={{ borderColor: selectedStat?.color ?? undefined, boxSizing: 'border-box' }}
+        style={{
+          borderColor: selectedStat ? sphereVar(selectedStat, 'default') : undefined,
+          boxSizing: 'border-box',
+        }}
       >
         <PixelPanelHeader
           eyebrow={
@@ -259,7 +326,7 @@ export const WindRoseView = ({
                 <span
                   aria-hidden="true"
                   className="inline-block h-2.5 w-2.5"
-                  style={{ background: selectedStat.color ?? 'var(--pixel-accent)' }}
+                  style={{ background: sphereVar(selectedStat, 'default') }}
                 />
                 Стат
               </span>
@@ -290,8 +357,8 @@ export const WindRoseView = ({
                     isSelected ? 'wind-branch-card--selected' : ''
                   }`}
                   style={{
-                    borderColor: isSelected ? (selectedStat.color ?? 'var(--pixel-accent)') : 'var(--pixel-line-soft)',
-                    boxShadow: isSelected ? `inset 4px 0 0 ${selectedStat.color ?? 'var(--pixel-accent)'}` : undefined,
+                    borderColor: isSelected ? sphereVar(selectedStat, 'strong') : 'var(--pixel-line-soft)',
+                    boxShadow: isSelected ? `inset 4px 0 0 ${sphereVar(selectedStat, 'strong')}` : undefined,
                   }}
                 >
                   <div className="flex min-w-0 items-start justify-between gap-3">
@@ -303,15 +370,15 @@ export const WindRoseView = ({
                       </span>
                     </span>
                     <span
-                      className="inline-flex shrink-0 items-center gap-1 border px-1.5 py-1 text-[10px] uppercase text-[var(--pixel-text-muted)]"
-                      style={{ borderColor: isSelected ? (selectedStat.color ?? 'var(--pixel-accent)') : 'var(--pixel-line-soft)' }}
+                      className="inline-flex shrink-0 items-center gap-1 border px-1.5 py-1 text-[10px] text-[var(--pixel-text-muted)]"
+                      style={{ borderColor: isSelected ? sphereVar(selectedStat, 'strong') : 'var(--pixel-line-soft)' }}
                     >
                       <BranchStateIcon state={state.key} />
                       {state.label}
                     </span>
                   </div>
                   <div className="grid gap-1">
-                    <div className="flex items-center justify-between gap-2 text-[10px] uppercase text-[var(--pixel-text-muted)]">
+                    <div className="flex items-center justify-between gap-2 text-[10px] text-[var(--pixel-text-muted)]">
                       <span>Прогресс: {branch.done_node_count}/{branch.node_count} узл.</span>
                       <span>{progress}%</span>
                     </div>
@@ -331,7 +398,7 @@ export const WindRoseView = ({
 
         {(snapshot?.unassignedBranches ?? []).length > 0 ? (
           <PixelSurface frame="warning" padding="sm" className="mt-3">
-            <PixelText as="p" size="xs" color="warning" uppercase>
+            <PixelText as="p" size="xs" color="warning">
               <TriangleAlert size={13} className="inline" /> Без стата: {snapshot.unassignedBranches.length}
             </PixelText>
           </PixelSurface>

@@ -290,7 +290,7 @@ const CampaignSaveSlotMetric = ({
   <div className="campaign-save-slot__metric">
     <CampaignMetricIcon type={icon} />
     <span className="campaign-save-slot__metric-copy">
-    <PixelText as="span" size="xs" color="textDim" uppercase>
+    <PixelText as="span" size="xs" color="textDim">
       {label}
     </PixelText>
     <PixelText as="strong" readable size="sm">
@@ -357,7 +357,7 @@ const CampaignSaveSlot = ({
             <PixelText as="p" readable size="sm" color="textMuted" className="campaign-save-slot__status">
               {modeLabel(campaign)} активен
             </PixelText>
-            <PixelText as="span" size="xs" color="accent" uppercase className="campaign-save-slot__state-badge">
+            <PixelText as="span" size="xs" color="accent" className="campaign-save-slot__state-badge">
               {campaignStateLabel(campaign)}
             </PixelText>
           </div>
@@ -366,7 +366,7 @@ const CampaignSaveSlot = ({
               <PixelText as="span" readable className="campaign-save-slot__progress-value">
                 {progress}%
               </PixelText>
-              <PixelText as="span" size="xs" color="textMuted" uppercase>
+              <PixelText as="span" size="xs" color="textMuted">
                 Прогресс
               </PixelText>
             </div>
@@ -459,7 +459,7 @@ const CampaignMiniRow = ({
       <PixelText as="span" readable size="sm" title={campaign.name} className="campaign-card__title">
         {campaign.name}
       </PixelText>
-      <PixelText as="span" size="xs" color="textDim" uppercase>
+      <PixelText as="span" size="xs" color="textDim">
         {campaignStatsLabel(campaign)}
       </PixelText>
     </span>
@@ -520,7 +520,7 @@ const CampaignCourseCard = ({
 
       <div className="campaign-course-card__body min-w-0">
         <div className="campaign-course-card__copy-stack min-w-0">
-          <PixelText as="p" size="xs" color={isRestore ? 'warning' : 'info'} uppercase className="campaign-course-card__type">
+          <PixelText as="p" size="xs" color={isRestore ? 'warning' : 'info'} className="campaign-course-card__type">
             {isRestore ? 'В архиве' : courseTypeLabel(campaign)}
           </PixelText>
           <PixelText as="h3" readable size="lg" title={campaign.name} className="campaign-course-card__title">
@@ -627,7 +627,7 @@ const CampaignCreateWorkshop = ({
           style={{ minHeight: 36, padding: '6px 10px' }}
         />
         <div className="campaign-create-workshop__presets" aria-label="Быстрые варианты названия">
-          <PixelText as="span" size="xs" color="textDim" uppercase className="campaign-create-workshop__presets-label">
+          <PixelText as="span" size="xs" color="textDim" className="campaign-create-workshop__presets-label">
             Варианты
           </PixelText>
           {presetCampaignNames.map((preset) => (
@@ -849,7 +849,7 @@ export const CampaignMenu = ({
                     <PixelText as="p" readable size="sm" title={campaign.name} className="truncate">
                       {campaign.name}
                     </PixelText>
-                    <PixelText as="p" size="xs" color="textDim" uppercase>
+                    <PixelText as="p" size="xs" color="textDim">
                       {campaignStatsLabel(campaign)}
                     </PixelText>
                   </div>

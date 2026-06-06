@@ -130,6 +130,7 @@ export interface ProgramHierarchyEntry {
   atomicDescendantCount: number;
   childContainerCount: number;
   objectKey: string | null;
+  catalogSlug: string | null;
   isInfrastructureObjectCandidate: boolean;
   routeNodeIds: number[];
   graphNodeIds: number[];
