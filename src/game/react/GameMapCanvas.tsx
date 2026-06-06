@@ -36,6 +36,7 @@ interface GameMapCanvasProps {
   canvasMode?: 'free' | 'layers';
   visibleNodeIds?: number[] | null;
   forceNodeLabels?: boolean;
+  showAtlasLabels?: boolean;
   maxFitZoom?: number;
   minFitZoom?: number;
   routeNodeMetadata?: RouteNodeCanvasMetadata[] | null;
@@ -255,6 +256,7 @@ export const GameMapCanvas = ({
   canvasMode = 'free',
   visibleNodeIds = null,
   forceNodeLabels = false,
+  showAtlasLabels = false,
   maxFitZoom,
   minFitZoom,
   routeNodeMetadata = null,
@@ -416,6 +418,7 @@ export const GameMapCanvas = ({
   );
   const shouldRenderOverviewRef = useRef(shouldRenderOverview);
   const forceNodeLabelsRef = useRef(forceNodeLabels);
+  const showAtlasLabelsRef = useRef(showAtlasLabels);
   const maxFitZoomRef = useRef(maxFitZoom);
   const minFitZoomRef = useRef(minFitZoom);
   const presentationRef = useRef(presentation)
@@ -477,10 +480,11 @@ export const GameMapCanvas = ({
 
   useEffect(() => {
     forceNodeLabelsRef.current = forceNodeLabels;
+    showAtlasLabelsRef.current = showAtlasLabels;
     maxFitZoomRef.current = maxFitZoom;
     minFitZoomRef.current = minFitZoom;
     presentationRef.current = presentation;
-  }, [forceNodeLabels, maxFitZoom, minFitZoom, presentation]);
+  }, [forceNodeLabels, maxFitZoom, minFitZoom, presentation, showAtlasLabels]);
 
   useEffect(() => {
     let cancelled = false;
@@ -530,6 +534,7 @@ export const GameMapCanvas = ({
             connectEdgeType: connectEdgeTypeRef.current,
             overviewMode: shouldRenderOverviewRef.current,
             forceNodeLabels: forceNodeLabelsRef.current,
+            showAtlasLabels: showAtlasLabelsRef.current,
             maxFitZoom: maxFitZoomRef.current,
             minFitZoom: minFitZoomRef.current,
             presentation: presentationRef.current,
@@ -628,6 +633,7 @@ export const GameMapCanvas = ({
           connectEdgeType,
           overviewMode: shouldRenderOverview,
           forceNodeLabels,
+          showAtlasLabels,
           maxFitZoom,
           minFitZoom,
           presentation,
@@ -639,7 +645,7 @@ export const GameMapCanvas = ({
         onUserViewportChange: handleUserViewportChange,
       },
     );
-  }, [connectEdgeType, connectSourceNodeId, createMode, currentSphereSlug, forceNodeLabels, interactionMode, maxFitZoom, minFitZoom, model, presentation, selectedEdgeId, shouldRenderOverview, snapToGrid, viewportModeKey]);
+  }, [connectEdgeType, connectSourceNodeId, createMode, currentSphereSlug, forceNodeLabels, interactionMode, maxFitZoom, minFitZoom, model, presentation, selectedEdgeId, shouldRenderOverview, showAtlasLabels, snapToGrid, viewportModeKey]);
 
   const minimap = useMemo(() => {
     if (!viewportCamera || hostSize.width <= 0 || hostSize.height <= 0) {

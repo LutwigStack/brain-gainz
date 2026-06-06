@@ -23,6 +23,7 @@ import {
   Scissors,
   ShieldCheck,
   Target,
+  Type,
   X,
 } from 'lucide-react';
 
@@ -531,6 +532,7 @@ export const NavigationView = ({
   const [selectedAtlasItem, setSelectedAtlasItem] = useState<SelectedAtlasItem | null>(null);
   const [isMapDrawerOpen, setIsMapDrawerOpen] = useState(false);
   const [isMapFocusMode, setIsMapFocusMode] = useState(false);
+  const [showAtlasLabels, setShowAtlasLabels] = useState(true);
   const [layerParentNodeId, setLayerParentNodeId] = useState<LayerParentSelection>(null);
   const [canvasContextMenu, setCanvasContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [newStructureName, setNewStructureName] = useState('');
@@ -4634,6 +4636,18 @@ export const NavigationView = ({
                     >
                       <Compass size={14} />
                     </PixelButton>
+                    {isSkillAtlasMap ? (
+                      <PixelButton
+                        tone={showAtlasLabels ? 'accent' : 'ghost'}
+                        onClick={() => setShowAtlasLabels((value) => !value)}
+                        aria-pressed={showAtlasLabels}
+                        aria-label={showAtlasLabels ? 'Скрыть подписи карты' : 'Показать подписи карты'}
+                        data-tooltip={showAtlasLabels ? 'Подписи включены' : 'Подписи скрыты'}
+                        className="navigation-map-overlay__icon-button"
+                      >
+                        <Type size={14} />
+                      </PixelButton>
+                    ) : null}
                     {isLearnerKnowledgeMapWorkspace ? (
                       <>
                         <PixelButton
@@ -5134,6 +5148,7 @@ export const NavigationView = ({
                     canvasMode={mapCanvasMode}
                     visibleNodeIds={canvasVisibleNodeIds}
                     forceNodeLabels={isProgramObjectKnowledgeMap && !isSkillAtlasMap}
+                    showAtlasLabels={isSkillAtlasMap && showAtlasLabels}
                     minFitZoom={isSkillAtlasMap ? 0.28 : isProgramObjectKnowledgeMap ? 0.62 : undefined}
                     routeNodeMetadata={routeNodeMetadata}
                     presentation={isSkillAtlasMap ? 'skill-atlas' : 'graph'}

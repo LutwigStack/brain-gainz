@@ -3,13 +3,14 @@ import { Container, FederatedPointerEvent, Graphics, Rectangle, Text } from 'pix
 import { getGraphEdgeSemantics } from '../../application/graph-edge-semantics';
 import { tryGetSphereTokenKey } from '../../theme/galaxy/sphere-id-to-token.ts';
 import { sphereTokens, type SphereTokenKey } from '../../theme/galaxy/sphere-tokens.ts';
+import { selectAtlasContextLabels, type AtlasLabelBand, type AtlasLabelTier } from '../atlas-labels';
 import {
   createQuadraticRoute,
   createStraightRoute,
   sampleJumpRoute,
 } from '../edge-geometry';
 import type { GameEdge, GameMapPresentation, GameNode, GamePoint, GameSceneModel, SkillAtlasEdgeRole, SkillAtlasNodeType } from '../types';
-import type { ViewportCamera } from '../viewport';
+import { getViewportWorldBounds, worldToScreen, type ViewportCamera, type ViewportSize } from '../viewport';
 import { StarMarker } from './star-marker';
 
 /**
@@ -97,6 +98,13 @@ const PLANET_RING_ROTATION_RAD_PER_SEC = 0.05;
 const PLANET_ICON_COLOR = 0xffffff;
 const PLANET_ICON_ALPHA = 0.6;
 const PLANET_HIT_PADDING = 10;
+const ATLAS_LABEL_MARGIN = 42;
+const ATLAS_LABEL_PRIMARY_SCREEN_OFFSET = 28;
+const ATLAS_LABEL_CHILD_SCREEN_OFFSET = 24;
+const ATLAS_LABEL_COLLISION_PADDING = 12;
+const ATLAS_LABEL_LANE_STEP = 18;
+const ATLAS_LABEL_FADE_SPEED = 0.18;
+const ATLAS_LABEL_LERP_SPEED = 0.22;
 
 /**
  * Epic 47 workstream 03 — "jump route" edge visuals.
@@ -125,6 +133,33 @@ interface JumpRouteState {
   route: GamePoint[];
   durationMs: number;
   color: number;
+}
+
+interface AtlasLabelBox {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+interface AtlasLabelPlacement {
+  box: AtlasLabelBox;
+  guideStart: GamePoint;
+  guideEnd: GamePoint;
+  color: number;
+  alpha: number;
+  position: GamePoint;
+  targetAlpha: number;
+}
+
+interface AtlasScreenLabelState {
+  label: Text;
+  targetPosition: GamePoint;
+  targetAlpha: number;
+  guideStart: GamePoint;
+  guideEnd: GamePoint;
+  guideColor: number;
+  guideAlpha: number;
 }
 
 /** Token keys we know are safe to look up in `sphereTokens`. */
@@ -162,7 +197,9 @@ interface MapLayerHandlers {
   connectPreviewState?: ConnectPreviewState;
   overviewMode?: boolean;
   forceNodeLabels?: boolean;
+  showAtlasLabels?: boolean;
   presentation?: GameMapPresentation;
+  viewportSize?: ViewportSize;
   onNodePointerOver?: (nodeId: number, event: FederatedPointerEvent) => void;
   onNodePointerOut?: (nodeId: number, event: FederatedPointerEvent) => void;
   /**
@@ -396,12 +433,15 @@ export class MapLayer extends Container {
    * curve and below the planets (which live in `nodeContainer`).
    */
   private readonly stardustGraphics = new Graphics();
+  private readonly atlasLabelGuideGraphics = new Graphics();
   private readonly legendGraphics = new Graphics();
   private readonly legendLabels = new Container();
   private readonly nodeContainer = new Container();
+  private readonly atlasLabelContainer = new Container();
   private readonly starMarkers = new Map<number, StarMarker>();
   private readonly nodeShells = new Map<number, Graphics>();
   private readonly nodeLabels = new Map<number, Text>();
+  private readonly atlasScreenLabels = new Map<number, AtlasScreenLabelState>();
   private readonly edgeHits = new Map<number, Graphics>();
   private readonly legendTexts = new Map<string, Text>();
   private readonly previewNodePositions = new Map<number, GamePoint>();
@@ -422,7 +462,11 @@ export class MapLayer extends Container {
   private connectPreviewState: ConnectPreviewState = 'normal';
   private overviewMode = false;
   private forceNodeLabels = false;
+  private showAtlasLabels = false;
+  private atlasLabelBand: AtlasLabelBand | null = null;
   private presentation: GameMapPresentation = 'graph';
+  private currentCamera: ViewportCamera | null = null;
+  private currentViewportSize: ViewportSize | null = null;
   private lastHandlers: MapLayerHandlers = {};
   /**
    * Catalog slug of the currently focused sphere (e.g. `programming`).
@@ -482,7 +526,7 @@ export class MapLayer extends Container {
       this.edgePreviewGraphics,
       this.nodeContainer,
     );
-    this.addChild(this.world, this.legendGraphics, this.legendLabels);
+    this.addChild(this.world, this.atlasLabelGuideGraphics, this.atlasLabelContainer, this.legendGraphics, this.legendLabels);
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', this.handleVisibilityChange);
     }
@@ -505,7 +549,9 @@ export class MapLayer extends Container {
     this.connectPreviewState = handlers.connectPreviewState ?? 'normal';
     this.overviewMode = handlers.overviewMode ?? false;
     this.forceNodeLabels = handlers.forceNodeLabels ?? false;
+    this.showAtlasLabels = handlers.showAtlasLabels ?? false;
     this.presentation = handlers.presentation ?? 'graph';
+    this.currentViewportSize = handlers.viewportSize ?? this.currentViewportSize;
     this.currentSphereSlug = handlers.currentSphereSlug ?? null;
     this.drawEdges(model, handlers);
     this.drawConnectPreview();
@@ -585,9 +631,11 @@ export class MapLayer extends Container {
       this.nodeShells.get(nodeId)?.destroy();
       this.starMarkers.get(nodeId)?.destroy();
       this.nodeLabels.get(nodeId)?.destroy();
+      this.atlasScreenLabels.get(nodeId)?.label.destroy();
       this.nodeShells.delete(nodeId);
       this.starMarkers.delete(nodeId);
       this.nodeLabels.delete(nodeId);
+      this.atlasScreenLabels.delete(nodeId);
     });
 
     this.refreshLabelVisibility();
@@ -647,6 +695,7 @@ export class MapLayer extends Container {
     // at its last frame) and we also redraw a frame on the next
     // tick after a visibility flip so the dots resume from the
     // current wall clock instead of jumping to a stale position.
+    this.updateAtlasScreenLabelAnimation();
     this.renderStardustTrails();
   }
 
@@ -723,6 +772,7 @@ export class MapLayer extends Container {
   }
 
   setViewport(camera: ViewportCamera) {
+    this.currentCamera = camera;
     this.currentZoom = camera.zoom;
     this.world.position.set(camera.x, camera.y);
     this.world.scale.set(camera.zoom);
@@ -1472,9 +1522,271 @@ export class MapLayer extends Container {
 
     shell.position.set(node.position.x, node.position.y);
 
-    label.text = '';
-    label.visible = false;
     label.position.set(node.position.x, node.position.y);
+  }
+
+  private resolveAtlasLabelBox(label: Text, padding = 0, position?: GamePoint): AtlasLabelBox {
+    const fontSize = typeof label.style.fontSize === 'number' ? label.style.fontSize : 11;
+    const wrapWidth = typeof label.style.wordWrapWidth === 'number' ? label.style.wordWrapWidth : 150;
+    const maxCharsPerLine = Math.max(8, Math.floor(wrapWidth / (fontSize * 0.6)));
+    const words = label.text.split(/\s+/).filter(Boolean);
+    const lineLengths: number[] = [];
+    let currentLineLength = 0;
+
+    words.forEach((word) => {
+      const nextLength = currentLineLength === 0 ? word.length : currentLineLength + 1 + word.length;
+      if (nextLength > maxCharsPerLine && currentLineLength > 0) {
+        lineLengths.push(currentLineLength);
+        currentLineLength = word.length;
+        return;
+      }
+      currentLineLength = nextLength;
+    });
+    lineLengths.push(currentLineLength);
+
+    const estimatedWidth = Math.min(
+      wrapWidth,
+      Math.max(...lineLengths, 1) * fontSize * 0.62,
+    );
+    const lineHeight = typeof label.style.lineHeight === 'number' ? label.style.lineHeight : fontSize * 1.25;
+    const width = Math.max(label.width, estimatedWidth);
+    const height = Math.max(label.height, lineLengths.length * lineHeight);
+    const labelPosition = position ?? label.position;
+    return {
+      minX: labelPosition.x - width * label.anchor.x - padding,
+      minY: labelPosition.y - height * label.anchor.y - padding,
+      maxX: labelPosition.x + width * (1 - label.anchor.x) + padding,
+      maxY: labelPosition.y + height * (1 - label.anchor.y) + padding,
+    };
+  }
+
+  private resolveAtlasPlanetScreenBox(node: GameNode, camera: ViewportCamera): AtlasLabelBox {
+    const position = worldToScreen(node.position, camera);
+    const radius = resolvePlanetRadius(node) * camera.zoom + ATLAS_LABEL_COLLISION_PADDING;
+    return {
+      minX: position.x - radius,
+      minY: position.y - radius,
+      maxX: position.x + radius,
+      maxY: position.y + radius,
+    };
+  }
+
+  private doAtlasLabelBoxesOverlap(left: AtlasLabelBox, right: AtlasLabelBox): boolean {
+    return left.minX < right.maxX && left.maxX > right.minX && left.minY < right.maxY && left.maxY > right.minY;
+  }
+
+  private isAtlasLabelBoxInsideViewport(box: AtlasLabelBox, viewportSize: ViewportSize): boolean {
+    return (
+      box.minX >= 0 &&
+      box.maxX <= viewportSize.width &&
+      box.minY >= 0 &&
+      box.maxY <= viewportSize.height
+    );
+  }
+
+  private resolveAtlasLabelLaneOffset(node: GameNode): number {
+    const stableId = node.atlasStableId ?? String(node.id);
+    let hash = 0;
+    for (let index = 0; index < stableId.length; index += 1) {
+      hash = (hash * 31 + stableId.charCodeAt(index)) >>> 0;
+    }
+    return ((hash % 3) - 1) * ATLAS_LABEL_LANE_STEP;
+  }
+
+  private ensureAtlasScreenLabel(nodeId: number): AtlasScreenLabelState {
+    const existing = this.atlasScreenLabels.get(nodeId);
+    if (existing) {
+      return existing;
+    }
+
+    const label = new Text({
+      text: '',
+      style: {
+        fontFamily: 'Trebuchet MS',
+        fontSize: 12,
+        fontWeight: '700',
+        fill: 0xffffff,
+      },
+    });
+    label.eventMode = 'none';
+    label.alpha = 0;
+    label.visible = false;
+    this.atlasLabelContainer.addChild(label);
+
+    const state: AtlasScreenLabelState = {
+      label,
+      targetPosition: { x: 0, y: 0 },
+      targetAlpha: 0,
+      guideStart: { x: 0, y: 0 },
+      guideEnd: { x: 0, y: 0 },
+      guideColor: 0xffffff,
+      guideAlpha: 0,
+    };
+    this.atlasScreenLabels.set(nodeId, state);
+    return state;
+  }
+
+  private resolveAtlasLabelPlacement(
+    label: Text,
+    node: GameNode,
+    tier: AtlasLabelTier,
+    camera: ViewportCamera,
+  ): AtlasLabelPlacement {
+    const spherePalette = sphereTokens[resolveSphereToken(node)];
+    const isPrimary = tier === 'primary';
+    const nodeScreenPosition = worldToScreen(node.position, camera);
+    const screenRadius = resolvePlanetRadius(node) * camera.zoom;
+    const offset = Math.max(
+      screenRadius + (isPrimary ? ATLAS_LABEL_PRIMARY_SCREEN_OFFSET : ATLAS_LABEL_CHILD_SCREEN_OFFSET),
+      isPrimary ? 42 : 34,
+    );
+    const labelPosition = {
+      x: nodeScreenPosition.x + this.resolveAtlasLabelLaneOffset(node),
+      y: nodeScreenPosition.y + offset,
+    };
+
+    label.text = node.title;
+    label.style = {
+      fontFamily: 'Trebuchet MS',
+      fontSize: isPrimary ? 13 : 11,
+      fontWeight: isPrimary ? '700' : '600',
+      fill: hexStringToInt(isPrimary ? spherePalette.strong : spherePalette.default),
+      stroke: { color: 0x020617, width: isPrimary ? 3 : 2 },
+      align: 'left',
+      wordWrap: true,
+      wordWrapWidth: isPrimary ? 190 : 150,
+      lineHeight: isPrimary ? 16 : 14,
+      letterSpacing: 0.2,
+    };
+
+    label.anchor.set(0.5, 0);
+    return {
+      box: this.resolveAtlasLabelBox(label, ATLAS_LABEL_COLLISION_PADDING, labelPosition),
+      guideStart: {
+        x: nodeScreenPosition.x,
+        y: nodeScreenPosition.y + screenRadius + 8,
+      },
+      guideEnd: {
+        x: labelPosition.x,
+        y: labelPosition.y - 7,
+      },
+      color: hexStringToInt(spherePalette.default),
+      alpha: isPrimary ? 0.2 : 0.12,
+      position: labelPosition,
+      targetAlpha: isPrimary ? 0.82 : 0.64,
+    };
+  }
+
+  private refreshAtlasLabelVisibility() {
+    if (!this.currentModel || !this.currentCamera || !this.currentViewportSize) {
+      this.hideAtlasScreenLabels();
+      return;
+    }
+
+    this.atlasLabelGuideGraphics.clear();
+    const viewportBounds = getViewportWorldBounds(this.currentCamera, this.currentViewportSize);
+    const selections = selectAtlasContextLabels(this.currentModel.nodes, this.currentModel.edges, {
+      viewportBounds,
+      zoom: this.currentCamera.zoom,
+      previousBand: this.atlasLabelBand,
+      highlightedNodeId: this.currentModel.highlightedNodeId,
+      nodeMargin: ATLAS_LABEL_MARGIN,
+    });
+    if (selections[0]) {
+      this.atlasLabelBand = selections[0].band;
+    }
+    const nodeById = new Map(this.currentModel.nodes.map((node) => [node.id, node]));
+    const planetBoxes = this.currentModel.nodes.map((node) => this.resolveAtlasPlanetScreenBox(node, this.currentCamera as ViewportCamera));
+    const placedLabelBoxes: AtlasLabelBox[] = [];
+
+    this.nodeLabels.forEach((label) => {
+      label.visible = false;
+    });
+    this.atlasScreenLabels.forEach((state) => {
+      state.targetAlpha = 0;
+      state.guideAlpha = 0;
+    });
+
+    selections.forEach((selection) => {
+      const node = nodeById.get(selection.nodeId);
+      if (!node) {
+        return;
+      }
+
+      const state = this.ensureAtlasScreenLabel(selection.nodeId);
+      const placement = this.resolveAtlasLabelPlacement(state.label, node, selection.tier, this.currentCamera as ViewportCamera);
+      const collidesWithPlanet = planetBoxes.some((box) => this.doAtlasLabelBoxesOverlap(placement.box, box));
+      const collidesWithLabel = placedLabelBoxes.some((box) => this.doAtlasLabelBoxesOverlap(placement.box, box));
+      if (!this.isAtlasLabelBoxInsideViewport(placement.box, this.currentViewportSize as ViewportSize) || collidesWithPlanet || collidesWithLabel) {
+        state.targetAlpha = 0;
+        state.guideAlpha = 0;
+        return;
+      }
+      if (!state.label.visible || state.label.alpha <= 0.01) {
+        state.label.position.set(placement.position.x, placement.position.y);
+      }
+      state.targetPosition = placement.position;
+      state.targetAlpha = placement.targetAlpha;
+      state.guideStart = placement.guideStart;
+      state.guideEnd = placement.guideEnd;
+      state.guideColor = placement.color;
+      state.guideAlpha = placement.alpha;
+      placedLabelBoxes.push(placement.box);
+    });
+    this.renderAtlasLabelGuides();
+  }
+
+  private hideAtlasScreenLabels() {
+    this.atlasLabelGuideGraphics.clear();
+    this.nodeLabels.forEach((label) => {
+      label.visible = false;
+    });
+    this.atlasScreenLabels.forEach((state) => {
+      state.targetAlpha = 0;
+      state.guideAlpha = 0;
+    });
+  }
+
+  private renderAtlasLabelGuides() {
+    this.atlasLabelGuideGraphics.clear();
+    this.atlasScreenLabels.forEach((state) => {
+      if (!state.label.visible || state.label.alpha <= 0.02 || state.guideAlpha <= 0) {
+        return;
+      }
+      this.atlasLabelGuideGraphics.moveTo(state.guideStart.x, state.guideStart.y);
+      this.atlasLabelGuideGraphics.lineTo(state.label.position.x, state.label.position.y - 7);
+      this.atlasLabelGuideGraphics.stroke({
+        color: state.guideColor,
+        alpha: state.guideAlpha * Math.min(1, state.label.alpha + 0.1),
+        width: 0.55,
+      });
+    });
+  }
+
+  private updateAtlasScreenLabelAnimation() {
+    if (this.presentation !== 'skill-atlas') {
+      return;
+    }
+
+    this.atlasScreenLabels.forEach((state) => {
+      const label = state.label;
+      if (state.targetAlpha > 0 && !label.visible) {
+        label.visible = true;
+      }
+      label.position.set(
+        label.position.x + (state.targetPosition.x - label.position.x) * ATLAS_LABEL_LERP_SPEED,
+        label.position.y + (state.targetPosition.y - label.position.y) * ATLAS_LABEL_LERP_SPEED,
+      );
+      label.alpha += (state.targetAlpha - label.alpha) * ATLAS_LABEL_FADE_SPEED;
+      if (Math.abs(label.alpha - state.targetAlpha) < 0.015) {
+        label.alpha = state.targetAlpha;
+      }
+      if (label.alpha <= 0.01 && state.targetAlpha === 0) {
+        label.alpha = 0;
+        label.visible = false;
+      }
+    });
+    this.renderAtlasLabelGuides();
   }
 
   /**
@@ -1501,6 +1813,21 @@ export class MapLayer extends Container {
       return;
     }
 
+    if (this.presentation === 'skill-atlas') {
+      if (this.showAtlasLabels) {
+        this.refreshAtlasLabelVisibility();
+        return;
+      }
+      this.hideAtlasScreenLabels();
+      return;
+    }
+
+    this.atlasLabelGuideGraphics.clear();
+    this.atlasScreenLabels.forEach((state) => {
+      state.label.visible = false;
+      state.targetAlpha = 0;
+      state.guideAlpha = 0;
+    });
     this.currentModel.nodes.forEach((node) => {
       const label = this.nodeLabels.get(node.id);
       if (!label) {

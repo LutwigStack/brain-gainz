@@ -64,6 +64,7 @@ interface SceneCallbacks {
   connectEdgeType?: 'requires' | 'supports' | 'relates_to' | null;
   overviewMode?: boolean;
   forceNodeLabels?: boolean;
+  showAtlasLabels?: boolean;
   maxFitZoom?: number;
   minFitZoom?: number;
   presentation?: GameMapPresentation;
@@ -170,7 +171,9 @@ export class BrainGainzScene {
       connectPreviewState: this.connectPreviewState,
       overviewMode: callbacks.overviewMode ?? false,
       forceNodeLabels: callbacks.forceNodeLabels ?? false,
+      showAtlasLabels: callbacks.showAtlasLabels ?? false,
       presentation: callbacks.presentation ?? 'graph',
+      viewportSize: { width, height },
       currentSphereSlug: callbacks.currentSphereSlug ?? null,
     });
     this.cosmicBackground.render(model);
