@@ -4,7 +4,7 @@
  * SVG minimap rendered in the bottom-right of `GameMapCanvas`. The
  * component is a thin React wrapper over the pure layout logic in
  * `./galaxy-holo-minimap.ts` — it computes the layout, renders the
- * background / clusters / viewport rectangle, and owns the click
+ * background / projected atlas / viewport rectangle, and owns the click
  * handler that asks the parent to recenter the canvas.
  *
  * The click handler is debounced (`GALAXY_HOLO_DEBOUNCE_MS`) to prevent
@@ -23,15 +23,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 
-import type { GameBiome, GameBounds, GamePoint } from '../../game/types.ts';
+import type { GameBiome, GameBounds, GameEdge, GameNode, GamePoint } from '../../game/types.ts';
 import type { ViewportCamera } from '../../game/viewport.ts';
 import { sphereDisplayNames } from '../../theme/galaxy/sphere-tokens.ts';
 import {
   buildGalaxyHoloMinimapLayout,
   findClusterAtMinimapPoint,
-  GALAXY_HOLO_CLUSTER_BOX_HEIGHT,
-  GALAXY_HOLO_CLUSTER_BOX_WIDTH,
-  GALAXY_HOLO_CLUSTER_FILL_ALPHA,
   GALAXY_HOLO_DEBOUNCE_MS,
   GALAXY_HOLO_MINIMAP_HEIGHT,
   GALAXY_HOLO_MINIMAP_WIDTH,
@@ -42,6 +39,10 @@ import {
 export interface GalaxyHoloMinimapProps {
   /** Biome list — the source of the cluster centroids. */
   biomes: GameBiome[];
+  /** Atlas nodes projected into the visible minimap. */
+  nodes: GameNode[];
+  /** Atlas edges projected into the visible minimap. */
+  edges: GameEdge[];
   /** Model bounds — merged with the viewport bounds in the layout. */
   modelBounds: GameBounds;
   /** Current viewport camera (drives the viewport rect). */
@@ -87,6 +88,8 @@ const resolveClusterLabel = (tokenKey: keyof typeof sphereDisplayNames): string 
 
 const GalaxyHoloMinimapBase = ({
   biomes,
+  nodes,
+  edges,
   modelBounds,
   viewportCamera,
   canvasSize,
@@ -104,6 +107,8 @@ const GalaxyHoloMinimapBase = ({
     () =>
       buildGalaxyHoloMinimapLayout({
         biomes,
+        nodes,
+        edges,
         modelBounds,
         canvasSize,
         viewportCamera,
@@ -111,7 +116,7 @@ const GalaxyHoloMinimapBase = ({
         minimapWidth: width,
         minimapHeight: height,
       }),
-    [biomes, canvasSize, currentSphereSlug, height, modelBounds, viewportCamera, width],
+    [biomes, canvasSize, currentSphereSlug, edges, height, modelBounds, nodes, viewportCamera, width],
   );
 
   // Clear any pending debounce timer on unmount so an in-flight click
@@ -196,45 +201,38 @@ const GalaxyHoloMinimapBase = ({
           data-galaxy-holo-minimap-bg="true"
         />
 
-        {/* Clusters (z-order: above background, below viewport rect). */}
-        <g data-galaxy-holo-minimap-clusters="true">
-          {layout.clusters.map((cluster) => {
-            const softFill = `var(--sphere-${cluster.tokenKey}-soft)`;
-            const dotFill = `var(--sphere-${cluster.tokenKey}-default)`;
-            const stroke = `var(--sphere-${cluster.tokenKey}-strong)`;
-            const blobWidth = GALAXY_HOLO_CLUSTER_BOX_WIDTH;
-            const blobHeight = GALAXY_HOLO_CLUSTER_BOX_HEIGHT;
-            return (
-              <g
-                key={`cluster-${cluster.tokenKey}`}
-                data-galaxy-holo-minimap-cluster="true"
-                data-galaxy-holo-minimap-cluster-token={cluster.tokenKey}
-                data-galaxy-holo-minimap-cluster-slug={cluster.catalogSlug}
-                data-galaxy-holo-minimap-cluster-current={cluster.isCurrent ? 'true' : 'false'}
-              >
-                <ellipse
-                  cx={cluster.center.x}
-                  cy={cluster.center.y}
-                  rx={blobWidth / 2}
-                  ry={blobHeight / 2}
-                  fill={softFill}
-                  fillOpacity={GALAXY_HOLO_CLUSTER_FILL_ALPHA}
-                  stroke={cluster.isCurrent ? stroke : 'none'}
-                  strokeWidth={cluster.isCurrent ? 1 : 0}
-                />
-                {cluster.dots.map((dot, dotIndex) => (
-                  <circle
-                    key={`dot-${cluster.tokenKey}-${dotIndex}`}
-                    cx={dot.x}
-                    cy={dot.y}
-                    r={dot.r}
-                    fill={dotFill}
-                    data-galaxy-holo-minimap-dot="true"
-                  />
-                ))}
-              </g>
-            );
-          })}
+        {/* Real atlas projection: same nodes and edges as the large map. */}
+        <g data-galaxy-holo-minimap-edges="true">
+          {layout.edges.map((edge) => (
+            <line
+              key={`edge-${edge.id}`}
+              x1={edge.from.x}
+              y1={edge.from.y}
+              x2={edge.to.x}
+              y2={edge.to.y}
+              stroke={`var(--sphere-${edge.tokenKey}-default)`}
+              strokeOpacity={edge.isRouteOverlay ? 0.36 : 0.14}
+              strokeWidth={edge.isRouteOverlay ? 1.05 : 0.7}
+              data-galaxy-holo-minimap-edge="true"
+            />
+          ))}
+        </g>
+        <g data-galaxy-holo-minimap-nodes="true">
+          {layout.nodes.map((node) => (
+            <circle
+              key={`node-${node.id}`}
+              cx={node.position.x}
+              cy={node.position.y}
+              r={node.radius}
+              fill={`var(--sphere-${node.tokenKey}-default)`}
+              fillOpacity={node.isHub ? 0.95 : 0.88}
+              stroke={node.isCurrent ? 'var(--pixel-text)' : `var(--sphere-${node.tokenKey}-strong)`}
+              strokeOpacity={node.isCurrent ? 0.95 : node.isHub ? 0.58 : 0.18}
+              strokeWidth={node.isCurrent ? 1.5 : node.isHub ? 0.9 : 0.45}
+              data-galaxy-holo-minimap-node="true"
+              data-galaxy-holo-minimap-node-current={node.isCurrent ? 'true' : 'false'}
+            />
+          ))}
         </g>
 
         {/* Viewport rectangle — 1px in `text-default` at 60% alpha. */}

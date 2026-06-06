@@ -17,11 +17,29 @@ const makeNode = (id, title, status = 'active', openActionCount = 0) => ({
 });
 
 const distance = (left, right) => Math.hypot(left.x - right.x, left.y - right.y);
+const SECTOR_TEST_GUTTER = 0.1;
 
 const stableNode = (layout, stableId) => {
   const node = layout.nodes.find((candidate) => candidate.stableId === stableId);
   assert.ok(node, `Expected ${stableId} to exist`);
   return node;
+};
+
+const assertNodeInsideSector = (layout, node) => {
+  if (node.sectorKey === 'program') {
+    return;
+  }
+
+  const sector = layout.sectors.find((candidate) => candidate.key === node.sectorKey);
+  assert.ok(sector, `Expected sector ${node.sectorKey} for ${node.stableId}`);
+  assert.ok(
+    node.angle >= sector.startAngle + SECTOR_TEST_GUTTER - 0.001,
+    `expected ${node.stableId} angle ${node.angle} >= sector start ${sector.startAngle + SECTOR_TEST_GUTTER}`,
+  );
+  assert.ok(
+    node.angle <= sector.endAngle - SECTOR_TEST_GUTTER + 0.001,
+    `expected ${node.stableId} angle ${node.angle} <= sector end ${sector.endAngle - SECTOR_TEST_GUTTER}`,
+  );
 };
 
 const snapshot = {
@@ -110,11 +128,12 @@ test('skill atlas layout is deterministic with local atomic clusters', () => {
   const programmingHub = stableNode(first, 'skill:100');
   const mathHub = stableNode(first, 'skill:200');
   [1, 2, 3, 4, 5, 6].forEach((nodeId) => {
-    assert.ok(distance(stableNode(first, `node:${nodeId}`), programmingHub) < 210);
+    assert.ok(distance(stableNode(first, `node:${nodeId}`), programmingHub) < 310);
   });
   [7, 8, 9].forEach((nodeId) => {
-    assert.ok(distance(stableNode(first, `node:${nodeId}`), mathHub) < 210);
+    assert.ok(distance(stableNode(first, `node:${nodeId}`), mathHub) < 310);
   });
+  first.nodes.forEach((node) => assertNodeInsideSector(first, node));
 
   const visualTypes = new Set(first.nodes.map((node) => node.visualType));
   assert.ok(visualTypes.has('root'));
@@ -396,6 +415,11 @@ test('skill atlas spreads dense course hubs enough for pointer selection', () =>
 
   assert.equal(courseNodes.length, 9);
   assert.ok(Math.min(...pairDistances) >= 48);
+  courseNodes.forEach((node) => assertNodeInsideSector(layout, node));
+  const courseAngles = courseNodes.map((node) => node.angle);
+  const courseSpan = Math.max(...courseAngles) - Math.min(...courseAngles);
+  const sector = layout.sectors[0];
+  assert.ok(courseSpan <= sector.endAngle - sector.startAngle - SECTOR_TEST_GUTTER * 2 + 0.001);
 });
 
 test('route overlay can annotate atlas model without moving nodes', () => {

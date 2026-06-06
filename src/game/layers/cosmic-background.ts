@@ -3,16 +3,12 @@
  *
  * Renders a deep-space field under the rest of the canvas:
  *   - a 200-300 dot star field, deterministic per program slug
- *   - 8 nebulae (one per sphere), positioned at the sphere centroid,
- *     drawn as a soft radial gradient in the sphere's `soft` token
  *
  * The layer is intentionally cheap: every draw call is a single
- * Graphics batch (no per-dot sprites), the star field is memoised
- * per program slug in a module-level Map, and the nebula gradient
- * is faked with 3-4 stacked circles so we do not need a render
- * texture. The layer does not animate (the brief is explicit that
- * the background is static; twinkling stars and breathing nebulae
- * are out of scope).
+ * Graphics batch (no per-dot sprites), and the star field is memoised
+ * per program slug in a module-level Map. The layer does not animate
+ * (the brief is explicit that the background is static; twinkling
+ * stars are out of scope).
  *
  * Public surface (the rest of the canvas does not need anything
  * more than `mount` + `render(model)` + `unmount`):
@@ -21,15 +17,12 @@
  *   - `layer.setViewport(camera)` — applies world position + zoom
  *   - `layer.destroy()`  — frees the Graphics
  *
- * Color format note: PixiJS Graphics wants 0xRRGGBB ints, so the
- * `soft` hex string from `sphereTokens` is converted with a small
- * helper. The hex string is the same value the `--sphere-{key}-soft`
- * CSS variable exposes, so the legend and the minimap stay in sync
- * with the nebula tints.
+ * Sector color fields belong to the atlas foreground layer. Keeping
+ * this layer to stars prevents residual circular nebula contours from
+ * competing with the sector layout.
  */
 import { Container, Graphics } from 'pixi.js';
 
-import { SPHERE_TOKEN_ORDER, sphereTokens, type SphereTokenKey } from '../../theme/galaxy/sphere-tokens.ts';
 import type { GameSceneModel } from '../types';
 import type { ViewportCamera } from '../viewport';
 
@@ -37,10 +30,6 @@ const STAR_COUNT_MIN = 200;
 const STAR_COUNT_MAX = 300;
 const STAR_RADIUS_MIN = 1;
 const STAR_RADIUS_MAX = 2;
-const NEBULA_DIAMETER_MIN = 240;
-const NEBULA_DIAMETER_MAX = 320;
-const NEBULA_ALPHA = 0.18;
-const NEBULA_RINGS = 4;
 const STAR_SUBTLE_ALPHA = 0.5;
 
 interface CosmicDot {
@@ -50,15 +39,6 @@ interface CosmicDot {
 }
 
 const cosmicStarCache = new Map<string, CosmicDot[]>();
-
-const hexToInt = (hex: string): number => {
-  // Sphere tokens are always 7-char `#RRGGBB`. Strip the `#` and
-  // base-16 parse to a PixiJS-friendly int.
-  if (hex.startsWith('#')) {
-    return parseInt(hex.slice(1), 16);
-  }
-  return parseInt(hex, 16);
-};
 
 /**
  * Tiny stable hash (32-bit FNV-1a). Used to derive deterministic
@@ -141,28 +121,14 @@ const deriveProgramSlug = (model: GameSceneModel): string => {
   return `${title}::${ids}`;
 };
 
-const nebulaDiameterForSlug = (slug: string, sphereIndex: number): number => {
-  const seed = hashString(`${slug}::nebula::${sphereIndex}`);
-  const random = mulberry32(seed);
-  return NEBULA_DIAMETER_MIN + random() * (NEBULA_DIAMETER_MAX - NEBULA_DIAMETER_MIN);
-};
-
 export class CosmicBackgroundLayer extends Container {
   private readonly world = new Container();
   private readonly starGraphics = new Graphics();
-  private readonly nebulaGraphics = new Graphics();
-  private currentSlug: string | null = null;
-  private currentWidth = 0;
-  private currentHeight = 0;
 
   constructor() {
     super();
     this.eventMode = 'none';
-    this.world.addChild(this.starGraphics, this.nebulaGraphics);
-    // Star field is drawn first (behind), nebulae are drawn on top
-    // of the stars so the soft tint overlays the field, matching
-    // the brief: "the star field is drawn before the nebulae, so
-    // the nebulae tint the stars".
+    this.world.addChild(this.starGraphics);
     this.addChild(this.world);
   }
 
@@ -181,29 +147,6 @@ export class CosmicBackgroundLayer extends Container {
       this.starGraphics.circle(dot.x, dot.y, dot.radius);
       this.starGraphics.fill({ color: 0x7e8a99, alpha: STAR_SUBTLE_ALPHA });
     }
-
-    this.nebulaGraphics.clear();
-    const spheres = model.biomes.slice(0, SPHERE_TOKEN_ORDER.length);
-    spheres.forEach((biome, index) => {
-      const tokenKey = SPHERE_TOKEN_ORDER[index] ?? SPHERE_TOKEN_ORDER[0];
-      const token = sphereTokens[tokenKey];
-      const color = hexToInt(token.soft);
-      const diameter = nebulaDiameterForSlug(slug, index);
-      const radius = diameter / 2;
-      // Stack N rings with decreasing radius and increasing alpha
-      // to fake a soft radial gradient. The outermost ring is
-      // the largest and the most transparent.
-      for (let ring = NEBULA_RINGS; ring >= 1; ring -= 1) {
-        const ringRadius = (radius * ring) / NEBULA_RINGS;
-        const ringAlpha = (NEBULA_ALPHA * (NEBULA_RINGS - ring + 1)) / NEBULA_RINGS;
-        this.nebulaGraphics.circle(biome.center.x, biome.center.y, ringRadius);
-        this.nebulaGraphics.fill({ color, alpha: ringAlpha });
-      }
-    });
-
-    this.currentSlug = slug;
-    this.currentWidth = width;
-    this.currentHeight = height;
   }
 
   setViewport(camera: ViewportCamera) {
@@ -213,7 +156,6 @@ export class CosmicBackgroundLayer extends Container {
 
   destroy() {
     this.starGraphics.destroy();
-    this.nebulaGraphics.destroy();
     super.destroy();
   }
 }

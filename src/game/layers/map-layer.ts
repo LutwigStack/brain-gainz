@@ -260,18 +260,18 @@ const getAtlasEdgeStyle = (
   isSelectedPathEdge: boolean,
 ): { alpha: number; width: number } => {
   if (isFocusEdge) {
-    return { alpha: 0.32, width: 1.35 };
+    return { alpha: 0.22, width: 1.1 };
   }
 
   if (edgeRole === 'structure_root') {
-    return { alpha: isSelectedPathEdge ? 0.22 : 0.13, width: 1.05 };
+    return { alpha: isSelectedPathEdge ? 0.14 : 0.08, width: 0.85 };
   }
 
   if (edgeRole === 'structure_branch') {
-    return { alpha: isSelectedPathEdge ? 0.2 : 0.1, width: 0.85 };
+    return { alpha: isSelectedPathEdge ? 0.13 : 0.07, width: 0.72 };
   }
 
-  return { alpha: isSelectedPathEdge ? 0.2 : 0.12, width: 0.7 };
+  return { alpha: isSelectedPathEdge ? 0.12 : 0.065, width: 0.62 };
 };
 
 const drawArrowHead = (
@@ -1211,7 +1211,7 @@ export class MapLayer extends Container {
     label.visible = this.shouldShowNodeLabel(node.id);
   }
 
-  private drawAtlasSectorWedge(centerAngle: number, sectorWidth: number, color: number, accent: number) {
+  private drawAtlasSectorWedge(centerAngle: number, sectorWidth: number, color: number) {
     const outerRadius = 1_070;
     const innerRadius = 180;
     const startAngle = centerAngle - sectorWidth / 2;
@@ -1228,39 +1228,14 @@ export class MapLayer extends Container {
       this.edgeGraphics.lineTo(Math.cos(angle) * innerRadius, Math.sin(angle) * innerRadius);
     }
     this.edgeGraphics.lineTo(Math.cos(startAngle) * innerRadius, Math.sin(startAngle) * innerRadius);
-    this.edgeGraphics.fill({ color, alpha: 0.07 });
-
-    this.edgeGraphics.moveTo(Math.cos(startAngle) * innerRadius, Math.sin(startAngle) * innerRadius);
-    for (let index = 0; index <= steps; index += 1) {
-      const angle = startAngle + ((endAngle - startAngle) * index) / steps;
-      this.edgeGraphics.lineTo(Math.cos(angle) * innerRadius, Math.sin(angle) * innerRadius);
-    }
-    this.edgeGraphics.stroke({ color: accent, width: 1.2, alpha: 0.2 });
-
-    this.edgeGraphics.moveTo(Math.cos(startAngle) * outerRadius, Math.sin(startAngle) * outerRadius);
-    for (let index = 0; index <= steps; index += 1) {
-      const angle = startAngle + ((endAngle - startAngle) * index) / steps;
-      this.edgeGraphics.lineTo(Math.cos(angle) * outerRadius, Math.sin(angle) * outerRadius);
-    }
-    this.edgeGraphics.stroke({ color: accent, width: 2, alpha: 0.12 });
+    this.edgeGraphics.fill({ color, alpha: 0.055 });
   }
 
   private drawAtlasBackdrop(model: GameSceneModel) {
     const sectorWidth = model.biomes.length > 0 ? (Math.PI * 2) / model.biomes.length : Math.PI * 2;
     model.biomes.forEach((biome) => {
       const centerAngle = Math.atan2(biome.center.y, biome.center.x);
-      this.drawAtlasSectorWedge(centerAngle, Math.max(0.34, sectorWidth * 0.88), biome.color, biome.accent);
-      this.edgeGraphics.circle(biome.center.x, biome.center.y, biome.radius);
-      this.edgeGraphics.fill({ color: biome.color, alpha: 0.035 });
-      this.edgeGraphics.circle(biome.center.x, biome.center.y, biome.radius);
-      this.edgeGraphics.stroke({ color: biome.accent, width: 2, alpha: 0.16 });
-      this.edgeGraphics.circle(biome.center.x, biome.center.y, Math.max(36, biome.radius * 0.18));
-      this.edgeGraphics.stroke({ color: biome.accent, width: 1.4, alpha: 0.24 });
-    });
-
-    [180, 260, 500, 720, 900].forEach((radius, index) => {
-      this.edgeGraphics.circle(0, 0, radius);
-      this.edgeGraphics.stroke({ color: index % 2 === 0 ? 0x60a5fa : 0xfbbf24, width: 1, alpha: 0.075 });
+      this.drawAtlasSectorWedge(centerAngle, Math.max(0.34, sectorWidth * 0.88), biome.color);
     });
   }
 

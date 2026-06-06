@@ -181,9 +181,11 @@ const ATOMIC_CLUSTER_RADIUS = 150;
 const ATOMIC_CLUSTER_RING_STEP = 78;
 const ATOMIC_CLUSTER_CAPACITY = 8;
 const ATOMIC_CLUSTER_ALT_RADIUS = 24;
-const ATOMIC_CLUSTER_SPREAD = Math.PI * 1.62;
+const ATOMIC_CLUSTER_SPREAD_FACTOR = 0.72;
+const ATOMIC_CLUSTER_MAX_SPREAD = 0.55;
 const NODE_POSITION_PRECISION = 1000;
 const SECTOR_GUTTER = 0.035;
+const SECTOR_CONTENT_GUTTER = 0.1;
 
 const visualSizes: Record<SkillAtlasNodeVisualType, number> = {
   root: ROOT_SIZE,
@@ -227,12 +229,9 @@ const polarPoint = (radius: number, angle: number): SkillAtlasPoint => ({
   y: roundPosition(Math.sin(angle) * radius),
 });
 
-const offsetPoint = (origin: SkillAtlasPoint, radius: number, angle: number): SkillAtlasPoint => ({
-  x: roundPosition(origin.x + Math.cos(angle) * radius),
-  y: roundPosition(origin.y + Math.sin(angle) * radius),
-});
-
 const pointRadius = (point: SkillAtlasPoint) => roundPosition(Math.hypot(point.x, point.y));
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 const distributeAngle = (startAngle: number, endAngle: number, index: number, total: number) => {
   if (total <= 1) {
@@ -241,6 +240,24 @@ const distributeAngle = (startAngle: number, endAngle: number, index: number, to
 
   const padding = Math.min((endAngle - startAngle) * 0.05, 0.05);
   return startAngle + padding + ((endAngle - startAngle - padding * 2) * index) / (total - 1);
+};
+
+const constrainSpanToRange = (
+  centerAngle: number,
+  preferredSpan: number,
+  minAngle: number,
+  maxAngle: number,
+): { startAngle: number; endAngle: number; span: number } => {
+  const availableSpan = Math.max(0.02, maxAngle - minAngle);
+  const span = Math.min(Math.max(0.02, preferredSpan), availableSpan);
+  const halfSpan = span / 2;
+  const clampedCenter = clamp(centerAngle, minAngle + halfSpan, maxAngle - halfSpan);
+
+  return {
+    startAngle: clampedCenter - halfSpan,
+    endAngle: clampedCenter + halfSpan,
+    span,
+  };
 };
 
 const createSector = (sphere: NavigationSphere, index: number, total: number): SkillAtlasSector => {
@@ -585,6 +602,9 @@ export const createSkillAtlasLayout = (
     );
     const directionFlagGroups: SkillAtlasNodeStateFlags[] = [];
     const sphereStableId = `sphere:${sphere.id}`;
+    const sectorContentStartAngle = sector.startAngle + SECTOR_CONTENT_GUTTER;
+    const sectorContentEndAngle = sector.endAngle - SECTOR_CONTENT_GUTTER;
+    const sectorContentSpan = Math.max(0.02, sectorContentEndAngle - sectorContentStartAngle);
 
     baseEdges.push({
       id: `structure:${ROOT_STABLE_ID}->${sphereStableId}`,
@@ -596,10 +616,19 @@ export const createSkillAtlasLayout = (
     });
 
     visibleDirections.forEach((direction, directionIndex) => {
-      const directionAngle = distributeAngle(sector.startAngle, sector.endAngle, directionIndex, visibleDirections.length);
-      const directionSpan = Math.max((sector.endAngle - sector.startAngle) / Math.max(visibleDirections.length, 1), 0.32);
-      const directionStartAngle = directionAngle - directionSpan / 2;
-      const directionEndAngle = directionAngle + directionSpan / 2;
+      const directionAngle = distributeAngle(
+        sectorContentStartAngle,
+        sectorContentEndAngle,
+        directionIndex,
+        visibleDirections.length,
+      );
+      const directionSpan = Math.max(sectorContentSpan / Math.max(visibleDirections.length, 1), 0.18);
+      const directionRange = constrainSpanToRange(
+        directionAngle,
+        directionSpan,
+        sectorContentStartAngle,
+        sectorContentEndAngle,
+      );
       const visibleSkills = direction.skills.filter((skill) =>
         skill.nodes.some((node) => includedNodeContexts.has(node.id)),
       );
@@ -616,11 +645,18 @@ export const createSkillAtlasLayout = (
       const denseCourseSpan = collapseSyntheticCourseDirection
         ? Math.min(
             COURSE_DENSE_MAX_SPAN,
-            Math.max(directionSpan, COURSE_DENSE_MIN_ANGLE_STEP * Math.max(visibleSkills.length - 1, 1) + 0.22),
+            directionRange.span,
+            Math.max(COURSE_DENSE_MIN_ANGLE_STEP * Math.max(visibleSkills.length - 1, 1) + 0.22, 0.18),
           )
-        : directionSpan;
-      const skillStartAngle = collapseSyntheticCourseDirection ? directionAngle - denseCourseSpan / 2 : directionStartAngle;
-      const skillEndAngle = collapseSyntheticCourseDirection ? directionAngle + denseCourseSpan / 2 : directionEndAngle;
+        : directionRange.span;
+      const skillRange = constrainSpanToRange(
+        directionAngle,
+        denseCourseSpan,
+        directionRange.startAngle,
+        directionRange.endAngle,
+      );
+      const skillStartAngle = skillRange.startAngle;
+      const skillEndAngle = skillRange.endAngle;
 
       if (!collapseSyntheticCourseDirection) {
         baseEdges.push({
@@ -635,6 +671,16 @@ export const createSkillAtlasLayout = (
 
       visibleSkills.forEach((skill, skillIndex) => {
         const skillAngle = distributeAngle(skillStartAngle, skillEndAngle, skillIndex, visibleSkills.length);
+        const perSkillSpan = Math.max(
+          0.02,
+          (skillEndAngle - skillStartAngle) / Math.max(visibleSkills.length, 1),
+        );
+        const skillCell = constrainSpanToRange(
+          skillAngle,
+          perSkillSpan,
+          skillStartAngle,
+          skillEndAngle,
+        );
         const visibleNodes = skill.nodes.filter((node) => includedNodeContexts.has(node.id));
         const childFlags: SkillAtlasNodeStateFlags[] = [];
         const skillStableId = `skill:${skill.id}`;
@@ -665,13 +711,21 @@ export const createSkillAtlasLayout = (
           const layerStartIndex = layer * ATOMIC_CLUSTER_CAPACITY;
           const layerCount = Math.min(ATOMIC_CLUSTER_CAPACITY, visibleNodes.length - layerStartIndex);
           const indexInLayer = nodeIndex - layerStartIndex;
-          const layerStartAngle = skillAngle - ATOMIC_CLUSTER_SPREAD / 2;
-          const layerEndAngle = skillAngle + ATOMIC_CLUSTER_SPREAD / 2;
-          const clusterAngle = distributeAngle(layerStartAngle, layerEndAngle, indexInLayer, layerCount);
+          const clusterSpan = Math.min(skillCell.span * ATOMIC_CLUSTER_SPREAD_FACTOR, ATOMIC_CLUSTER_MAX_SPREAD);
+          const clusterRange = constrainSpanToRange(
+            skillAngle,
+            clusterSpan,
+            skillCell.startAngle,
+            skillCell.endAngle,
+          );
+          const clusterAngle = distributeAngle(clusterRange.startAngle, clusterRange.endAngle, indexInLayer, layerCount);
           const clusterRadius =
-            ATOMIC_CLUSTER_RADIUS + layer * ATOMIC_CLUSTER_RING_STEP + (indexInLayer % 2) * ATOMIC_CLUSTER_ALT_RADIUS;
-          const point = isCourseOnlySkill ? skillPoint : offsetPoint(skillPoint, clusterRadius, clusterAngle);
-          const nodeAngle = Math.atan2(point.y, point.x);
+            TOPIC_RING_RADIUS +
+            ATOMIC_CLUSTER_RADIUS +
+            layer * ATOMIC_CLUSTER_RING_STEP +
+            (indexInLayer % 2) * ATOMIC_CLUSTER_ALT_RADIUS;
+          const point = isCourseOnlySkill ? skillPoint : polarPoint(clusterRadius, clusterAngle);
+          const nodeAngle = isCourseOnlySkill ? skillAngle : clusterAngle;
           const nodeRadius = pointRadius(point);
           const visualType = normalizeNodeType(node);
           const flags = resolveNodeFlags(

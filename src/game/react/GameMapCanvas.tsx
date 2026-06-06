@@ -1172,6 +1172,8 @@ export const GameMapCanvas = ({
                 the `center-on-point` MapCameraCommand. */}
             <GalaxyHoloMinimap
               biomes={model.biomes}
+              nodes={model.nodes}
+              edges={model.edges}
               modelBounds={model.bounds}
               viewportCamera={viewportCamera}
               canvasSize={hostSize}

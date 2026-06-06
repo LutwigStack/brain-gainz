@@ -229,6 +229,99 @@ test('cluster centroids sit at the transformed biome centers', () => {
   });
 });
 
+test('projected minimap nodes use the same transform as the large atlas', () => {
+  const nodes = [
+    {
+      id: 101,
+      title: 'Preflop ядро',
+      subtitle: '',
+      state: 'active',
+      position: { x: 120, y: -80 },
+      biomeId: 2,
+      atlasNodeType: 'course_hub',
+      atlasSphereTokenKey: 'math',
+      isCurrentRouteTarget: true,
+    },
+    {
+      id: 102,
+      title: 'RFI',
+      subtitle: '',
+      state: 'available',
+      position: { x: 180, y: -40 },
+      biomeId: 2,
+      atlasNodeType: 'atomic_node',
+      atlasSphereTokenKey: 'math',
+    },
+  ];
+  const layout = buildGalaxyHoloMinimapLayout({
+    biomes: buildBiomes(8),
+    modelBounds: DEFAULT_BOUNDS,
+    canvasSize: DEFAULT_CANVAS_SIZE,
+    viewportCamera: DEFAULT_VIEWPORT,
+    nodes,
+    edges: [],
+  });
+  assert.ok(layout);
+  assert.equal(layout.nodes.length, 2);
+
+  const hub = layout.nodes.find((node) => node.id === 101);
+  assert.ok(hub);
+  const expected = layout.toMini(120, -80);
+  assert.ok(Math.abs(hub.position.x - expected.x) < TOLERANCE);
+  assert.ok(Math.abs(hub.position.y - expected.y) < TOLERANCE);
+  assert.equal(hub.tokenKey, 'math');
+  assert.equal(hub.isCurrent, true);
+  assert.equal(hub.isHub, true);
+
+  const atomic = layout.nodes.find((node) => node.id === 102);
+  assert.ok(atomic);
+  assert.equal(atomic.isHub, false);
+});
+
+test('projected minimap edges connect projected atlas node endpoints', () => {
+  const nodes = [
+    {
+      id: 201,
+      title: 'Hub',
+      subtitle: '',
+      state: 'active',
+      position: { x: -100, y: 40 },
+      biomeId: 1,
+      atlasNodeType: 'course_hub',
+      atlasSphereTokenKey: 'code',
+    },
+    {
+      id: 202,
+      title: 'Atomic',
+      subtitle: '',
+      state: 'available',
+      position: { x: -60, y: 90 },
+      biomeId: 1,
+      atlasNodeType: 'atomic_node',
+      atlasSphereTokenKey: 'code',
+    },
+  ];
+  const layout = buildGalaxyHoloMinimapLayout({
+    biomes: buildBiomes(8),
+    modelBounds: DEFAULT_BOUNDS,
+    canvasSize: DEFAULT_CANVAS_SIZE,
+    viewportCamera: DEFAULT_VIEWPORT,
+    nodes,
+    edges: [{ id: 77, fromNodeId: 201, toNodeId: 202, type: 'requires', atlasEdgeRole: 'local_cluster' }],
+  });
+  assert.ok(layout);
+  assert.equal(layout.edges.length, 1);
+  const edge = layout.edges[0];
+  const expectedFrom = layout.toMini(-100, 40);
+  const expectedTo = layout.toMini(-60, 90);
+  assert.ok(Math.abs(edge.from.x - expectedFrom.x) < TOLERANCE);
+  assert.ok(Math.abs(edge.from.y - expectedFrom.y) < TOLERANCE);
+  assert.ok(Math.abs(edge.to.x - expectedTo.x) < TOLERANCE);
+  assert.ok(Math.abs(edge.to.y - expectedTo.y) < TOLERANCE);
+  assert.equal(edge.tokenKey, 'code');
+  assert.equal(edge.isRouteOverlay, false);
+});
+
 test('toMini / fromMini are inverses inside the merged bounds', () => {
   const layout = buildGalaxyHoloMinimapLayout({
     biomes: buildBiomes(8),

@@ -2,14 +2,11 @@
  * Galaxy holo minimap — Epic 46.
  *
  * Pure (non-React) layout logic for the holo minimap rendered in the
- * bottom-right of the canvas. The holo minimap replaces the legacy
- * edge-and-dot map (epic 37) with a small projection of the cosmic
- * canvas (epic 47): one tinted cluster per sphere, positioned at the
- * sphere's centroid, with the same deterministic constellation of
- * dots that the `Сектора` card uses (epic 42) — only re-scaled to a
- * `40x24` bounding box. The result is a recognisable galaxy in the
- * corner of the screen and a clickable navigation surface for
- * "jump to this sector" (workstream 02).
+ * bottom-right of the canvas. The minimap uses the same world-space
+ * nodes and edges as the large atlas, projected through a single
+ * `toMini` / `fromMini` transform. Cluster metadata is still kept for
+ * click announcements, but the visible surface is now a real miniature
+ * of the current map instead of a decorative sphere legend.
  *
  * Coordinate system: a single `toMini` / `fromMini` pair is the bridge
  * between world space (the layout produced by `create-game-view-model`
@@ -32,7 +29,7 @@ import {
   tryGetSphereTokenKey,
 } from '../../theme/galaxy/sphere-id-to-token.ts';
 import { SPHERE_TOKEN_ORDER, type SphereTokenKey } from '../../theme/galaxy/sphere-tokens.ts';
-import type { GameBiome, GameBounds, GamePoint, GameSceneModel } from '../../game/types.ts';
+import type { GameBiome, GameBounds, GameEdge, GameNode, GamePoint } from '../../game/types.ts';
 import { getViewportWorldBounds, type ViewportCamera } from '../../game/viewport.ts';
 import {
   computeSphereMiniPreviewDots,
@@ -75,6 +72,23 @@ export interface GalaxyHoloDot {
   r: number;
 }
 
+export interface GalaxyHoloNodeDot {
+  id: number;
+  tokenKey: SphereTokenKey;
+  position: GamePoint;
+  radius: number;
+  isCurrent: boolean;
+  isHub: boolean;
+}
+
+export interface GalaxyHoloEdgeLine {
+  id: number;
+  tokenKey: SphereTokenKey;
+  from: GamePoint;
+  to: GamePoint;
+  isRouteOverlay: boolean;
+}
+
 export interface GalaxyHoloLayout {
   width: number;
   height: number;
@@ -86,6 +100,8 @@ export interface GalaxyHoloLayout {
   /** Minimap-to-world transform. Used by the click handler in workstream 02. */
   fromMini: (x: number, y: number) => GamePoint;
   viewportRect: { x: number; y: number; width: number; height: number };
+  nodes: GalaxyHoloNodeDot[];
+  edges: GalaxyHoloEdgeLine[];
   clusters: GalaxyHoloCluster[];
   currentCluster: GalaxyHoloCluster | null;
 }
@@ -102,6 +118,34 @@ export interface GalaxyHoloLayout {
 export const resolveTokenKeyForBiomeIndex = (index: number): SphereTokenKey => {
   const safeIndex = Math.max(0, Math.min(index, SPHERE_TOKEN_ORDER.length - 1));
   return SPHERE_TOKEN_ORDER[safeIndex];
+};
+
+const isSphereTokenKey = (value: string | undefined): value is SphereTokenKey =>
+  Boolean(value && (SPHERE_TOKEN_ORDER as readonly string[]).includes(value));
+
+const resolveTokenKeyForNode = (node: GameNode): SphereTokenKey => {
+  if (isSphereTokenKey(node.atlasSphereTokenKey)) {
+    return node.atlasSphereTokenKey;
+  }
+  return resolveTokenKeyForBiomeIndex((node.biomeId ?? 1) - 1);
+};
+
+const resolveMinimapNodeRadius = (node: GameNode): number => {
+  switch (node.atlasNodeType) {
+    case 'root':
+      return 3.2;
+    case 'domain_hub':
+    case 'course_hub':
+      return 3;
+    case 'topic_node':
+      return 2.5;
+    case 'practice_node':
+    case 'review_node':
+    case 'boss_node':
+      return 2.25;
+    default:
+      return 1.9;
+  }
 };
 
 /**
@@ -141,6 +185,8 @@ export const buildGalaxyHoloMinimapLayout = (input: {
   modelBounds: GameBounds;
   canvasSize: { width: number; height: number };
   viewportCamera: ViewportCamera;
+  nodes?: GameNode[];
+  edges?: GameEdge[];
   currentSphereSlug?: string | null;
   minimapWidth?: number;
   minimapHeight?: number;
@@ -251,6 +297,37 @@ export const buildGalaxyHoloMinimapLayout = (input: {
   }
 
   const currentCluster = clusters.find((cluster) => cluster.isCurrent) ?? null;
+  const projectedNodes: GalaxyHoloNodeDot[] = (input.nodes ?? []).map((node) => ({
+    id: node.id,
+    tokenKey: resolveTokenKeyForNode(node),
+    position: toMini(node.position.x, node.position.y),
+    radius: node.isCurrentRouteTarget
+      ? Math.max(3.4, resolveMinimapNodeRadius(node))
+      : resolveMinimapNodeRadius(node),
+    isCurrent: Boolean(node.isCurrentRouteTarget),
+    isHub:
+      node.atlasNodeType === 'root' ||
+      node.atlasNodeType === 'domain_hub' ||
+      node.atlasNodeType === 'course_hub' ||
+      node.atlasNodeType === 'topic_node',
+  }));
+  const projectedNodeById = new Map(projectedNodes.map((node) => [node.id, node]));
+  const projectedEdges: GalaxyHoloEdgeLine[] = (input.edges ?? [])
+    .map((edge) => {
+      const fromNode = projectedNodeById.get(edge.fromNodeId);
+      const toNode = projectedNodeById.get(edge.toNodeId);
+      if (!fromNode || !toNode) {
+        return null;
+      }
+      return {
+        id: edge.id,
+        tokenKey: fromNode.tokenKey,
+        from: fromNode.position,
+        to: toNode.position,
+        isRouteOverlay: edge.atlasEdgeRole === 'route_overlay',
+      };
+    })
+    .filter((edge): edge is GalaxyHoloEdgeLine => edge != null);
 
   return {
     width: minimapWidth,
@@ -261,6 +338,8 @@ export const buildGalaxyHoloMinimapLayout = (input: {
     toMini,
     fromMini,
     viewportRect,
+    nodes: projectedNodes,
+    edges: projectedEdges,
     clusters,
     currentCluster,
   };
