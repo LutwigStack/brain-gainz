@@ -4368,7 +4368,22 @@ textarea:disabled {
 }
 
 .navigation-map-overlay--layers {
+  display: inline-flex;
   justify-self: start;
+  width: max-content;
+  max-width: 100%;
+}
+
+.navigation-map-overlay--layers .program-map-layer-switcher {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.navigation-map-overlay--layers .program-map-layer-switcher__tabs {
+  width: max-content;
+  max-width: 100%;
 }
 
 .navigation-map-overlay--path {

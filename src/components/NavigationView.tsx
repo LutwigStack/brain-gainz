@@ -4561,9 +4561,9 @@ export const NavigationView = ({
                     <div className="program-map-layer-switcher">
                     <div className="program-map-layer-switcher__tabs" role="tablist" aria-label="Слои карты программы">
                       {([
-                        ['city', 'Сектора', MapIcon],
                         ['knowledge_map', 'Карта знаний', Target],
                         ['folders', 'Папки', GitBranch],
+                        ['city', 'Сектора', MapIcon],
                       ] as const).map(([layer, label, Icon]) => (
                         <button
                           key={layer}
